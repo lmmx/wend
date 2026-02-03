@@ -16,7 +16,6 @@ uv pip install wend
 ## Requirements
 
 - Python 3.14+
-- Git (with sparse-checkout support)
 
 ## About
 

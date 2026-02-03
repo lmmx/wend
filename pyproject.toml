@@ -1,0 +1,14 @@
+[project]
+name = "wend"
+version = "0.1.0"
+description = "Templated paths using t-strings"
+readme = "README.md"
+authors = [
+    { name = "Louis Maddox", email = "louismmx@gmail.com" }
+]
+requires-python = ">=3.14"
+dependencies = []
+
+[build-system]
+requires = ["uv_build>=0.9.26,<0.10.0"]
+build-backend = "uv_build"

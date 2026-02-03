@@ -1,7 +1,7 @@
 """Demo of deferred path expressions."""
 
-from pathlib import Path
-from wend import Param, P, T, RelativePath
+from wend import P, Param, RelativePath, T
+
 
 # Define parameters (late-bound)
 root = Param("root")
@@ -18,12 +18,14 @@ print("Required params:", chunk_file.required_params())
 # -> {'root', 'dataset', 'idx', 'total'}
 
 # Resolve with bindings
-path = chunk_file.resolve({
-    "root": "/mnt/storage",
-    "dataset": "train",
-    "idx": 7,
-    "total": 100,
-})
+path = chunk_file.resolve(
+    {
+        "root": "/mnt/storage",
+        "dataset": "train",
+        "idx": 7,
+        "total": 100,
+    }
+)
 print("Resolved:", path)
 # -> /mnt/storage/data/train/chunk_0007-of-0100.parquet
 
@@ -43,10 +45,7 @@ print("Suffix chain:", double_suffix)
 # -> WithSuffixExpr(base=JoinExpr(...), suffix='.json') — .tmp is gone
 
 # Connectivity: rebasing
-config = RelativePath(
-    base=root,
-    relative=P("config") / "settings.yaml"
-)
+config = RelativePath(base=root, relative=P("config") / "settings.yaml")
 print("Config path:", config.resolve({"root": "/project"}))
 # -> /project/config/settings.yaml
 

@@ -9,7 +9,7 @@ test = [
 
 [project]
 name = "wend"
-version = "0.1.0"
+version = "0.1.1"
 description = "Templated paths using t-strings"
 readme = "README.md"
 authors = [

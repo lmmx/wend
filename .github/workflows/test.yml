@@ -1,0 +1,58 @@
+name: Test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  get-python-versions:
+    runs-on: ubuntu-latest
+    outputs:
+      versions: ${{ steps.get-versions.outputs.versions }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Get Python versions
+        id: get-versions
+        run: |
+          MIN_VERSION=$(grep -oP 'requires-python\s*=\s*">=\K[0-9]+(\.[0-9]+)+' pyproject.toml)
+          VERSIONS=$(uv python list --python-preference only-managed 2>/dev/null |
+            grep -oP 'cpython-\K[0-9]+\.[0-9]+(?=\.[0-9]+-[a-z])' |
+            sort -Vu |
+            awk -v min="$MIN_VERSION" '
+              BEGIN { ok = 0 }
+              $0 == min { ok = 1 }
+              ok { print }
+            ' |
+            jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "versions=$VERSIONS" >> $GITHUB_OUTPUT
+
+  test:
+    needs: get-python-versions
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ${{ fromJson(needs.get-python-versions.outputs.versions) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: uv sync --group test
+
+      - name: Run tests
+        run: uv run pytest

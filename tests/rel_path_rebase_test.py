@@ -1,5 +1,7 @@
 from pathlib import Path
-from wend import P, RelativePath, Param
+
+from wend import P, Param, RelativePath
+
 
 def test_relative_path_rebase():
     root = Param("root")

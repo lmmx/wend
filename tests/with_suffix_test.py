@@ -1,5 +1,7 @@
 from pathlib import Path
+
 from wend import Param, WithSuffixExpr
+
 
 def test_suffix_chain_collapse():
     root = Param("root")

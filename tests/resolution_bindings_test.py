@@ -1,5 +1,7 @@
 from pathlib import Path
+
 from wend import Param
+
 
 def test_param_resolution():
     root = Param("root")

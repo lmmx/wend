@@ -1,5 +1,7 @@
 from pathlib import Path
-from wend import Param, JoinExpr
+
+from wend import JoinExpr, Param
+
 
 def test_parent_simplifies_join():
     root = Param("root")

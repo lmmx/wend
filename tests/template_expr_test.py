@@ -1,5 +1,7 @@
 from pathlib import Path
+
 from wend import Param, T
+
 
 def test_template_resolution():
     idx = Param("idx")

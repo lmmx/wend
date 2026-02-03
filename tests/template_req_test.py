@@ -1,5 +1,6 @@
 from wend import Param, T
 
+
 def test_template_required_params():
     a = Param("a")
     b = Param("b")

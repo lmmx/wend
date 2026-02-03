@@ -1,5 +1,7 @@
 import pytest
+
 from wend import Param
+
 
 def test_missing_bindings_raises():
     root = Param("root")

@@ -3,7 +3,9 @@
 The "unrewritten" column builds the same node tree with the dataclass constructors directly,
 bypassing the `.create` rewrites, so each node resolves through its own `_resolve`.
 
-Run with: uv run python docs/journal/scripts/2026-10-17-soundness-probe.py
+This probes the wend 0.1.1 release (the rebuild removed these classes). Run with:
+
+    uv run --no-project --python 3.14 --with wend==0.1.1 python docs/journal/scripts/2026-10-17-soundness-probe.py
 """
 
 from pathlib import Path

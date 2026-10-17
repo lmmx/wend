@@ -5,7 +5,7 @@
 [![License](https://img.shields.io/pypi/l/wend.svg)](https://github.com/lmmx/wend/blob/master/LICENSE)
 [![pre-commit.ci status](https://results.pre-commit.ci/badge/github/lmmx/wend/master.svg)](https://results.pre-commit.ci/latest/github/lmmx/wend/master)
 
-A library for templated paths using Python t-strings (3.14+)
+Symbolic, typed, invertible filesystem paths built from Python t-strings (3.14+).
 
 ## Installation
 
@@ -28,63 +28,27 @@ form of deferred execution.
 
 ## Usage
 
-Following the examples in the [blog post][blog]:
-
 ```py
-from pathlib import Path
-from wend import Param, P, T, RelativePath
+from wend import P, Param, Segment, T
 
-# Define parameters (late-bound)
 root = Param("root")
-dataset = Param("dataset")
-idx = Param("idx")
-total = Param("total")
+split = Segment("split", choices={"train", "test"})
+idx, total = Param("idx", type=int), Param("total", type=int)
 
-# Build expressions - these don't touch the filesystem
-data_dir = root / "data" / dataset
-chunk_file = data_dir / T(t"chunk_{idx:04d}-of-{total:04d}.parquet")
+shard = root / "data" / split / T(t"chunk_{idx:04d}-of-{total:04d}.parquet")
 
-# Inspect what's needed
-print("Required params:", chunk_file.required_params())
-# -> {'root', 'dataset', 'idx', 'total'}
-
-# Resolve with bindings
-path = chunk_file.resolve(
-    {
-        "root": "/mnt/storage",
-        "dataset": "train",
-        "idx": 7,
-        "total": 100,
-    }
-)
-print("Resolved:", path)
-# -> /mnt/storage/data/train/chunk_0007-of-0100.parquet
-
-# Constant folding happens at construction
-folded = P("/home") / "user" / "data"
-print("Folded type:", type(folded).__name__)
-# -> LiteralExpr (not nested JoinExprs)
-
-# Parent simplification
-expr = root / "a" / "b"
-print("Parent of join:", expr.parent)
-# -> JoinExpr(ParamExpr, LiteralExpr("a")) -- the "b" is gone structurally
-
-# Suffix chain collapse
-double_suffix = (root / "file.txt").with_suffix(".tmp").with_suffix(".json")
-print("Suffix chain:", double_suffix)
-# -> WithSuffixExpr(base=JoinExpr(...), suffix='.json') -- .tmp is gone
-
-# Connectivity: rebasing
-config = RelativePath(base=root, relative=P("config") / "settings.yaml")
-print("Config path:", config.resolve({"root": "/project"}))
-# -> /project/config/settings.yaml
-
-# Rebase to test environment
-test_config = config.rebase(P("/tmp/test"))
-print("Test config:", test_config.resolve({}))
-# -> /tmp/test/config/settings.yaml
+shard.resolve(root="/mnt", split="train", idx=7, total=100)
+# PosixPath('/mnt/data/train/chunk_0007-of-0100.parquet')
+shard.match("/mnt/data/train/chunk_0007-of-0100.parquet")
+# Match(..., {'root': '/mnt', 'split': 'train', 'idx': 7, 'total': 100})
+shard.parent  # PathExpr('{root}/data/{split}')
+shard.bind(
+    root="/mnt"
+)  # PathExpr('/mnt/data/{split}/chunk_{idx:04d}-of-{total:04d}.parquet')
 ```
+
+The semantic contract is in [docs/SEMANTICS.md](docs/SEMANTICS.md); `demo.py` walks
+through the core API.
 
 ## Contributing
 

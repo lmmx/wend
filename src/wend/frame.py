@@ -64,6 +64,22 @@ class _Lowering:
         ):
             raise NotImplementedError(f"{f.pattern} cannot be lowered to Polars")
         if f.role == "segment":
+            dt = self.dtype(src.name)
+            if dt is not None and dt.is_integer():
+                # A segment formats a non-path value like f"{v}"; for an
+                # integer that is its decimal string, which can't be a
+                # separator, empty, "." or "..".
+                if src.type not in (None, int):
+                    raise NotImplementedError(
+                        f"{src.name!r} is declared {src.type!r} but the column is integer"
+                    )
+                c = pl.col(src.name)
+                self.check(f"{src.name} is null", c.is_null())
+                if src.choices is not None:
+                    self.check(
+                        f"{src.name} not in choices", ~c.is_in(list(src.choices))
+                    )
+                return c.cast(pl.String)
             c = self.string_col(src)
             self.check(
                 f"{src.name} contains a separator", c.str.contains("/", literal=True)

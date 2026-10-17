@@ -38,6 +38,14 @@ def test_unsupported_formatting_is_refused():
         to_polars(T(t"x{idx!r}"))
 
 
+def test_integer_columns_at_segment_positions_render_like_render():
+    run = P("runs") / Param("n", type=int) / "x"
+    df = pl.DataFrame({"n": [1, 22, -3]})
+    assert resolve_frame(run, df).to_list() == [run.render(n=v) for v in (1, 22, -3)]
+    with pytest.raises(InvalidBindingError):
+        resolve_frame(run, pl.DataFrame({"n": [1, None]}))
+
+
 def test_lazy_frames_and_embedding():
     lf = pl.LazyFrame({"root": ["/r"], "split": ["s"], "idx": [5]})
     assert resolve_frame(shard, lf).to_list() == ["/r/data/s/chunk_0005.parquet"]

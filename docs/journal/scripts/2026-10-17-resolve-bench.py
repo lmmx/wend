@@ -1,7 +1,10 @@
 """Per-resolve cost of wend vs alternative lowerings of the same path expression.
 
-Run with: uv run --with polars python docs/journal/scripts/2026-10-17-resolve-bench.py
-(polars is optional; the batch row is skipped without it)
+This measures the wend 0.1.1 release. Run with:
+
+    uv run --no-project --python 3.14 --with wend==0.1.1 --with polars python docs/journal/scripts/2026-10-17-resolve-bench.py
+
+(polars is optional; the batch row is skipped without it; bench/bench.py measures the rebuild)
 
 Timings are the minimum over 5 repeats (3 for the batch rows) of one expression shape on one
 machine; absolute values are machine-specific, compare rows within a run.

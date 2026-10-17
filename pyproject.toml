@@ -5,6 +5,7 @@ requires = ["uv_build>=0.9.26,<0.10.0"]
 [dependency-groups]
 test = [
     "hypothesis>=6.140",
+    "polars>=1.30",
     "pytest>=8.4.0",
 ]
 
@@ -32,6 +33,11 @@ keywords = [
 ]
 requires-python = ">=3.14"
 dependencies = []
+
+[project.optional-dependencies]
+polars = [
+    "polars>=1.30",
+]
 
 [project.license]
 text = "MIT"

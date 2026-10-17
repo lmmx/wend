@@ -49,13 +49,21 @@ def _is_dir(entry: os.DirEntry[str], follow: bool) -> bool:
         return False
 
 
+def _dir_key(d: str) -> tuple[int, int] | None:
+    try:
+        st = os.stat(d)
+    except OSError:
+        return None
+    return st.st_dev, st.st_ino
+
+
 def glob(
     expr: PathExpr,
     mapping: Mapping[Any, Any] | None = None,
     /,
     *,
     kind: str | None = None,
-    follow_symlinks: bool = True,
+    follow_symlinks: bool = False,
     recurse_symlinks: bool = False,
     **kw: Any,
 ) -> Iterator[Match]:
@@ -65,12 +73,21 @@ def glob(
     expression must be bound or literal). ``kind`` restricts results to
     ``"file"`` or ``"dir"``.
 
-    Symlinked directories are followed at segment positions, as in pathlib's
-    glob, so a link inside the tree can lead outside it. Pass
-    ``follow_symlinks=False`` to refuse symlinked directories at every
-    position (the root itself is still resolved). While recursing through a
-    ``SubPath``, symlinked directories are only followed with
-    ``recurse_symlinks=True``.
+    The walk starts at the expression's fixed prefix (its head and the
+    literal segments that follow it), which is resolved like any path. Below
+    that, symlinks are not followed by default: a symlinked directory is not
+    descended into at any position, and ``kind`` judges a link as itself
+    (neither a file nor a directory), so a link can only be yielded as the
+    final component with ``kind=None``. ``follow_symlinks=True`` descends
+    symlinked directories at segment positions and classifies links by
+    their targets, as pathlib's glob does. ``recurse_symlinks=True``
+    descends them while recursing through a ``SubPath``, skipping any
+    directory already on the current path so that link cycles terminate.
+
+    This is a traversal policy, not a sandbox. The fixed prefix is resolved
+    normally, a yielded link points wherever it points, and the tree can
+    change between the walk and any use of its results. Where that matters,
+    open results with ``O_NOFOLLOW`` or resolve and check them.
     """
     if kind not in (None, "file", "dir"):
         raise ValueError("kind must be None, 'file' or 'dir'")
@@ -95,6 +112,17 @@ def glob(
 
     parts = e.parts
     n = len(parts)
+    # The walk starts below the fixed prefix: the head and the literal
+    # segments after it, which are resolved like any other path.
+    start = 0
+    while start < n:
+        part = parts[start]
+        if not isinstance(part, Seg) or part.literal is None:
+            break
+        base = _child(base, part.literal)
+        start += 1
+    if not (os.path.isdir(base) if start < n else os.path.lexists(base)):
+        return
 
     def walk(
         d: str, i: int, env: dict[str, Any]
@@ -131,22 +159,35 @@ def glob(
             return
         param = part.param
 
-        def splice(d: str, acc: list[str]) -> Iterator[tuple[str, dict[str, Any]]]:
+        def splice(
+            d: str, acc: list[str], seen: frozenset[tuple[int, int]]
+        ) -> Iterator[tuple[str, dict[str, Any]]]:
             value = "/".join(acc) or "."
             if _accept(param, value):
                 env2 = _unify(env, param.name, value)
                 if env2 is not None:
                     yield from walk(d, i + 1, env2)
             for entry in _entries(d):
-                if _is_dir(entry, recurse_symlinks and follow_symlinks):
-                    yield from splice(_child(d, entry.name), [*acc, entry.name])
+                if not _is_dir(entry, recurse_symlinks):
+                    continue
+                child = _child(d, entry.name)
+                if recurse_symlinks:
+                    key = _dir_key(child)
+                    if key is None or key in seen:
+                        continue
+                    yield from splice(child, [*acc, entry.name], seen | {key})
+                else:
+                    yield from splice(child, [*acc, entry.name], seen)
 
-        yield from splice(d, [])
+        start = _dir_key(d) if recurse_symlinks else None
+        yield from splice(d, [], frozenset() if start is None else frozenset({start}))
 
     render = e._compiled.render
     found: dict[str, dict[str, Any]] = {}
     clashes: dict[str, list[dict[str, Any]]] = {}
-    for path, env in walk(base, 0, {}):
+    for path, env in walk(base, start, {}):
+        if kind is not None and not follow_symlinks and os.path.islink(path):
+            continue
         if kind == "file" and not os.path.isfile(path):
             continue
         if kind == "dir" and not os.path.isdir(path):

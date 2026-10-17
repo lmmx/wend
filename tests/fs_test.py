@@ -80,11 +80,12 @@ def test_glob_reports_ambiguity(tree):
         list((P(tree) / "data" / "train" / T(t"{a}{b}.txt")).glob())
 
 
-def test_glob_does_not_follow_symlink_loops_in_subpaths(tree):
+def test_glob_terminates_on_symlink_loops_in_subpaths(tree):
     os.symlink(tree / "data", tree / "data" / "loop")
     e = P(tree) / "data" / SubPath("rel") / T(t"chunk_{idx:04d}.parquet")
     assert len(list(e.glob())) == 4
-    assert len(list(e.glob(recurse_symlinks=False))) == 4
+    # Following links in the recursion still visits each directory once per path.
+    assert len(list(e.glob(recurse_symlinks=True))) == 4
 
 
 def test_lens_maps_between_layouts():
@@ -107,16 +108,51 @@ def test_lens_with_extra_target_params():
     assert lens("raw/2026-01-02.csv", run="r1") == Path("out/r1/2026-01-02.parquet")
 
 
-def test_glob_can_refuse_symlinks_out_of_the_tree(tmp_path):
+def test_glob_does_not_follow_symlinks_unless_asked(tmp_path):
     (tmp_path / "root" / "data" / "a").mkdir(parents=True)
     (tmp_path / "root" / "data" / "a" / "f.txt").touch()
     (tmp_path / "outside").mkdir()
     (tmp_path / "outside" / "f.txt").touch()
     os.symlink(tmp_path / "outside", tmp_path / "root" / "data" / "b")
     e = P(tmp_path / "root") / "data" / Param("d") / T(t"{Param('x')}.txt")
-    assert sorted(m["d"] for m in e.glob()) == ["a", "b"]
-    assert [m["d"] for m in e.glob(follow_symlinks=False)] == ["a"]
+    assert [m["d"] for m in e.glob()] == ["a"]
+    assert sorted(m["d"] for m in e.glob(follow_symlinks=True)) == ["a", "b"]
+    # A literal segment below a templated one is refused like any other entry.
+    (tmp_path / "root" / "data" / "a" / "sub").symlink_to(tmp_path / "outside")
+    below = P(tmp_path / "root") / "data" / Param("d") / "sub" / T(t"{Param('x')}.txt")
+    assert list(below.glob()) == []
+    assert [m["d"] for m in below.glob(follow_symlinks=True)] == ["a"]
+    # The fixed prefix is resolved like any path, so a linked root still works.
     os.symlink(tmp_path / "outside", tmp_path / "root" / "link")
     lit = P(tmp_path / "root") / "link" / T(t"{Param('x')}.txt")
-    assert len(list(lit.glob())) == 1
-    assert list(lit.glob(follow_symlinks=False)) == []
+    assert [m["x"] for m in lit.glob()] == ["f"]
+    linked_root = Param("r") / "data" / Param("d") / T(t"{Param('x')}.txt")
+    os.symlink(tmp_path / "root", tmp_path / "alias")
+    assert [m["d"] for m in linked_root.glob(r=tmp_path / "alias")] == ["a"]
+
+
+def test_glob_classifies_final_symlinks_as_links_by_default(tmp_path):
+    (tmp_path / "blobs").mkdir()
+    (tmp_path / "blobs" / "abc").write_text("x")
+    (tmp_path / "snap").mkdir()
+    os.symlink(tmp_path / "blobs" / "abc", tmp_path / "snap" / "model.bin")
+    (tmp_path / "snap" / "config.json").write_text("{}")
+    e = P(tmp_path / "snap") / Param("name")
+    assert [m["name"] for m in e.glob()] == ["config.json", "model.bin"]
+    assert [m["name"] for m in e.glob(kind="file")] == ["config.json"]
+    assert [m["name"] for m in e.glob(kind="file", follow_symlinks=True)] == [
+        "config.json",
+        "model.bin",
+    ]
+
+
+def test_glob_recurses_through_symlinks_only_when_asked(tmp_path):
+    (tmp_path / "root").mkdir()
+    (tmp_path / "outside" / "deep").mkdir(parents=True)
+    (tmp_path / "outside" / "deep" / "f.txt").touch()
+    (tmp_path / "root" / "g.txt").touch()
+    os.symlink(tmp_path / "outside", tmp_path / "root" / "ext")
+    e = P(tmp_path / "root") / SubPath("rel") / T(t"{Param('x')}.txt")
+    assert [m["rel"] for m in e.glob()] == ["."]
+    assert [m["rel"] for m in e.glob(follow_symlinks=True)] == ["."]
+    assert sorted(m["rel"] for m in e.glob(recurse_symlinks=True)) == [".", "ext/deep"]

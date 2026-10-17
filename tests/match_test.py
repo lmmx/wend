@@ -79,3 +79,9 @@ def test_relative_and_absolute_anchors_must_agree():
     assert P("rel") / dataset == P("rel") / dataset
     assert (P("rel") / dataset).match("/rel/x") is None
     assert (P("/rel") / dataset).match("rel/x") is None
+
+
+def test_a_match_without_bindings_is_truthy():
+    m = P("a/b").match("a/b")
+    assert m is not None and len(m) == 0
+    assert m

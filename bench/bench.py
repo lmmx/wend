@@ -224,6 +224,25 @@ def discovery() -> None:
         table(f"Filesystem discovery ({total_files:,} matching files; per file)", rows)
 
 
+def inference() -> None:
+    from wend.infer import infer
+
+    n = 2_000 if QUICK else 20_000
+    paths = [f"data/split{i % 20}/chunk_{i:05d}-of-{n:05d}.parquet" for i in range(n)]
+    paths += [f"logs/2026-01-{d:02d}.log" for d in range(1, 29)] + [
+        "README.md",
+        "pyproject.toml",
+    ]
+    schema = infer(paths)
+    assert schema.check(paths[:50]) == []
+    rows = [("infer (paths given as strings)", bench(lambda: infer(paths), 1))]
+    rows = [(name, tuple(x / len(paths) for x in t)) for name, t in rows]  # type: ignore[misc]
+    table(
+        f"Layout inference ({len(paths):,} paths -> {len(schema.layouts)} layouts; per path)",
+        rows,
+    )
+
+
 def symbolic() -> None:
     n = 2_000 if QUICK else 10_000
     rows = [
@@ -262,4 +281,5 @@ if __name__ == "__main__":
     batch()
     matching()
     discovery()
+    inference()
     symbolic()

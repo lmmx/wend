@@ -51,7 +51,10 @@ class AmbiguousMatchError(WendError, ValueError):
         self.candidates = candidates
         shown = ", ".join(repr(c) for c in candidates[:3])
         more = "" if len(candidates) <= 3 else f" (+{len(candidates) - 3} more)"
-        super().__init__(f"{path!r} matches ambiguously: {shown}{more}")
+        super().__init__(
+            f"{path!r} matches ambiguously: {shown}{more}. Bind a parameter, or"
+            " constrain one with choices= or type=, to pick one reading"
+        )
 
 
 class ParamConflictError(WendError, ValueError):

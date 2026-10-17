@@ -7,17 +7,23 @@ trees. Observed paths form a tree, which is generalised bottom-up:
   *skeleton* (``chunk_#-of-#.parquet``). Siblings with the same skeleton merge;
   each digit run that varies becomes an ``int`` field whose format spec
   (``04d``, ``d``) is chosen so that every observed value round-trips, and runs
-  that never vary stay literal.
+  that never vary stay literal. Names whose runs need different specs are
+  split, so a stray ``epoch_7`` among ``epoch_001``... is reported on its own.
 - Sibling directories whose contents are structurally similar (Jaccard
   similarity of their children's skeletons) collapse into one segment field,
   like genson's record-to-map unification. Files that share an extension
-  collapse into ``{stem}.ext`` once there are enough of them.
-- Merging directories re-unifies their children, and every child records
-  which of the merged directories contained it, so optional entries are
-  reported (genson's required vs optional keys).
+  collapse into ``{stem}.ext`` once there are enough of them. A map at a
+  position absorbs the similar directories and same-extension files beside it.
+- Merging directories re-unifies their children. A field whose observed
+  values always equal an earlier field's becomes the same parameter
+  (``n01440764/n01440764_10026.JPEG``).
 
-Every observed path matches at least one inferred layout; field statistics
-record the values seen without constraining new ones.
+Every observed path matches at least one inferred layout, and each layout's
+``count`` and field statistics come from the paths it was inferred from, so
+the counts partition the observed paths. ``optional`` is a property of the
+pattern: some observed directory matching a prefix of it contains none of
+the paths it matches. Statistics record the values seen without constraining
+new ones.
 """
 
 from __future__ import annotations
@@ -26,14 +32,15 @@ import itertools
 import os
 import re
 from collections import defaultdict
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from pathlib import PurePosixPath
 from typing import Any
 
 from ._expr import REL, Field, P, PathExpr, Seg, _norm
-from ._match import Match
+from ._match import Match, _match_seg, _seg_fast, seg_plan
 from ._params import Kind, Param
+from .errors import WendError
 
 
 _RUN = re.compile(r"[0-9]+")  # ASCII only: int() would accept other digits
@@ -48,13 +55,56 @@ class _Config:
 
 
 def _int_spec(values: list[str]) -> str | None:
-    """A format spec under which every observed digit string round-trips."""
+    """A format spec under which every observed digit string round-trips.
+
+    Runs of one width wider than a digit read as zero padded even without a
+    leading zero (``IMG_1234`` most likely comes from ``IMG_{n:04d}``).
+    """
+    width = min(len(v) for v in values)
+    if width > 1 and all(len(v) == width for v in values):
+        return f"0{width}d"
     if all(v == "0" or not v.startswith("0") for v in values):
         return "d"
-    width = min(len(v) for v in values)
     if all(len(v) == width or not v.startswith("0") for v in values):
         return f"0{width}d"
     return None
+
+
+def _fits(value: str, spec: str | None) -> bool:
+    return spec is None or format(int(value), spec) == value
+
+
+def _partition(rules: list[_Rule]) -> list[list[_Rule]]:
+    """Split same-skeleton rules into groups whose digit runs share a spec.
+
+    Each rule is consistent on its own, so the spec vector of the rule
+    covering the most names always selects a non-empty group: a stray
+    ``epoch_7`` among ``epoch_001``... becomes its own rule instead of
+    turning the field into a string.
+    """
+    if len(rules) == 1 or not rules[0].runs:
+        return [rules]
+    n = len(rules[0].runs)
+    varying = [i for i in range(n) if len({v for r in rules for v in r.runs[i]}) > 1]
+
+    def vector(r: _Rule) -> tuple[str | None, ...]:
+        return tuple(_int_spec(r.runs[i]) if i in varying else None for i in range(n))
+
+    def fits(r: _Rule, vec: tuple[str | None, ...]) -> bool:
+        return all(_fits(v, vec[i]) for i in varying for v in r.runs[i])
+
+    groups: list[list[_Rule]] = []
+    rest = rules
+    while rest:
+        cands = {vector(r) for r in rest}
+        best = max(
+            cands,
+            key=lambda vec: (sum(r.count for r in rest if fits(r, vec)), str(vec)),
+        )
+        group = [r for r in rest if fits(r, best)]
+        rest = [r for r in rest if not fits(r, best)]
+        groups.append(group)
+    return groups
 
 
 @dataclass
@@ -74,8 +124,6 @@ class _Rule:
         default_factory=list
     )  # observed full paths, parallel to names
     children: list[_Rule] = field(default_factory=list)
-    ids: frozenset[int] = frozenset()  # original directories merged into this rule
-    owners: frozenset[int] = frozenset()  # original parent directories containing it
 
     def skeleton(self) -> tuple[Any, ...]:
         return (self.kind, self.shape)
@@ -98,8 +146,6 @@ def _merge(rules: list[_Rule], shape: tuple[Any, ...], cfg: _Config) -> _Rule:
         ]
     out.names = [n for r in rules for n in r.names]
     out.paths = [p for r in rules for p in r.paths]
-    out.ids = frozenset().union(*(r.ids for r in rules))
-    out.owners = frozenset().union(*(r.owners for r in rules))
     if out.kind == "dir":
         out.children = _unify([c for r in rules for c in r.children], cfg)
     return out
@@ -109,42 +155,83 @@ def _jaccard(a: set[Any], b: set[Any]) -> float:
     return len(a & b) / len(a | b) if (a or b) else 1.0
 
 
+def _coarse(r: _Rule) -> str:
+    return PurePosixPath(r.names[0]).suffix
+
+
+def _similar(a: _Rule, b: _Rule) -> float:
+    """Similarity of two directories' contents.
+
+    Jaccard similarity of the children's skeletons, except that directories
+    holding only one-off file names are alike when their extensions are the
+    same (``alpha/{alpha.txt, data.bin}`` and ``beta/{beta.txt, data.bin}``).
+    """
+    fine = _jaccard(
+        {c.skeleton() for c in a.children}, {c.skeleton() for c in b.children}
+    )
+    kids = (*a.children, *b.children)
+    if all(c.kind == "file" and c.literal_like() for c in kids) and {
+        _coarse(c) for c in a.children
+    } == {_coarse(c) for c in b.children}:
+        return 1.0
+    return fine
+
+
 def _unify(rules: list[_Rule], cfg: _Config) -> list[_Rule]:
     out: list[_Rule] = []
     lone: list[_Rule] = []
-    # 1. Rules with the same skeleton merge (digit runs pool their values).
+    # 1. Rules with the same skeleton merge (digit runs pool their values),
+    #    in groups whose runs share a format spec.
     by_skel: dict[tuple[Any, ...], list[_Rule]] = defaultdict(list)
     for r in rules:
         by_skel[r.skeleton()].append(r)
     for (_kind, shape), ms in by_skel.items():
-        merged = _merge(ms, shape, cfg) if len(ms) > 1 else ms[0]
-        (lone if merged.literal_like() else out).append(merged)
+        for group in _partition(ms):
+            merged = _merge(group, shape, cfg) if len(group) > 1 else group[0]
+            (lone if merged.literal_like() else out).append(merged)
     # 2. Directories with similar contents collapse into one segment field.
-    dirs = [r for r in lone if r.kind == "dir"]
+    #    A map already at this position (from merged parents) absorbs similar
+    #    directories, and every qualifying cluster joins the same map, since
+    #    they would all be the same pattern.
+    dir_map = next((r for r in out if r.kind == "dir" and r.shape == ("str", "")), None)
+    if dir_map is not None:
+        out.remove(dir_map)
     clusters: list[list[_Rule]] = []
-    for d in sorted(dirs, key=lambda r: (-len(r.children), r.names[0])):
-        keys = {c.skeleton() for c in d.children}
+    for d in sorted(
+        (r for r in lone if r.kind == "dir"),
+        key=lambda r: (-len(r.children), r.names[0]),
+    ):
         for cl in clusters:
-            if (
-                keys
-                and _jaccard(keys, {c.skeleton() for c in cl[0].children})
-                >= cfg.similarity
-            ):
+            if d.children and _similar(d, cl[0]) >= cfg.similarity:
                 cl.append(d)
                 break
         else:
             clusters.append([d])
+    into_map: list[_Rule] = [] if dir_map is None else [dir_map]
     for cl in clusters:
-        if len(cl) >= cfg.min_dirs and cl[0].children:
-            out.append(_merge(cl, ("str", ""), cfg))
+        if cl[0].children and (
+            len(cl) >= cfg.min_dirs
+            or (dir_map is not None and _similar(cl[0], dir_map) >= cfg.similarity)
+        ):
+            into_map.extend(cl)
         else:
             out.extend(cl)
-    # 3. Files sharing an extension collapse into {stem}.ext.
+    if len(into_map) > 1 or (into_map and dir_map is None):
+        out.append(_merge(into_map, ("str", ""), cfg))
+    elif into_map:
+        out.append(into_map[0])
+    # 3. Files sharing an extension collapse into {stem}.ext, joining an
+    #    existing {stem}.ext map at this position whatever their number.
+    file_maps = {r.shape[1]: r for r in out if r.kind == "file" and r.shape[0] == "str"}
     by_suffix: dict[str, list[_Rule]] = defaultdict(list)
     for f in (r for r in lone if r.kind == "file"):
         by_suffix[PurePosixPath(f.names[0]).suffix].append(f)
     for suffix, fs in by_suffix.items():
-        if len(fs) >= cfg.min_files:
+        existing = file_maps.get(suffix)
+        if existing is not None:
+            out.remove(existing)
+            out.append(_merge([existing, *fs], ("str", suffix), cfg))
+        elif len(fs) >= cfg.min_files:
             out.append(_merge(fs, ("str", suffix), cfg))
         else:
             out.extend(fs)
@@ -173,7 +260,12 @@ class FieldStats:
 
 @dataclass
 class Layout:
-    """One inferred path pattern, relative to the inferred root."""
+    """One inferred path pattern, relative to the inferred root.
+
+    ``count`` and ``fields`` describe the observed paths the layout was
+    inferred from. ``optional`` is true when some observed directory matching
+    a prefix of ``expr`` contains none of the observed paths ``expr`` matches.
+    """
 
     expr: PathExpr
     kind: str
@@ -283,35 +375,53 @@ def _segment(
     return Seg(_norm(pieces))
 
 
+def _seen(expr: PathExpr, paths: list[str], names: list[str]) -> dict[str, list[Any]]:
+    """Field values from matching observed paths, verifying each round-trips."""
+    seen: dict[str, list[Any]] = {n: [] for n in names}
+    for observed in paths:
+        m = expr.match(observed)
+        if m is None:  # pragma: no cover - would be an inference bug
+            raise AssertionError(
+                f"{observed!r} does not match inferred {expr.pattern!r}"
+            )
+        for k, v in m.items():
+            seen[k].append(v)
+    return seen
+
+
 def _flatten(
     rules: list[_Rule],
     prefix: tuple[Seg, ...],
     parent: str,
-    parent_ids: frozenset[int],
     used: set[str],
     stats: list[tuple[str, type, list[Any]]],
-    optional: bool,
     out: list[Layout],
 ) -> None:
     for r in rules:
         my_used = set(used)
         my_stats = list(stats)
         seg = _segment(r, parent, my_used, my_stats)
-        is_opt = optional or (bool(parent_ids) and r.owners != parent_ids)
         path = (*prefix, seg)
         if r.kind == "file" or not r.children:
             expr = PathExpr(REL, path)
-            # Statistics come from matching this leaf's own observed paths,
-            # which also verifies that each of them round-trips.
-            seen: dict[str, list[Any]] = {n: [] for n, _, _ in my_stats}
-            for observed in r.paths:
-                m = expr.match(observed)
-                if m is None:  # pragma: no cover - would be an inference bug
-                    raise AssertionError(
-                        f"{observed!r} does not match inferred {expr.pattern!r}"
-                    )
-                for k, v in m.items():
-                    seen[k].append(v)
+            names = [n for n, _, _ in my_stats]
+            seen = _seen(expr, r.paths, names)
+            # A field that always repeats an earlier one is the same parameter,
+            # as in n01440764/n01440764_10026.JPEG. Three distinct values, or
+            # two over four paths, make a coincidence unlikely.
+            same: dict[str, str] = {}
+            for i, a in enumerate(names):
+                distinct = len(set(seen[a]))
+                if a in same or distinct < 2 or (distinct == 2 and len(r.paths) < 4):
+                    continue
+                for b in names[i + 1 :]:
+                    if b not in same and seen[a] == seen[b]:
+                        same[b] = a
+            if same:
+                params = expr.params
+                expr = expr.bind({b: params[a] for b, a in same.items()})
+                my_stats = [st for st in my_stats if st[0] not in same]
+                seen = _seen(expr, r.paths, [n for n, _, _ in my_stats])
             fields = {
                 n: FieldStats(
                     n,
@@ -324,10 +434,83 @@ def _flatten(
                 )
                 for n, t, _ in my_stats
             }
-            out.append(Layout(expr, r.kind, len(r.paths), fields, is_opt))
+            out.append(Layout(expr, r.kind, len(r.paths), fields, False))
         else:
             label = r.names[0] if r.literal_like() else parent
-            _flatten(r.children, path, label, r.ids, my_used, my_stats, is_opt, out)
+            _flatten(r.children, path, label, my_used, my_stats, out)
+
+
+def _step(
+    seg: Seg, node: dict[str, Any], env: dict[str, Any]
+) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Children of ``node`` matching ``seg``, with the extended bindings."""
+    lit = seg.literal
+    if lit is not None:
+        if lit in node:
+            yield lit, env
+        return
+    plan = seg_plan(seg)
+    for name in node:
+        if plan is not None:
+            found = _seg_fast(plan, name, env)
+            if found is not None:
+                yield name, found
+        else:
+            for found in _match_seg(seg, name, env):
+                yield name, found
+
+
+# Directories reached by a prefix: (path parts, bindings, subtree).
+type _Frontier = list[tuple[tuple[str, ...], dict[str, Any], dict[str, Any]]]
+
+
+def _mark_optional(layouts: list[Layout], tree: dict[str, Any]) -> None:
+    """Flag each layout that some directory matching a prefix of it lacks.
+
+    Each pattern is walked down the observed tree with the segment matcher
+    that `match` uses, so the flag holds for every directory a prefix
+    matches, including directories inferred under a different layout.
+    Layouts share the directories reached by their common prefixes.
+    """
+    frontiers: dict[tuple[Seg, ...], _Frontier] = {(): [((), {}, tree)]}
+
+    def verified(expr: PathExpr, path: tuple[str, ...], env: dict[str, Any]) -> bool:
+        # The segment matcher proposes candidates (``{n:d}`` accepts "00");
+        # rendering decides, as in `match`.
+        try:
+            return expr._compiled.render(env) == "/".join(path)
+        except WendError, ValueError:
+            return False
+
+    def frontier(prefix: tuple[Seg, ...]) -> _Frontier:
+        if prefix not in frontiers:
+            expr = PathExpr(REL, prefix)
+            out: _Frontier = []
+            for at, env, node in frontier(prefix[:-1]):
+                for name, found in _step(prefix[-1], node, env):
+                    sub = node[name]
+                    if sub is not None and verified(expr, (*at, name), found):
+                        out.append(((*at, name), found, sub))
+            frontiers[prefix] = out
+        return frontiers[prefix]
+
+    for lay in layouts:
+        parts = tuple(p for p in lay.expr.parts if isinstance(p, Seg))
+        assert len(parts) == len(lay.expr.parts)  # inferred layouts have no SubPath
+        n = len(parts)
+        want_file = lay.kind == "file"
+        hits: set[tuple[str, ...]] = set()
+        for at, env, node in frontier(parts[:-1]):
+            for name, found in _step(parts[-1], node, env):
+                sub = node[name]
+                if (sub is None) != want_file or (sub and not want_file):
+                    continue
+                if verified(lay.expr, (*at, name), found):
+                    hits.add((*at, name))
+        lay.optional = any(
+            {at for at, _, _ in frontier(parts[:j])} - {h[:j] for h in hits}
+            for j in range(1, n)
+        )
 
 
 def _observe(source: Any, include_hidden: bool) -> list[tuple[str, bool]]:
@@ -387,9 +570,7 @@ def infer(
                     )
                 node = node.setdefault(name, {})
 
-    counter = itertools.count()
-
-    def build(children: dict[str, Any], owner: int, at: str) -> list[_Rule]:
+    def build(children: dict[str, Any], at: str) -> list[_Rule]:
         rules = []
         for name, sub in children.items():
             full = f"{at}/{name}" if at else name
@@ -401,26 +582,14 @@ def infer(
                 [[v] for v in runs],
                 [name],
                 [full],
-                owners=frozenset([owner]),
             )
             if sub is not None:
-                me = next(counter)
-                r.ids = frozenset([me])
-                r.children = build(sub, me, full)
+                r.children = build(sub, full)
             rules.append(r)
         return _unify(rules, cfg)
 
-    root_id = next(counter)
     layouts: list[Layout] = []
-    _flatten(
-        build(tree, root_id, ""),
-        (),
-        "",
-        frozenset([root_id]),
-        set(),
-        [],
-        False,
-        layouts,
-    )
+    _flatten(build(tree, ""), (), "", set(), [], layouts)
+    _mark_optional(layouts, tree)
     layouts.sort(key=lambda lay: (-lay.count, lay.expr.pattern))
     return Schema(layouts, len(observed))

@@ -158,8 +158,10 @@ config.rebase(root, "/elsewhere").render()  # '/elsewhere/config/settings.yaml'
 for m in shard.glob(root="/mnt"):  # walks the tree along the expression's structure
     print(m["split"], m["idx"], m.path)  # typed bindings, verified
 
-# glob follows symlinked directories like Path.glob; this refuses them everywhere
-shard.glob(root="/mnt", follow_symlinks=False)
+# below the expression's literal prefix, glob does not follow symlinks unless asked
+shard.glob(
+    root="/mnt", follow_symlinks=True
+)  # pathlib-like; recurse_symlinks for SubPath
 
 from wend import Lens
 
@@ -167,6 +169,7 @@ stem, rel = Param("stem"), SubPath("rel")
 build = Lens(P("src") / rel / T(t"{stem}.md"), P("site") / rel / T(t"{stem}.html"))
 build("src/guide/install.md")  # PosixPath('site/guide/install.html')
 build.backward("site/guide/install.html")  # PosixPath('src/guide/install.md')
+# a lossless lens raises AmbiguousMatchError where two sources would share a target
 ```
 
 ### Compilation and batch resolution
@@ -210,10 +213,14 @@ print(schema)
 Inference works like JSON schema inference (genson, polars-genson), applied to trees:
 - **Digit runs:** names sharing a skeleton of digit runs merge. A run that varies becomes an
   `int` field with a spec that round-trips every observed value; a run that stays constant
-  stays literal.
+  stays literal. Names needing different padding are split, so a stray `epoch_7.pt` among
+  `epoch_001.pt`... is reported as its own layout.
 - **Directories:** sibling directories with similar contents become a segment field.
 - **Files:** files sharing an extension become `{stem}.ext`.
-- **Optional entries:** entries missing from some merged directories are flagged optional.
+- **Repeated fields:** a field that always equals an earlier one becomes the same parameter
+  (`train/n{n:08d}/n{n:08d}_{i:d}.JPEG`), so `check` catches misfiled paths.
+- **Optional entries:** a layout is optional when some directory matching a prefix of it
+  contains none of its paths.
 
 Layouts are ordinary expressions (`rename`, `match`, `under(root).glob()`, ...), and
 `schema.check(paths)` lists paths that don't fit.
@@ -234,6 +241,11 @@ Layouts are ordinary expressions (`rename`, `match`, `under(root).glob()`, ...),
   unambiguously by construction. Otherwise they fall back to a general backtracking
   matcher, which is correct but slower.
 - Polars resolution rejects non-canonical path columns that `render` would normalise.
+- Patterns have no alternation or optional pieces: `app.log.{k}` and `app.log.{k}.gz` are
+  two expressions.
+- `glob` raises `AmbiguousMatchError` if any path it finds parses more than one way
+  (`{stem}.{ext}` on `a.tar.gz`); constrain a field with `choices=` or `type=`.
+- `glob`'s symlink policy decides what it traverses; it is not a sandbox.
 - The Rust backend sketched in the blog series is not implemented; see the journal for
   what the measurements say a native backend would need to beat.
 

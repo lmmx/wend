@@ -26,6 +26,8 @@ both are listed here.
 | `t"{x!r}"` and other conversions | ignored | applied | t-string semantics (PEP 750) |
 | A template segment that formats to `""`, `.` or `..`, or a field that formats to a `/` | silently changed the path's structure | `InvalidBindingError` | see docs/SEMANTICS.md §4 |
 | `t"{root}/x"` with `root=""` | `/x` (f-string semantics) | `x` | a whole-segment interpolation is joined like `/` |
+| `P("data") / x` with `x=3` | `TypeError` from pathlib | `data/3`, as `t"data/{x}"` already gave | a segment formats a non-path value like `f"{x}"`; head and `SubPath` positions still require `str` or `os.PathLike` (docs/SEMANTICS.md §3) |
+| `glob` and symlinks | (no `glob`) | not followed below the expression's literal prefix unless `follow_symlinks=True` | following links out of a tree is opt-in |
 | `repr(expr)` | nested dataclasses | `PathExpr('{root}/data/{dataset}')` | readable patterns |
 | Using a `Param` inside an f-string (`f"chunk_{idx}"`) | produced a string containing the Param's repr | `TypeError` pointing to t-strings | catches a silent bug |
 | `resolve(...)` | mapping only | mapping and/or keyword arguments; `cls=` chooses the result type | |

@@ -66,6 +66,10 @@ class Match(Mapping[str, Any]):
     def __len__(self) -> int:
         return len(self.bindings)
 
+    def __bool__(self) -> bool:
+        # A match is truthy like re.Match, even with no bindings (a literal path).
+        return True
+
     def __eq__(self, other: object) -> bool:
         if isinstance(other, Match):
             return self.path == other.path and self.bindings == other.bindings

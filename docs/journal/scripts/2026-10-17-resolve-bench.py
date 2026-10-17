@@ -2,8 +2,13 @@
 
 Run with: uv run --with polars python docs/journal/scripts/2026-10-17-resolve-bench.py
 (polars is optional; the batch row is skipped without it)
+
+Timings are the minimum over 5 repeats (3 for the batch rows) of one expression shape on one
+machine; absolute values are machine-specific, compare rows within a run.
 """
 
+import os
+import platform
 import sys
 import timeit
 from pathlib import Path
@@ -84,3 +89,16 @@ try:
 except ImportError:
     print("     n/a    batch per item: polars pl.format (polars not installed)")
 print(sys.version)
+cpu = (
+    next(
+        (
+            ln.split(":", 1)[1].strip()
+            for ln in open("/proc/cpuinfo")
+            if ln.startswith("model name")
+        ),
+        platform.processor() or "unknown",
+    )
+    if os.path.exists("/proc/cpuinfo")
+    else platform.processor() or "unknown"
+)
+print(f"{platform.platform()} | {cpu} | {os.cpu_count()} CPUs")

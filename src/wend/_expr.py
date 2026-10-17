@@ -713,7 +713,7 @@ class PathExpr(_Cached):
         """Resolve to a concrete path (``pathlib.Path`` unless ``cls`` is given)."""
         return cls(self.render(mapping, **kw))
 
-    # -- matching and compilation (implemented in sibling modules) ----------
+    # -- matching, discovery, compilation (implemented in sibling modules) --
 
     def match(self, path: Any) -> Any:
         """Bindings that resolve to ``path``, None if none, AmbiguousMatchError if several."""
@@ -728,6 +728,12 @@ class PathExpr(_Cached):
         from ._match import match_all
 
         return match_all(self, path, limit=limit, fast=fast)
+
+    def glob(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> Any:
+        """Discover existing paths matching this expression (see `wend.glob`)."""
+        from ._fs import glob
+
+        return glob(self, mapping, **kw)
 
     def compile(self) -> Any:
         """Compile to a specialised Python function, cached on the expression."""

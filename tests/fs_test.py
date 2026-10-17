@@ -101,6 +101,18 @@ def test_lens_maps_between_layouts():
     }
 
 
+def test_lossless_lens_refuses_colliding_targets():
+    a, b = Param("a"), Param("b")
+    lens = Lens(T(t"in/{a}/{b}.txt"), T(t"out/{a}-{b}.txt"))
+    assert lens.lossless
+    assert lens("in/x/z.txt") == Path("out/x-z.txt")
+    # in/x-y/z.txt and in/x/y-z.txt would both write out/x-y-z.txt
+    with pytest.raises(AmbiguousMatchError):
+        lens("in/x-y/z.txt")
+    with pytest.raises(AmbiguousMatchError):
+        dict(lens.map(["in/x/z.txt", "in/x/y-z.txt"]))
+
+
 def test_lens_with_extra_target_params():
     run = Param("run")
     lens = Lens(T(t"raw/{Param('day')}.csv"), T(t"out/{run}/{Param('day')}.parquet"))

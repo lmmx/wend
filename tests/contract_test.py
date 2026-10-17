@@ -48,10 +48,31 @@ def _path_string(p: Param, v) -> str:
     return s
 
 
+def _segment_string(p: Param, v) -> str:
+    """§3: a segment takes a path string, or any other value formatted as f"{v}"."""
+    _checked(p, v)
+    if isinstance(v, (str, os.PathLike)):
+        return _path_string(p, v)
+    if isinstance(v, (bytes, bytearray)):
+        raise Invalid(f"{p.name}: bytes")
+    try:
+        s = format(v, "")
+    except (TypeError, ValueError) as e:
+        raise Invalid(f"{p.name}: format: {e}") from None
+    if "\x00" in s:
+        raise Invalid(f"{p.name}: NUL")
+    return s
+
+
 def operand(p: Param, env: dict, at_head: bool) -> PurePosixPath:
     kind = p.kind
     if kind is Kind.AUTO:
         kind = Kind.PATH if at_head else Kind.SEGMENT
+    if kind is Kind.SEGMENT:
+        s = _segment_string(p, env[p.name])
+        if "/" in s or s in ("", ".", ".."):
+            raise Invalid(f"{p.name}: not a segment")
+        return PurePosixPath(s)
     s = _path_string(p, env[p.name])
     q = PurePosixPath(s)
     if kind is Kind.PATH:
@@ -59,10 +80,6 @@ def operand(p: Param, env: dict, at_head: bool) -> PurePosixPath:
     if kind is Kind.ABSOLUTE:
         if not q.is_absolute():
             raise Invalid(f"{p.name}: not absolute")
-        return q
-    if kind is Kind.SEGMENT:
-        if "/" in s or s in ("", ".", ".."):
-            raise Invalid(f"{p.name}: not a segment")
         return q
     if q.is_absolute() or ".." in q.parts:
         raise Invalid(f"{p.name}: not a relative sub-path")
@@ -142,19 +159,103 @@ def template(t: Template, env: dict, at_head: bool) -> PurePosixPath:
     return result
 
 
-def is_empty(term) -> bool:
+def _has_params(term) -> bool:
     kind = term[0]
-    if kind == "lit":
-        return PurePosixPath(term[1]) == EMPTY
+    if kind == "param":
+        return True
     if kind == "tpl":
-        t = term[1]
-        return (
-            all(isinstance(x, str) for x in t)
-            and PurePosixPath("".join(t.strings)) == EMPTY
-        )
+        return any(isinstance(x.value, Param) for x in term[1].interpolations)
+    if kind == "lit":
+        return False
+    return any(isinstance(t, tuple) and _has_params(t) for t in term[1:])
+
+
+def _operand_len(p: Param, at_head: bool) -> int | None:
+    kind = p.kind
+    if kind is Kind.AUTO:
+        kind = Kind.PATH if at_head else Kind.SEGMENT
+    return 1 if kind is Kind.SEGMENT else None
+
+
+def _template_len(t: Template, at_head: bool) -> int | None:
+    if t.strings[0].startswith("/"):
+        return None
+    segments: list[list] = [[]]
+    for item in t:
+        if isinstance(item, str):
+            chunks = item.split("/")
+            segments[-1].append(chunks[0])
+            segments.extend([c] for c in chunks[1:])
+        else:
+            segments[-1].append(item)
+    n, head = 0, at_head
+    for seg in segments:
+        items = [x for x in seg if x != ""]
+        if not items or (
+            all(isinstance(x, str) for x in items) and "".join(items) == "."
+        ):
+            continue
+        if (
+            len(items) == 1
+            and not isinstance(items[0], str)
+            and items[0].conversion is None
+            and not items[0].format_spec
+            and _is_path_like(items[0].value)
+        ):
+            v = items[0].value
+            if isinstance(v, Param):
+                k = _operand_len(v, head)
+            elif isinstance(v, Template):
+                k = _template_len(v, head)
+            else:
+                q = PurePosixPath(os.fspath(v))
+                k = None if q.is_absolute() else len(q.parts)
+            if k is None:
+                return None
+            n += k
+        else:
+            n += 1
+        head = False
+    return n
+
+
+def static_len(term, at_head: bool) -> int | None:
+    """§2: the number of segments of a relative term, when its structure fixes
+    it for every binding (None when it depends on a binding or is absolute)."""
+    if not _has_params(term):
+        try:
+            q = evaluate(term, {}, at_head)
+        except Invalid, OpError:
+            return None
+        return None if q.is_absolute() else len(q.parts)
+    kind = term[0]
+    if kind == "param":
+        return _operand_len(term[1], at_head)
+    if kind == "tpl":
+        return _template_len(term[1], at_head)
     if kind == "join":
-        return is_empty(term[1]) and is_empty(term[2])
-    return False
+        a = static_len(term[1], at_head)
+        if a is None:
+            return None
+        b = static_len(term[2], at_head and a == 0)
+        return None if b is None else a + b
+    if kind == "parent":
+        a = static_len(term[1], at_head)
+        return None if a is None else max(a - 1, 0)
+    if kind in ("with_suffix", "with_name", "with_stem"):
+        return static_len(term[1], at_head)
+    if kind == "relative_to":
+        a, b = term[1], term[2]
+        if a == b:
+            return 0
+        if a[0] == "join" and a[1] == b:
+            return static_len(a[2], at_head and is_empty(b, at_head))
+    return None
+
+
+def is_empty(term, at_head: bool) -> bool:
+    """§2: statically the empty relative path."""
+    return static_len(term, at_head) == 0
 
 
 def evaluate(term, env: dict, at_head: bool = True):
@@ -168,7 +269,7 @@ def evaluate(term, env: dict, at_head: bool = True):
             return template(term[1], env, at_head)
         if kind == "join":
             a = evaluate(term[1], env, at_head)
-            b = evaluate(term[2], env, at_head and is_empty(term[1]))
+            b = evaluate(term[2], env, at_head and is_empty(term[1], at_head))
             return a / b
         if kind == "parent":
             return evaluate(term[1], env, at_head).parent
@@ -319,6 +420,7 @@ hostile = st.one_of(
     st.builds(PurePosixPath, st.sampled_from(["p", "q/r", "/abs"])),
     st.integers(-3, 3),
     st.just(b"bytes"),
+    st.sampled_from([None, 1.5, True, ["a"]]),
 )
 envs = st.fixed_dictionaries(
     {
@@ -406,6 +508,46 @@ def test_compiled_obeys_the_contract_too(term, env):
         assert got == ("ok", str(ref[1]))
     if elimination_free(term):
         assert (got[0] == "ok") == (ref[0] == "ok")
+
+
+SAFE_LITERALS = [x for x in LITERALS if ".." not in x and not x.startswith("/")]
+SAFE_TEMPLATES = [x for x in TEMPLATES if not x.strings[0].startswith("/")]
+SAFE_NAMES = [x for x in NAMES if x != ".."]  # literal arguments are trusted
+safe_terms = st.recursive(
+    st.one_of(
+        st.tuples(st.just("lit"), st.sampled_from(SAFE_LITERALS)),
+        st.tuples(st.just("param"), st.sampled_from([ROOT, SEG, SUB])),
+        st.tuples(st.just("tpl"), st.sampled_from(SAFE_TEMPLATES)),
+    ),
+    lambda kids: st.one_of(
+        st.tuples(st.just("join"), kids, kids),
+        st.tuples(st.just("parent"), kids),
+        st.tuples(st.just("with_suffix"), kids, st.sampled_from(SUFFIXES)),
+        st.tuples(st.just("with_name"), kids, st.sampled_from(SAFE_NAMES)),
+        st.tuples(st.just("with_stem"), kids, st.sampled_from(STEMS)),
+    ),
+    max_leaves=7,
+)
+
+
+@SETTINGS
+@given(safe_terms, envs)
+def test_bindings_cannot_escape_a_literal_base(term, env):
+    """§3: below a literal base, no binding of an AUTO, Segment or SubPath
+    parameter leads outside it, however the term was composed."""
+    try:
+        expr = P("/base") / build(term)
+    except PathOperationError, TypeError, ValueError:
+        return
+    got = wend_outcome(lambda: expr.render(env))
+    if got[0] == "ok":
+        out = PurePosixPath(got[1])
+        assert out == PurePosixPath("/base") or out.is_relative_to("/base"), (
+            expr,
+            env,
+            out,
+        )
+        assert ".." not in out.parts, (expr, env, out)
 
 
 @pytest.mark.parametrize(

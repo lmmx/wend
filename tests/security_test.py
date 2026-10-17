@@ -52,10 +52,31 @@ def test_formatted_segments_cannot_become_dot_segments(value):
         (BASE / T(t"{Param('w'):s}")).render(w=value)
 
 
-def test_non_string_values_are_rejected_for_path_positions():
+def test_non_path_values_are_rejected_for_path_positions():
     for value in [5, b"bytes", None, ["a"]]:
         with pytest.raises(InvalidBindingError):
-            (BASE / Param("name")).render(name=value)
+            (Param("root") / "x").render(root=value)
+        with pytest.raises(InvalidBindingError):
+            (BASE / SubPath("rel")).render(rel=value)
+
+
+def test_operations_before_a_join_do_not_reopen_traversal():
+    # The parameter heads its own expression, then moves below BASE.
+    asset = BASE / P(Param("name")).with_suffix(".png")
+    assert asset.render(name="logo") == "/srv/static/logo.png"
+    for value in ["../../etc/passwd", "/etc/passwd", "a/b"]:
+        with pytest.raises(InvalidBindingError):
+            asset.render(name=value)
+    assert (BASE / T(t"{Param('name')}").with_suffix(".png")).render(name="x") == (
+        "/srv/static/x.png"
+    )
+
+
+def test_segments_format_other_values_like_fstrings():
+    for value, text in [(5, "5"), (-1, "-1"), (None, "None"), (1.5, "1.5")]:
+        assert (BASE / Param("name")).render(name=value) == f"/srv/static/{text}"
+    with pytest.raises(InvalidBindingError):
+        (BASE / Param("name")).render(name=b"bytes")
 
 
 def test_literal_strings_are_trusted_paths():

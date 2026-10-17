@@ -111,9 +111,12 @@ def _field_values(f: Field, text: str, env: dict[str, Any]) -> list[Any]:
             f"{f.pattern} derives from another path and cannot be inverted"
         )
     if f.role == "segment":
-        if not text or text in (".", "..") or not _accept(src, text):
+        if not text or text in (".", ".."):
             return []
-        return [text]
+        if src.type is None or src.type is str:
+            return [text] if _accept(src, text) else []
+        # A typed segment was formatted like an f-string's {v}; invert that.
+        return [v for v in _spec.invert(text, "", None, src.type) if _accept(src, v)]
     spec = f.static_spec
     if spec is None:
         try:
@@ -217,7 +220,7 @@ def _build_seg_plan(seg: Seg) -> tuple[re.Pattern[str], list[tuple[Param, str]]]
         if isinstance(nxt, Field):
             return None  # adjacent fields
         if p.role == "segment":
-            if len(pieces) != 1:
+            if len(pieces) != 1 or src.type not in (None, str):
                 return None
             rx.append("(.+)")
             conv.append((src, "seg"))

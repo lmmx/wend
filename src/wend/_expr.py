@@ -789,6 +789,16 @@ def _coerce(x: Any, *, at_head: bool) -> PathExpr:
     raise TypeError(f"Cannot use {type(x).__name__} as a path")
 
 
+def _head_param(h: Deferred) -> Param | None:
+    """The AUTO parameter at the root of a chain of deferred operations."""
+    head: Any = h
+    while isinstance(head, Deferred):
+        head = head.base.head
+    if isinstance(head, HeadParam) and head.param.kind is Kind.AUTO:
+        return head.param
+    return None
+
+
 def _join(left: PathExpr, right: PathExpr) -> PathExpr:
     h = right.head
     if isinstance(h, _Rel):
@@ -802,6 +812,12 @@ def _join(left: PathExpr, right: PathExpr) -> PathExpr:
         out = PathExpr(left.head, left.parts + (seg,) + right.parts)
     elif isinstance(h, HeadParam) and h.param.kind is Kind.ABSOLUTE:
         return right
+    elif isinstance(h, Deferred) and (p := _head_param(h)) is not None:
+        # An AUTO parameter at the root of a deferred operation is moving
+        # below the head, where it is a segment: re-apply the operations to
+        # it as one, so (base / P(name).with_suffix(x)) cannot escape base.
+        seg = PathExpr(REL, (Seg((Field(p, role="segment"),)),))
+        return _join(left, right.bind({p.name: seg}))
     else:
         out = PathExpr(Deferred("join", left, PathExpr(h)), right.parts)
         out.params  # noqa: B018 - surface declaration conflicts at construction
@@ -946,9 +962,27 @@ def _fspath_str(name: str, v: Any) -> str:
     return s
 
 
+def _segment_text(name: str, v: Any) -> str:
+    """A segment value's text: a str or path as is, anything else formatted the
+    way an f-string formats ``{v}``."""
+    if isinstance(v, (str, os.PathLike)):
+        return _fspath_str(name, v)
+    if isinstance(v, (bytes, bytearray)):
+        raise InvalidBindingError(
+            f"{name}={v!r}: decode bytes before using them in a path"
+        )
+    try:
+        s = format(v, "")
+    except (TypeError, ValueError) as e:
+        raise InvalidBindingError(f"{name}={v!r} cannot be formatted: {e}") from None
+    if "\x00" in s:
+        raise InvalidBindingError(f"{name}={s!r}: contains NUL")
+    return s
+
+
 def seg_value(p: Param, v: Any) -> str:
     p.check(v)
-    s = _fspath_str(p.name, v)
+    s = _segment_text(p.name, v)
     if "/" in s:
         raise InvalidBindingError(
             f"{p.name}={s!r} is not a single path segment; declare {p.name!r} with "
@@ -1106,6 +1140,8 @@ def _render_deferred(d: Deferred, env: Mapping[str, Any]) -> str:
             r = p.relative_to(_render_expr(d.arg, env))
         else:  # pragma: no cover
             raise AssertionError(d.op)
+    except InvalidBindingError:
+        raise  # a binding inside the operation is invalid, not the operation
     except ValueError as e:
         raise PathOperationError(str(e)) from None
     return str(r)

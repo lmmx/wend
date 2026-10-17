@@ -3,8 +3,8 @@
 This document fixes what a wend expression *means*, independently of how
 `src/wend` computes it. The audit tests (`tests/contract_test.py`) evaluate
 expressions with a separate reference evaluator written from this document
-alone (`tests/reference.py`). That evaluator does not use wend's normal form,
-simplifications, matcher or compiler.
+alone (the first half of that file). That evaluator does not use wend's normal
+form, simplifications, matcher or compiler.
 
 Paths are POSIX paths with `pathlib.PurePosixPath` semantics throughout.
 
@@ -25,26 +25,53 @@ An expression is built from these terms:
 
 A parameter declared `Kind.AUTO` takes its kind from its position:
 
-- **head**: nothing precedes it in the joined expression except empty
-  relative paths (`"."`, `""`). It acts as `Kind.PATH`.
-- **elsewhere**: it acts as `Kind.SEGMENT`.
+- **head**: nothing precedes it in the joined expression except statically
+  empty terms (below). It acts as `Kind.PATH`.
+- **elsewhere**: it acts as `Kind.SEGMENT`. This includes a parameter whose own
+  expression applied operations to it before being joined below a non-empty
+  term: in `base / P(p).with_suffix(".png")`, `p` is a segment and the
+  operation applies to it as one.
 
-Joining `a / b` where `a` is an empty relative path leaves the head position of
-`b` unchanged; any other `a` puts `b`'s first operand in a non-head position.
-A parameter declared with an explicit kind keeps it wherever it appears.
+Joining `a / b` where `a` is statically empty leaves the head position of `b`
+unchanged; any other `a` puts `b`'s first operand in a non-head position. A
+parameter declared with an explicit kind keeps it wherever it appears.
+
+A term is **statically empty** when its structure makes it `.` for every
+binding, that is, when it is relative and its number of segments is
+statically 0. The number of segments is static for:
+
+- a parameter-free term: the segments of its value;
+- a segment parameter: 1;
+- a template: the count of its segments (§4), when every path operand in it
+  has a static count;
+- `a / b`: the sum of the two counts;
+- `parent(a)`: one fewer than `a`'s count, and never below 0;
+- `with_suffix`, `with_name` and `with_stem` of `a`: `a`'s count;
+- `relative_to(x, x)`: 0, and `relative_to(x / y, x)`: `y`'s count.
+
+It is not static otherwise (for example, for a `PATH` or `SUBPATH` parameter).
 
 ## 3. Values of parameter operands
 
-Let `v` be the bound value. It must be a `str` or an `os.PathLike` returning
-`str`, without NUL. Otherwise the binding is **invalid**. Declared `type` and
-`choices` are checked against `v` as given.
+Let `v` be the bound value. Declared `type` and `choices` are checked against
+`v` as given. Its text `s` is then:
+
+- for `PATH`, `ABSOLUTE` and `SUBPATH`: `v` itself if it is a `str`, or
+  `os.fspath(v)` if it is an `os.PathLike` returning `str`. Any other value is
+  **invalid**, as it would be for pathlib.
+- for `SEGMENT`: the same for `str` and `os.PathLike`. `bytes` are invalid.
+  Any other value is formatted as an f-string formats `{v}`, so `3` gives
+  `"3"` and `None` gives `"None"` (a declared `type=` rejects values you do
+  not expect). A format call that raises makes the binding invalid.
+
+Text containing NUL is invalid.
 
 | kind | requirement | contributes |
 |---|---|---|
-| PATH | none | `PurePosixPath(v)` |
-| ABSOLUTE | `PurePosixPath(v)` is absolute | `PurePosixPath(v)` |
-| SEGMENT | no `/`; `v` not in `{"", ".", ".."}` | the single segment `v` |
-| SUBPATH | `PurePosixPath(v)` is relative and has no `..` part | `PurePosixPath(v)` |
+| PATH | none | `PurePosixPath(s)` |
+| ABSOLUTE | `PurePosixPath(s)` is absolute | `PurePosixPath(s)` |
+| SEGMENT | no `/`; `s` not in `{"", ".", ".."}` | the single segment `s` |
+| SUBPATH | `PurePosixPath(s)` is relative and has no `..` part | `PurePosixPath(s)` |
 
 ## 4. Templates
 
@@ -67,6 +94,24 @@ pathlib. A segment is one of:
 
 The template's value is its anchor joined with its segments in order, using
 pathlib join semantics.
+
+### 4.1 Differences from formatting the t-string as an f-string
+
+Conversions (`!r`, `!s`, `!a`), format specs (nested ones such as `{x:{w}}`
+included), `{x=}` text, and the text of any value at a segment position are
+exactly what Python's formatting produces. The template then differs from
+`PurePosixPath(f-string)` only where the structure would otherwise change:
+
+| template and binding | f-string, then `PurePosixPath` | wend | why |
+|---|---|---|---|
+| `t"{root}/data"`, `root=""` | `/data` | `data` | a whole-segment interpolation is joined like `/`, so an empty value is the empty path, not an anchor |
+| `t"data/{x}"`, `x="a/b"` | `data/a/b` | invalid | after the head, a parameter is one segment unless declared `SubPath` or `AnyPath` |
+| `t"data/{x}"`, `x` in `""`, `"."`, `".."` | `data`, `data`, `data/..` | invalid | a segment cannot vanish or climb |
+| `t"data/{x:.0}"`, `x="abc"` | `data` | invalid | a formatted segment cannot be empty |
+| `t"{x}{y}"`, `x="a/"` | `a/b` | invalid | a formatted field cannot contain `/` |
+| `t"{root}/data"`, `root=3` | `3/data` | invalid | path positions take paths (§3) |
+| `t"data/{x}"`, `x=b"q"` | `data/b'q'` | invalid | bytes are not text |
+| `t"data/{x}"`, `x` an `os.DirEntry` | `data/<DirEntry 'q'>` | `data/q` | a path-like value contributes `os.fspath(v)` |
 
 ## 5. Operations
 
@@ -121,6 +166,7 @@ wend's obligations, for every expression `e` and environment `env`:
 | a compiled function raises the same errors as the interpreter | **by construction**: any exception in the fast path re-runs the interpreter |
 | the matching fast path returns at most one binding | **argued** (below) and tested |
 | obligations 1–3 above (agreement, no spurious rejection, strictness) | **tested** (Hypothesis, independent reference evaluator) |
+| below a literal base, no binding of an `AUTO`, `Segment` or `SubPath` parameter leads outside it, whatever operations the term applies | **tested** (Hypothesis, random terms) |
 | matching completeness | **tested** (Hypothesis round trips; exhaustive enumeration over small domains) |
 | compiled successes equal interpreted successes | **tested** |
 | Polars results equal `render` | **tested**, on the supported subset |

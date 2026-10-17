@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ._expr import P, PathExpr, _make_env
-from .errors import WendError
+from .errors import AmbiguousMatchError, NotInvertibleError, WendError
 
 
 class NoMatchError(WendError, ValueError):
@@ -37,7 +37,13 @@ class Lens:
 
     @property
     def lossless(self) -> bool:
-        """True if both directions need no extra bindings."""
+        """True if both sides have the same parameters, so neither direction
+        needs extra bindings.
+
+        Mapping forward through a lossless lens also checks that the result
+        maps back uniquely: where two source paths would share a target
+        (``{a}/{b}`` to ``{a}-{b}``), it raises `AmbiguousMatchError`.
+        """
         return self.source.param_names == self.target.param_names
 
     def bind(self, mapping: Any = None, /, **kw: Any) -> Lens:
@@ -54,7 +60,18 @@ class Lens:
         return dict(m)
 
     def render(self, path: Any, **extra: Any) -> str:
-        return self.target.render({**self.bindings(path), **extra})
+        return self._target(self.bindings(path), extra)
+
+    def _target(self, env: dict[str, Any], extra: dict[str, Any]) -> str:
+        out = self.target.render({**env, **extra})
+        if self.lossless:
+            try:
+                readings = self.target.match_all(out, limit=2)
+            except NotInvertibleError:
+                return out
+            if len(readings) > 1:
+                raise AmbiguousMatchError(out, readings)
+        return out
 
     def __call__(self, path: Any, **extra: Any) -> Path:
         return Path(self.render(path, **extra))
@@ -69,4 +86,4 @@ class Lens:
         for p in paths:
             m = self.source.match(p)
             if m is not None:
-                yield p, Path(self.target.render({**m, **extra}))
+                yield p, Path(self._target(dict(m), extra))

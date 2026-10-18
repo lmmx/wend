@@ -66,7 +66,7 @@ def _segment_string(p: Param, v) -> str:
         raise Invalid(f"{p.name}: bytes")
     try:
         s = format(v, "")
-    except (TypeError, ValueError) as e:
+    except (TypeError, ValueError, ArithmeticError) as e:  # §4: a failing format
         raise Invalid(f"{p.name}: format: {e}") from None
     if "\x00" in s:
         raise Invalid(f"{p.name}: NUL")
@@ -148,7 +148,7 @@ def _field(x: Interpolation, env: dict) -> str:
     spec, static = _spec_text(x.format_spec, env)
     try:
         s = format(_convert(v, x.conversion), spec)
-    except (TypeError, ValueError) as e:
+    except (TypeError, ValueError, ArithmeticError) as e:  # §4: a failing format
         raise Invalid(f"format: {e}") from None
     if "/" in s or "\x00" in s:
         raise Invalid("field contains a separator or NUL")
@@ -490,6 +490,7 @@ TEMPLATES = [
     t"{W}.{N:02d}",
     t"{W!r}",
     t"x{N:x}",
+    t"x{N:c}",  # OverflowError for n < 0: an invalid binding
     t"{SEG}/{W}.txt",
     t"{ROOT}/data",
     t"./{SEG}",

@@ -168,3 +168,16 @@ class NoAlternativeError(ConditionError, FileNotFoundError):
         self.condition = None
         shown = ", ".join(f"{s!r} ({e.condition!r})" for s, e in tried)
         super(ConditionError, self).__init__(f"No alternative qualifies: tried {shown}")
+
+
+def show(value: Any) -> str:
+    """``repr(value)`` for an error message, which never raises.
+
+    Some values have no repr: an int beyond the digit limit for conversion to
+    text, or an object whose ``__repr__`` fails. A message about such a value
+    must not replace the error it describes.
+    """
+    try:
+        return repr(value)
+    except Exception:
+        return f"<{type(value).__name__} without a repr>"

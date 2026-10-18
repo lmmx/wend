@@ -46,6 +46,7 @@ from .errors import (
     NotStaticError,
     ParamConflictError,
     PathOperationError,
+    show,
 )
 
 
@@ -53,6 +54,13 @@ if TYPE_CHECKING:
     from ._union import PathUnion
     from .conditions import Conditions
     from .query import Query
+
+
+# What ``format`` raises for a value it cannot format: TypeError (a type the
+# spec does not take), ValueError (an invalid spec, or an int beyond the digit
+# limit) and OverflowError, an ArithmeticError (a ``c`` field out of range, an
+# int too large for a float presentation type). Each makes the binding invalid.
+FORMAT_ERRORS = (TypeError, ValueError, ArithmeticError)
 
 
 # ---------------------------------------------------------------------------
@@ -1479,10 +1487,12 @@ def _fspath_str(name: str, v: Any) -> str:
     elif isinstance(v, os.PathLike):
         s = os.fspath(v)
         if not isinstance(s, str):
-            raise InvalidBindingError(f"{name}={v!r}: bytes paths are not supported")
+            raise InvalidBindingError(
+                f"{name}={show(v)}: bytes paths are not supported"
+            )
     else:
         raise InvalidBindingError(
-            f"{name}={v!r}: expected str or os.PathLike (format other values inside a t-string field)"
+            f"{name}={show(v)}: expected str or os.PathLike (format other values inside a t-string field)"
         )
     if "\x00" in s:
         raise InvalidBindingError(f"{name}={s!r}: contains NUL")
@@ -1496,12 +1506,14 @@ def _segment_text(name: str, v: Any) -> str:
         return _fspath_str(name, v)
     if isinstance(v, (bytes, bytearray)):
         raise InvalidBindingError(
-            f"{name}={v!r}: decode bytes before using them in a path"
+            f"{name}={show(v)}: decode bytes before using them in a path"
         )
     try:
         s = format(v, "")
-    except (TypeError, ValueError) as e:
-        raise InvalidBindingError(f"{name}={v!r} cannot be formatted: {e}") from None
+    except FORMAT_ERRORS as e:
+        raise InvalidBindingError(
+            f"{name}={show(v)} cannot be formatted: {e}"
+        ) from None
     if "\x00" in s:
         raise InvalidBindingError(f"{name}={s!r}: contains NUL")
     return s
@@ -1560,20 +1572,31 @@ def splice_value(p: Param, v: Any) -> list[str]:
 def format_field(f: Field, v: Any, spec: str) -> str:
     try:
         s = format(_spec.convert(v, f.conversion), spec)
-    except (TypeError, ValueError) as e:
+    except FORMAT_ERRORS as e:
         raise InvalidBindingError(
-            f"Cannot format {v!r} with {f.pattern}: {e}"
+            f"Cannot format {show(v)} with {f.pattern}: {e}"
         ) from None
     if "/" in s or "\x00" in s:
         raise InvalidBindingError(
-            f"{f.pattern} formats {v!r} to {s!r}, which contains a separator"
+            f"{f.pattern} formats {show(v)} to {s!r}, which contains a separator"
         )
     dot_free, non_empty = f.facts
     if (dot_free and "." in s) or (non_empty and not s):
         raise InvalidBindingError(
-            f"{f.pattern} formats {v!r} to {s!r}, breaking its format type"
+            f"{f.pattern} formats {show(v)} to {s!r}, breaking its format type"
         )
     return s
+
+
+def spec_text(p: Param, v: Any) -> str:
+    """The text a value bound to ``p`` gives inside a format spec (``{x:{p}}``),
+    formatted as an f-string formats a nested replacement field."""
+    try:
+        return format(v, "")
+    except FORMAT_ERRORS as e:
+        raise InvalidBindingError(
+            f"{p.name}={show(v)} cannot be formatted into a format spec: {e}"
+        ) from None
 
 
 def check_seg(s: str) -> str:
@@ -1646,7 +1669,7 @@ def _render_spec(spec: tuple[str | Param, ...], env: Mapping[str, Any]) -> str:
         else:
             v = env[s.name]
             s.check(v)
-            out.append(format(v, ""))
+            out.append(spec_text(s, v))
     return "".join(out)
 
 
@@ -1737,7 +1760,7 @@ def _bind_spec(
     for s in spec:
         if isinstance(s, Param) and s.name in env:
             v = env[s.name]
-            out.append(v if isinstance(v, Param) else format(v, ""))
+            out.append(v if isinstance(v, Param) else spec_text(s, v))
         else:
             out.append(s)
     merged: list[str | Param] = []

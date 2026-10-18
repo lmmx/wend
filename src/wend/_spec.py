@@ -15,7 +15,8 @@ from __future__ import annotations
 
 import ast
 import re
-from dataclasses import dataclass
+import sys
+from dataclasses import dataclass, field
 from functools import lru_cache
 from typing import Any
 
@@ -39,15 +40,29 @@ _SPEC_RE = re.compile(
 INT_TYPES = frozenset("bdoxX")
 FLOAT_TYPES = frozenset("eEfFgG%")
 _INT_CHARS = frozenset("0123456789+- _,#xXoObBabcdefABCDEF")
+# Presentation types under which an int writes characters outside _INT_CHARS:
+# c any character, n the locale's separators, a float type a point or "%".
+_UNPRUNED_TYPES = FLOAT_TYPES | {"c", "n"}
 
 
 @dataclass(frozen=True, slots=True)
 class Spec:
     fill: str | None
     align: str | None
+    sign: str | None
+    z: bool  # the "z" flag: a negative zero formats as zero
+    alt: bool  # the "#" flag
     zero: bool  # the "0" flag before the width
     width: int | None
+    grouping: str | None
+    precision: int | None
     type: str | None
+    # The types an untyped field with this spec reads (§7), set once here:
+    # parse_spec is cached, and matching asks for every field it reads.
+    reads: tuple[type, ...] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "reads", _implied(self))
 
     @property
     def fill_char(self) -> str:
@@ -66,14 +81,15 @@ class Spec:
         return self.fill_char, self.align or (">" if numeric else "<")
 
     @property
-    def reads_int(self) -> bool:
-        """Whether an untyped field with this spec also reads ints (§7).
+    def str_formats(self) -> bool:
+        """Whether a ``str`` formats under this spec.
 
-        The ``0`` flag before a width, with no alignment and no presentation
-        type (``05``), is Python's zero padding for numbers. A ``str`` formats
-        under it too, filled on the right.
+        CPython refuses a sign, ``z``, ``#``, grouping and ``=`` alignment for
+        strings, and every presentation type but ``s``.
         """
-        return self.zero and self.width is not None and not self.align and not self.type
+        return self.type in (None, "s") and not (
+            self.sign or self.z or self.alt or self.grouping or self.align == "="
+        )
 
 
 @lru_cache(maxsize=1024)
@@ -82,32 +98,59 @@ def parse_spec(spec: str) -> Spec | None:
     m = _SPEC_RE.match(spec)
     if m is None:
         return None
-    width = m["width"]
+    width, precision = m["width"], m["precision"]
     return Spec(
         m["fill"],
         m["align"],
+        m["sign"],
+        m["z"] is not None,
+        m["alt"] is not None,
         m["zero"] is not None,
         int(width) if width else None,
+        m["grouping"],
+        int(precision) if precision else None,
         m["type"],
     )
 
 
-def target_type(spec: str, conversion: str | None, declared: Any) -> Any:
-    """The Python type a matched field value is parsed into."""
-    if conversion is not None:
-        return None  # conversions are inverted via the conversion itself
-    if declared is not None:
-        return declared
-    return _implied_type(parse_spec(spec))
+# The type each presentation type implies for an untyped field.
+_TYPE_READS: dict[str, tuple[type, ...]] = {
+    **dict.fromkeys("bcdnoxX", (int,)),
+    **dict.fromkeys(FLOAT_TYPES, (float,)),
+    "s": (str,),
+}
 
 
-def _implied_type(info: Spec | None) -> Any:
-    if info is not None and info.type is not None:
-        if info.type in INT_TYPES or info.type == "c":
-            return int
-        if info.type in FLOAT_TYPES:
-            return float
-    return str
+def implied_types(info: Spec | None) -> tuple[type, ...]:
+    """The types an untyped field with this spec reads (§7); see `_implied`."""
+    return (str,) if info is None else info.reads  # nothing formats if None
+
+
+def _implied(info: Spec) -> tuple[type, ...]:
+    """The types an untyped field with this spec reads (§7).
+
+    A presentation type implies one. Without one, the field reads the first of
+    ``str``, ``int`` and ``float`` that formats under the spec: ``str`` unless
+    the spec has an option only numbers take (a sign, ``z``, ``#``, grouping
+    or ``=``), else ``int`` unless it has one ints refuse (``z`` or a
+    precision), else ``float``. The one exception is a spec that zero-pads
+    like a number (the ``0`` flag before a width, with no alignment or
+    precision: ``05``), which reads ``int`` as well as ``str`` (issue #45).
+    """
+    if info.type is not None:
+        return _TYPE_READS[info.type]
+    if info.str_formats:
+        if (
+            info.zero
+            and info.width is not None
+            and not info.align
+            and info.precision is None
+        ):
+            return (str, int)
+        return (str,)
+    if info.precision is None and not info.z:
+        return (int,)
+    return (float,)
 
 
 def facts(spec: str, conversion: str | None, declared: Any) -> tuple[bool, bool]:
@@ -161,11 +204,13 @@ def allowed_chars(
     spec: str, conversion: str | None, declared: Any
 ) -> frozenset[str] | None:
     """Characters a formatted field may contain, used to prune matching (None = any)."""
-    if target_type(spec, conversion, declared) is not int:
+    if conversion is not None:
         return None
     info = parse_spec(spec)
-    if info is None or info.type in ("c", "n"):
-        return None  # c writes any character, n the locale's separators
+    if info is None or info.type in _UNPRUNED_TYPES:
+        return None
+    if declared is not int and (declared is not None or info.reads != (int,)):
+        return None  # only an int field is pruned
     return _INT_CHARS | {info.fill_char}
 
 
@@ -265,6 +310,39 @@ def _float_candidates(text: str, info: Spec | None) -> list[Any]:
     return out
 
 
+# Reading untrusted text never raises: text that is not a value of a type
+# gives no candidate, however the parser rejects it. literal_eval raises
+# SyntaxError, ValueError, TypeError (an unhashable key, as in "{[1]: 2}"),
+# MemoryError or RecursionError (deep nesting); a declared type's constructor
+# raises whatever it raises (Decimal: decimal.InvalidOperation).
+
+
+def _literal(text: str) -> list[Any]:
+    """The value of the Python literal ``text`` (as ``!r`` and ``!a`` write it)."""
+    try:
+        return [ast.literal_eval(text)]
+    except Exception:
+        return []
+
+
+def _construct(tt: Any, texts: list[str]) -> list[Any]:
+    """Values of the declared type ``tt`` whose ``str`` may be one of ``texts``.
+
+    That is ``tt(t)`` for each text ``t`` that ``tt`` accepts, but for
+    ``bool`` (``bool(t)`` is true for any ``t`` but ``""``) the texts
+    ``True`` and ``False``.
+    """
+    if tt is bool:
+        return [b for t in texts for b in (False, True) if t == str(b)]
+    out: list[Any] = []
+    for t in texts:
+        try:
+            out.append(tt(t))
+        except Exception:
+            pass
+    return out
+
+
 def _distinct(values: list[Any]) -> list[Any]:
     """``values`` without repeats, where values of different types differ."""
     if len(values) < 2:
@@ -284,6 +362,78 @@ def _distinct(values: list[Any]) -> list[Any]:
     return out
 
 
+def _read(text: str, spec: str, info: Spec | None, tt: Any) -> list[Any]:
+    """Candidates of type ``tt`` that may format (with no conversion) to ``text``."""
+    # An int (and a bool, which is one) formats under a float presentation
+    # type as the float it converts to.
+    floats = info is not None and info.type in FLOAT_TYPES
+    if tt is int:
+        if floats:
+            return [int(x) for x in _float_candidates(text, info) if x.is_integer()]
+        return _int_candidates(text, info)
+    if tt is str:
+        return unpad(text, info, False)
+    if tt is float:
+        return _float_candidates(text, info)
+    if tt is bool:
+        # A bool formats as True or False under the empty spec, and as the
+        # number 1 or 0 under any other.
+        if not spec:
+            return _construct(bool, [text])
+        nums = _float_candidates(text, info) if floats else _int_candidates(text, info)
+        return [x == 1 for x in nums if x == 0 or x == 1]
+    # Another declared type: its own __format__ may pad either way.
+    texts = unpad(text, info, False) + unpad(text, info, True)
+    return _construct(tt, list(dict.fromkeys(texts)))
+
+
+# Presentation types under which a float (or Decimal) writes at least
+# ``precision`` digits, as a float's alternate form of g and G does, keeping
+# trailing zeros.
+_PRECISION_DIGITS = frozenset("fFeE%")
+
+
+def _standard(declared: Any) -> bool:
+    """Whether values of ``declared`` format by the standard mini-language
+    (None: the str, int and float an untyped field reads)."""
+    if declared is None or declared in (str, int, float, bool):
+        return True
+    decimal = sys.modules.get("decimal")  # imported if Decimal is declared
+    return decimal is not None and declared is decimal.Decimal
+
+
+def _too_short(
+    text: str, info: Spec | None, conversion: str | None, declared: Any
+) -> bool:
+    """Whether ``text`` is shorter than anything the spec formats.
+
+    Under the standard mini-language a result is never shorter than its
+    width, nor, under ``fFeE%`` or a float's alternate form of ``g``, than
+    its precision, except that inf and nan ignore precision. A spec read from the
+    path itself (``{w:d}_{u:{w}}``) can ask for a billion characters, which
+    formatting a candidate would allocate: such text has no reading.
+    """
+    if info is None or not (conversion is not None or _standard(declared)):
+        return False
+    n = len(text)
+    if info.width is not None and info.width > n:
+        return True
+    return (
+        conversion is None
+        and info.precision is not None
+        and info.precision > n
+        and (
+            info.type in _PRECISION_DIGITS
+            or (
+                info.alt
+                and info.type in (None, "g", "G")
+                and declared in (None, float)  # Decimal's drops the zeros
+            )
+        )
+        and not ("inf" in text.lower() or "nan" in text.lower())
+    )
+
+
 def invert(text: str, spec: str, conversion: str | None, declared: Any) -> list[Any]:
     """Values v such that ``format(convert(v, conversion), spec) == text``.
 
@@ -291,40 +441,27 @@ def invert(text: str, spec: str, conversion: str | None, declared: Any) -> list[
     as the field's type (§7), and kept only if they format back to ``text``.
     """
     info = parse_spec(spec)
+    if _too_short(text, info, conversion, declared):
+        return []
     cands: list[Any]
     if conversion is not None:
         cores = unpad(text, info, False)  # a conversion formats a str
-        if conversion == "s":
+        if conversion != "s":
+            cands = [v for c in cores for v in _literal(c)]
+        elif declared is None or declared is str:
             cands = cores
-        else:
-            cands = []
-            for c in cores:
-                try:
-                    cands.append(ast.literal_eval(c))
-                except ValueError, SyntaxError, MemoryError, RecursionError:
-                    pass
+        else:  # the declared type's values whose str is the text
+            cands = _construct(declared, cores)
     else:
-        tt = declared if declared is not None else _implied_type(info)
-        if tt is int or tt is bool:
-            cands = _int_candidates(text, info)
-        elif tt is float:
-            cands = _float_candidates(text, info)
-        elif tt is str:
-            cands = unpad(text, info, False)
-            if declared is None and info is not None and info.reads_int:
-                cands = cands + _int_candidates(text, info)
-        else:  # another declared type: its own __format__ may pad either way
-            cands = []
-            for c in dict.fromkeys(unpad(text, info, False) + unpad(text, info, True)):
-                try:
-                    cands.append(tt(c))
-                except TypeError, ValueError:
-                    pass
+        types = (declared,) if declared is not None else implied_types(info)
+        cands = _read(text, spec, info, types[0])
+        if len(types) > 1:  # zero padding: str, then int
+            cands = cands + _read(text, spec, info, types[1])
     out: list[Any] = []
     for v in _distinct(cands):
         try:
             ok = format(convert(v, conversion), spec) == text
-        except TypeError, ValueError:
+        except Exception:  # a candidate that cannot format is no reading
             ok = False
         if ok:
             out.append(v)

@@ -134,7 +134,7 @@ def _field_values(f: Field, text: str, env: dict[str, Any]) -> list[Any]:
                 f"{f.pattern} has a format spec that depends on unbound parameters"
             ) from None
         except InvalidBindingError:
-            return []  # the spec's own parameter is bound to a value it rejects
+            return []  # a nested spec value is rejected, or cannot be formatted
     return [
         v for v in _spec.invert(text, spec, f.conversion, src.type) if _accept(src, v)
     ]

@@ -7,12 +7,18 @@ render the bindings through the other.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from ._expr import P, PathExpr, _make_env
-from .errors import AmbiguousMatchError, NotInvertibleError, WendError
+from .errors import (
+    AmbiguousMatchError,
+    NotInvertibleError,
+    WendError,
+    _ambiguity_handler,
+    _check_option_keywords,
+)
 
 
 class NoMatchError(WendError, ValueError):
@@ -26,6 +32,11 @@ class Lens:
     >>> lens = Lens(src, P("build") / SubPath("rel") / T(t"{stem}.pyc"))
     >>> lens("src/pkg/mod.py")
     PosixPath('build/pkg/mod.pyc')
+
+    Target parameters that the source does not provide are bound per call,
+    by keyword or in a mapping after the path: ``lens(path, run="r1")`` or
+    ``lens(path, {"run": "r1"})``. The path is positional-only, so a
+    parameter may have any name.
     """
 
     def __init__(self, source: Any, target: Any) -> None:
@@ -59,8 +70,10 @@ class Lens:
             raise NoMatchError(f"{str(path)!r} does not match {self.source.pattern!r}")
         return dict(m)
 
-    def render(self, path: Any, **extra: Any) -> str:
-        return self._target(self.bindings(path), extra)
+    def render(
+        self, path: Any, mapping: Mapping[Any, Any] | None = None, /, **extra: Any
+    ) -> str:
+        return self._target(self.bindings(path), _make_env(mapping, extra))
 
     def _target(self, env: dict[str, Any], extra: dict[str, Any]) -> str:
         out = self.target.render({**env, **extra})
@@ -70,20 +83,69 @@ class Lens:
             except NotInvertibleError:
                 return out
             if len(readings) > 1:
-                raise AmbiguousMatchError(out, readings)
+                raise AmbiguousMatchError(out, self.target.match_all(out))
         return out
 
-    def __call__(self, path: Any, **extra: Any) -> Path:
-        return Path(self.render(path, **extra))
+    def __call__(
+        self, path: Any, mapping: Mapping[Any, Any] | None = None, /, **extra: Any
+    ) -> Path:
+        return Path(self.render(path, mapping, **extra))
 
     forward = __call__
 
-    def backward(self, path: Any, **extra: Any) -> Path:
-        return self.inverse()(path, **extra)
+    def backward(
+        self, path: Any, mapping: Mapping[Any, Any] | None = None, /, **extra: Any
+    ) -> Path:
+        return self.inverse()(path, mapping, **extra)
 
-    def map(self, paths: Iterable[Any], **extra: Any) -> Iterator[tuple[Any, Path]]:
-        """Pairs (path, mapped) for every path that matches the source; others are skipped."""
+    def map(
+        self,
+        paths: Iterable[Any],
+        mapping: Mapping[Any, Any] | None = None,
+        /,
+        *,
+        ambiguous: Literal["raise", "skip"]
+        | Callable[[AmbiguousMatchError], object] = "raise",
+        **extra: Any,
+    ) -> Iterator[tuple[Any, Path]]:
+        """Pairs ``(path, mapped)``, in order, for each path that matches the
+        source; other paths are skipped.
+
+        ``mapping`` and keyword arguments bind target parameters, as for
+        `render`. A target parameter named ``ambiguous`` is bound through
+        ``mapping``; as a keyword it raises `TypeError` (see `wend.glob`).
+
+        ``ambiguous`` decides what happens to a path that cannot be mapped
+        uniquely: one that matches the source more than one way, or, through
+        a lossless lens, one whose target reads back more than one way
+        (another source path would map to the same target). ``"raise"``
+        (default) raises `AmbiguousMatchError` when that path is reached;
+        ``"skip"`` leaves it out; a callable is called with the
+        `AmbiguousMatchError` and the path is left out, so
+        ``ambiguous=report.append`` collects them. The error names the path
+        that reads more than one way (the source path, or the target path
+        for a collision) and every verified reading of it. As with
+        `wend.glob`, a callback keeps ``map`` an iterator of pairs.
+        """
+        env = _make_env(mapping, extra)
+        options = [("ambiguous", ambiguous, "raise")]
+        _check_option_keywords("map", self.target, env, options, before="paths, ")
+        return self._map(paths, env, _ambiguity_handler(ambiguous))
+
+    def _map(
+        self,
+        paths: Iterable[Any],
+        extra: dict[str, Any],
+        on_ambiguous: Callable[[AmbiguousMatchError], object] | None,
+    ) -> Iterator[tuple[Any, Path]]:
         for p in paths:
-            m = self.source.match(p)
-            if m is not None:
-                yield p, Path(self._target(dict(m), extra))
+            try:
+                m = self.source.match(p)
+                out = None if m is None else self._target(dict(m), extra)
+            except AmbiguousMatchError as error:
+                if on_ambiguous is None:
+                    raise
+                on_ambiguous(error)
+                continue
+            if out is not None:
+                yield p, Path(out)

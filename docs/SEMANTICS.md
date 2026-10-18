@@ -267,7 +267,17 @@ wend's obligations, for every expression `e` and environment `env`:
 - **Completeness:** every binding that renders to the path appears in the
   result (up to `limit`). Field values are parsed as the parameter's declared
   `type`, or the type the format spec implies (`d` → `int`, `f` → `float`,
-  otherwise `str`).
+  otherwise `str`). An untyped field whose spec zero-pads like a number (the
+  `0` flag before a width, with no alignment and no presentation type, as in
+  `{u:05}`) is read both as `str` and as `int`. `format` fills a `str` with
+  `0` on the right and an `int` with `0` after its sign, so `00005` reads as
+  `"00005"` and `5`, and `ab000` as `"ab"`, `"ab0"`, `"ab00"` and `"ab000"`.
+- **Padding:** a field padded to its width is read with every number of fill
+  characters that `format` could have added, from none to the whole run on
+  the padded side (both sides for `^`, after the sign for `=`). A value may
+  itself begin or end with the fill character: `{u:x<5}` reads `abxxx` as
+  `"ab"`, `"abx"`, `"abxx"` and `"abxxx"`, and `{n:->4d}` reads `---5` as `5`
+  and `-5`.
 - `match` returns the single binding, `None` if there is none, and raises
   `AmbiguousMatchError` if there are several.
 - **Defaults** play no part (§3.1). Every returned binding binds every
@@ -300,8 +310,8 @@ literals and fields (no conversion, a static spec), where each field is:
 - an *integer* field (untyped or `type=int`): spec `[0N]t` with `t` one of
   `b d o x X`, or `[0N]` with `type=int` (`t = d`). Its renderings are
   `-?D+` for the digit class `D` of `t` (`01`, `0-7`, `0-9`, `0-9a-f`,
-  `0-9A-F`). An untyped field with spec `05` formats a `str`, so it is not
-  one;
+  `0-9A-F`). An untyped field with spec `05` also reads `str` values (§7),
+  so it is not one;
 - a *choice* field (untyped or `type=str`): spec `""` and `choices` that are
   all `str`. Its renderings are the choices;
 - a *free* string field (untyped or `type=str`): spec `""`, any text without
@@ -332,7 +342,9 @@ starts, or one character earlier if that character is `-`. The previous
 literal cannot end with either character, so it cannot take that position
 instead. The pivot takes the text in between. Every span is forced, and
 values come from spans by `int(span, base)` or identity, so each segment has
-at most one binding.
+at most one binding. The padding readings of §7 add none: these fields are
+padded only with `0`s after an integer's sign, and taking any of those off
+leaves the same integer.
 
 A free field is never forced: it may contain any literal next to it. So there
 is at most one per segment, and only as the pivot. `{a}{b}`, `{n:02d}{w}` and

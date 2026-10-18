@@ -129,12 +129,21 @@ FAMILIES = {
         T(t"{letters}{n:d}"),
         {"c": ["a", "b"], "n": [-1, 0, 12]},
     ),
-    # Regressions: an untyped "05" spec formats (and parses) a str, and a free
-    # string may contain a newline. (Values are 5+ characters: a shorter str
-    # is zero-filled on the right, which the str inversion does not undo.)
+    # Regressions: an untyped "05" spec reads both str and int values (a str is
+    # zero-filled on the right, an int after its sign), and a free string may
+    # contain a newline.
     "untyped padded spec": (
         T(t"x{u:05}"),
-        {"u": ["abcdef", "00003", "-0001", "12345"]},
+        {
+            "u": [
+                *("", "ab", "ab0", "ab000", "abcdef", "00003", "-0001", "12345"),
+                *(3, -1, 12345, 0, 123456),
+            ]
+        },
+    ),
+    "untyped padded spec, then a string": (
+        T(t"{u:03}_{w}"),
+        {"u": ["", "1", "1_", "10", "100", 1, -1, 100], "w": ["", "0", "_0"]},
     ),
     "newline in a string": (
         P("/r") / T(t"{w}.txt"),
@@ -212,6 +221,7 @@ INTS = [-17, -1, 0, 10, 255]
 FIRST = {
     "a:d": (A_, "d", INTS),
     "a:03d": (A_, "03d", INTS),
+    "a:03": (A_, "03", INTS),  # declared int: one reading, like 03d
     "a:x": (A_, "x", INTS),
     "a:02X": (A_, "02X", INTS),
     "a:o": (A_, "o", INTS),
@@ -223,6 +233,7 @@ FIRST = {
 SECOND = {
     "b:d": (B_, "d", INTS),
     "b:03d": (B_, "03d", INTS),
+    "b:03": (B_, "03", INTS),
     "b:x": (B_, "x", INTS),
     "b:o": (B_, "o", INTS),
     "v": (Param("v"), "", ["", "a", "-", "1", "a_b"]),
@@ -255,3 +266,142 @@ def test_exhaustive_two_field_templates(first):
         groups = render_groups(expr, {p1.name: dom1, p2.name: dom2})
         check_groups((lead, first, lit, second, trail), expr, groups)
     assert planned, f"no template starting with {first} has a fast plan"
+
+
+# The same templates with a padded first field, whose fill a value or the
+# literal after it may contain. None has a fast plan: every rendered binding
+# must be found by the full search, and a path with several must be reported
+# as ambiguous.
+
+PADDED = {
+    "u:03": (u, "03", ["", "1", "10", "100", "1000", "-1", 1, -1, 10, 100, 0]),
+    "w:x<3": (w, "x<3", ["", "x", "1x", "x1", "xx", "1xx", "xx1x"]),
+    "a:0<3": (A_, "0<3", [-1, 0, 1, 10, 100, 1000]),
+    "a:-^4": (A_, "-^4", [-1, 0, 1, -10, 10]),
+}
+
+
+@pytest.mark.parametrize("first", sorted(PADDED))
+def test_exhaustive_padded_field_templates(first):
+    p1, spec1, dom1 = PADDED[first]
+    for (second, (p2, spec2, dom2)), lit, (lead, trail) in itertools.product(
+        SECOND.items(), LITERALS, [("", ""), ("r", ".t")]
+    ):
+        items = [
+            lead,
+            Interpolation(p1, p1.name, None, spec1),
+            lit,
+            Interpolation(p2, p2.name, None, spec2),
+            trail,
+        ]
+        expr = P("/q") / Template(*items)
+        groups = render_groups(expr, {p1.name: dom1, p2.name: dom2})
+        assert not check_groups((lead, first, lit, second, trail), expr, groups)
+
+
+# Padded fields (docs/SEMANTICS.md §7). For each spec, every str over a small
+# alphabet up to one character wider than the width, and every int whose
+# digits come from that alphabet, is rendered as an untyped, a str and an int
+# field. A str that renders to a text is a substring of it, and an int's
+# digits appear in its rendering, so up to that length the domains are
+# closed: the full search must find exactly the values of the field's parse
+# types that render to each text. The alphabets hold the fill character, a
+# sign, and characters the fill can be confused with.
+
+PAD_SPECS = {
+    # spec: (width, alphabet, what an untyped field reads)
+    "03": (3, "01-a", {str, int}),  # issue #45: "0" flag, no alignment
+    "+03": (3, "01-+", {str, int}),  # only an int formats with a sign
+    "04,": (4, "01,", {str, int}),  # zero padding with grouping exceeds the width
+    "3": (3, "01- ", {str}),
+    "x<3": (3, "01-x", {str}),
+    "x>3": (3, "01-x", {str}),
+    "x^3": (3, "01x", {str}),
+    "x^4": (4, "01x", {str}),
+    "0<3": (3, "01-", {str}),
+    "0>3": (3, "01-", {str}),
+    "0^4": (4, "01-", {str}),
+    "<03": (3, "01-", {str}),
+    ">03": (3, "01-", {str}),
+    "^04": (4, "01-", {str}),
+    "-<3": (3, "01-", {str}),
+    "->3": (3, "01-", {str}),
+    "1>3": (3, "01-", {str}),
+    "1^4": (4, "01-", {str}),
+    "0=3": (3, "01-", {str}),
+    "-=3": (3, "01-", {str}),
+    "1=3": (3, "01-", {str}),
+    "03x": (3, "01-a", {int}),
+    "a>3x": (3, "01-a", {int}),
+    "a^4x": (4, "01a", {int}),
+    "3c": (3, "01- q", {int}),  # c writes characters no int has
+    "0>3c": (3, "01-a", {int}),
+}
+
+
+def pad_domain(spec, width, alphabet, types):
+    longest = width + 1
+    values: list = []
+    if str in types:
+        values += [
+            "".join(p)
+            for k in range(longest + 1)
+            for p in itertools.product(alphabet, repeat=k)
+        ]
+    if int in types:
+        if spec.endswith("c"):
+            values += [ord(c) for c in alphabet]
+        else:
+            base = 16 if spec.endswith("x") else 10
+            digits = [c for c in alphabet if c in "0123456789abcdef"[:base]]
+            values += sorted(
+                {
+                    sign * int("".join(p), base)
+                    for k in range(1, longest + 1)
+                    for p in itertools.product(digits, repeat=k)
+                    for sign in (1, -1)
+                }
+            )
+    return values, longest
+
+
+def typed_set(solutions, name):
+    return {(type(s[name]), s[name]) for s in solutions}
+
+
+@pytest.mark.parametrize("spec", sorted(PAD_SPECS))
+def test_exhaustive_padded_fields(spec):
+    width, alphabet, untyped = PAD_SPECS[spec]
+    rendered = 0
+    for declared in (None, str, int):
+        types = untyped if declared is None else {declared}
+        p = Param("u", type=declared)
+        expr = P("d") / T(Template(Interpolation(p, "u", None, spec)))
+        values, longest = pad_domain(spec, width, alphabet, types)
+        groups: dict[str, set] = {}
+        for v in values:
+            try:
+                path = expr.render(u=v)
+            except InvalidBindingError:
+                continue
+            groups.setdefault(path, set()).add((type(v), v))
+        rendered += len(groups)
+        planned = _expr_plan(expr) is not None
+        for path, want in groups.items():
+            got = typed_set(expr.match_all(path, fast=False), "u")
+            label = (spec, declared, path)
+            if len(path) - len("d/") <= longest:
+                assert got == want, label  # the domains are closed up to here
+            else:
+                assert want <= got, label
+            for _, v in got:
+                assert expr.render(u=v) == path, label
+            if len(got) > 1:
+                with pytest.raises(AmbiguousMatchError):
+                    expr.match(path)
+            else:
+                assert typed_set([expr.match(path)], "u") == got, label
+            if planned:
+                assert len(got) == 1, label
+                assert typed_set(expr.match_all(path), "u") == got, label
+    assert rendered, f"{spec}: no value rendered"

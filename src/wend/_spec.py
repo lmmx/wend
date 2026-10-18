@@ -45,12 +45,35 @@ _INT_CHARS = frozenset("0123456789+- _,#xXoObBabcdefABCDEF")
 class Spec:
     fill: str | None
     align: str | None
+    zero: bool  # the "0" flag before the width
     width: int | None
     type: str | None
 
     @property
     def fill_char(self) -> str:
         return self.fill if self.fill is not None else " "
+
+    def padding(self, numeric: bool) -> tuple[str, str]:
+        """The fill character and alignment ``format`` pads a value with.
+
+        CPython's rules: the ``0`` flag without an explicit fill pads with
+        ``0``, and without an explicit alignment it also makes a number's
+        padding sign-aware (``=``). Otherwise strings align left and numbers
+        right.
+        """
+        if self.fill is None and self.zero:
+            return "0", self.align or ("=" if numeric else "<")
+        return self.fill_char, self.align or (">" if numeric else "<")
+
+    @property
+    def reads_int(self) -> bool:
+        """Whether an untyped field with this spec also reads ints (§7).
+
+        The ``0`` flag before a width, with no alignment and no presentation
+        type (``05``), is Python's zero padding for numbers. A ``str`` formats
+        under it too, filled on the right.
+        """
+        return self.zero and self.width is not None and not self.align and not self.type
 
 
 @lru_cache(maxsize=1024)
@@ -60,7 +83,13 @@ def parse_spec(spec: str) -> Spec | None:
     if m is None:
         return None
     width = m["width"]
-    return Spec(m["fill"], m["align"], int(width) if width else None, m["type"])
+    return Spec(
+        m["fill"],
+        m["align"],
+        m["zero"] is not None,
+        int(width) if width else None,
+        m["type"],
+    )
 
 
 def target_type(spec: str, conversion: str | None, declared: Any) -> Any:
@@ -69,7 +98,10 @@ def target_type(spec: str, conversion: str | None, declared: Any) -> Any:
         return None  # conversions are inverted via the conversion itself
     if declared is not None:
         return declared
-    info = parse_spec(spec)
+    return _implied_type(parse_spec(spec))
+
+
+def _implied_type(info: Spec | None) -> Any:
     if info is not None and info.type is not None:
         if info.type in INT_TYPES or info.type == "c":
             return int
@@ -120,7 +152,7 @@ def plain_int(spec: str, declared: Any) -> tuple[str, int] | None:
     t = m[1]
     if not t:
         if declared is not int:
-            return None  # an untyped "" or "05" spec formats (and parses) a str
+            return None  # an untyped "" or "05" spec reads str values too (§7)
         t = "d"
     return INT_DIGITS[t]
 
@@ -132,8 +164,8 @@ def allowed_chars(
     if target_type(spec, conversion, declared) is not int:
         return None
     info = parse_spec(spec)
-    if info is None:
-        return None
+    if info is None or info.type in ("c", "n"):
+        return None  # c writes any character, n the locale's separators
     return _INT_CHARS | {info.fill_char}
 
 
@@ -149,83 +181,151 @@ def convert(value: Any, conversion: str | None) -> Any:
     raise ValueError(f"Unknown conversion {conversion!r}")
 
 
+_PREFIXES = frozenset(("0b", "0B", "0o", "0O", "0x", "0X"))
+_BASES = {"b": 2, "o": 8, "x": 16, "X": 16}
+# (fill, alignment) pairs whose readings `int` already folds into one: it
+# skips zeros after the sign and base prefix, and spaces before the sign.
+_INT_SAFE_PADDING = frozenset((("0", "="), (" ", ">")))
+
+
+def unpad(text: str, info: Spec | None, numeric: bool) -> list[str]:
+    """Every text that ``format`` could have padded to ``text`` under ``info``.
+
+    ``format`` pads a text shorter than the width up to exactly the width, so
+    only a text of the width's length can be padded. Its readings are then each
+    number of fill characters taken off the padded side (both sides for ``^``,
+    split as ``format`` splits them), from none up to the whole run: the value
+    may itself begin or end with the fill character. ``=`` pads after a
+    number's sign and base prefix. ``numeric`` selects the defaults that
+    ``format`` uses for numbers rather than strings.
+    """
+    if info is None or not info.width or len(text) != info.width:
+        return [text]
+    fill, align = info.padding(numeric)
+    n = len(text)
+    if align == "<":
+        run = n - len(text.rstrip(fill))
+        return [text[: n - k] for k in range(run + 1)]
+    if align == ">":
+        run = n - len(text.lstrip(fill))
+        return [text[k:] for k in range(run + 1)]
+    if align == "^":
+        lead = n - len(text.lstrip(fill))
+        trail = n - len(text.rstrip(fill))
+        out = []
+        for p in range(n + 1):  # p fill characters: p // 2 before, the rest after
+            left, right = p // 2, p - p // 2
+            if left > lead or right > trail:
+                break
+            out.append(text[left : n - right])
+        return out
+    # "=": the fill sits after the sign and base prefix. The fill may itself
+    # be a sign character, so the padding may start after any such head.
+    heads = [0, 1] if text[0] in "-+ " else [0]
+    heads += [h + 2 for h in heads if text[h : h + 2] in _PREFIXES]
+    out = [text]
+    for h in heads:
+        run = n - h - len(text[h:].lstrip(fill))
+        out += [text[:h] + text[h + k :] for k in range(1, run + 1)]
+    return out
+
+
 def _int_candidates(text: str, info: Spec | None) -> list[Any]:
-    s = text
-    if info is not None and info.fill is not None and not info.fill.isdigit():
-        s = s.replace(info.fill, "")
-    s = s.replace(" ", "").replace(",", "").replace("_", "")
-    base = 10
-    t = info.type if info is not None else None
-    if t == "c":
-        return [ord(text)] if len(text) == 1 else []
-    if t == "b":
-        base = 2
-    elif t == "o":
-        base = 8
-    elif t in ("x", "X"):
-        base = 16
-    try:
-        return [int(s, base)]
-    except ValueError:
-        return []
+    if info is None:
+        cores = [text]
+    elif info.type == "c":
+        return [ord(c) for c in unpad(text, info, True) if len(c) == 1]
+    elif info.padding(True) in _INT_SAFE_PADDING:
+        cores = [text]  # every reading of this padding is the same integer
+    else:
+        cores = unpad(text, info, True)
+    base = _BASES.get(info.type or "d", 10) if info is not None else 10
+    out: list[Any] = []
+    for core in cores:
+        try:
+            out.append(int(core.replace(",", "").replace("_", ""), base))
+        except ValueError:
+            pass
+    return out
 
 
 def _float_candidates(text: str, info: Spec | None) -> list[Any]:
-    s = text
-    if info is not None and info.fill is not None and not info.fill.isdigit():
-        s = s.replace(info.fill, "")
-    s = s.replace(" ", "").replace(",", "").replace("_", "")
-    scale = 1.0
-    if info is not None and info.type == "%":
-        if not s.endswith("%"):
-            return []
-        s, scale = s[:-1], 100.0
-    try:
-        return [float(s) / scale]
-    except ValueError:
-        return []
+    percent = info is not None and info.type == "%"
+    out: list[Any] = []
+    for core in unpad(text, info, True):
+        s = core.replace(",", "").replace("_", "")
+        if percent:
+            if not s.endswith("%"):
+                continue
+            s = s[:-1]
+        try:
+            out.append(float(s) / 100 if percent else float(s))
+        except ValueError:
+            pass
+    return out
 
 
-def _str_candidates(text: str, info: Spec | None) -> list[str]:
-    fill = info.fill_char if info is not None else " "
-    out: list[str] = []
-    for c in (text, text.rstrip(fill), text.lstrip(fill), text.strip(fill)):
-        if c not in out:
-            out.append(c)
+def _distinct(values: list[Any]) -> list[Any]:
+    """``values`` without repeats, where values of different types differ."""
+    if len(values) < 2:
+        return values
+    out: list[Any] = []
+    seen: set[tuple[type, Any]] = set()
+    for v in values:
+        try:
+            key = (type(v), v)
+            if key in seen:
+                continue
+            seen.add(key)
+        except TypeError:  # unhashable, from a literal
+            if any(type(v) is type(o) and v == o for o in out):
+                continue
+        out.append(v)
     return out
 
 
 def invert(text: str, spec: str, conversion: str | None, declared: Any) -> list[Any]:
-    """Values v such that ``format(convert(v, conversion), spec) == text``."""
-    if conversion in ("r", "a"):
-        try:
-            cands: list[Any] = [ast.literal_eval(text)]
-        except ValueError, SyntaxError, MemoryError, RecursionError:
-            return []
-    elif conversion == "s":
-        cands = [text]
+    """Values v such that ``format(convert(v, conversion), spec) == text``.
+
+    Candidates are read from every unpadded form of ``text`` (`unpad`), parsed
+    as the field's type (§7), and kept only if they format back to ``text``.
+    """
+    info = parse_spec(spec)
+    cands: list[Any]
+    if conversion is not None:
+        cores = unpad(text, info, False)  # a conversion formats a str
+        if conversion == "s":
+            cands = cores
+        else:
+            cands = []
+            for c in cores:
+                try:
+                    cands.append(ast.literal_eval(c))
+                except ValueError, SyntaxError, MemoryError, RecursionError:
+                    pass
     else:
-        info = parse_spec(spec)
-        tt = target_type(spec, conversion, declared)
+        tt = declared if declared is not None else _implied_type(info)
         if tt is int or tt is bool:
             cands = _int_candidates(text, info)
         elif tt is float:
             cands = _float_candidates(text, info)
         elif tt is str:
-            cands = _str_candidates(text, info)
-        else:
+            cands = unpad(text, info, False)
+            if declared is None and info is not None and info.reads_int:
+                cands = cands + _int_candidates(text, info)
+        else:  # another declared type: its own __format__ may pad either way
             cands = []
-            for c in _str_candidates(text, info):
+            for c in dict.fromkeys(unpad(text, info, False) + unpad(text, info, True)):
                 try:
                     cands.append(tt(c))
                 except TypeError, ValueError:
                     pass
     out: list[Any] = []
-    for v in cands:
+    for v in _distinct(cands):
         try:
             ok = format(convert(v, conversion), spec) == text
         except TypeError, ValueError:
             ok = False
-        if ok and not any(type(v) is type(o) and v == o for o in out):
+        if ok:
             out.append(v)
     return out

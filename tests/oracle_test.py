@@ -54,6 +54,9 @@ TEMPLATES = [
     (lambda: T(t"{W}.{N:02d}"), lambda e: f"{e['w']}.{e['n']:02d}"),
     (lambda: T(t"{W!r}"), lambda e: f"{e['w']!r}"),
     (lambda: T(t"x{N:x}"), lambda e: f"x{e['n']:x}"),
+    # Padded fields whose fill characters values may contain (§7).
+    (lambda: T(t"v{W:0<6}"), lambda e: f"v{e['w']:0<6}"),
+    (lambda: T(t"{N:03}_{W:_^7}"), lambda e: f"{e['n']:03}_{e['w']:_^7}"),
     # A whole-segment interpolation is a path operand: joined, not formatted
     # into the string (so an empty value cannot make the path absolute).
     (lambda: T(t"{SEG}/{W}.txt"), lambda e: PurePosixPath(e["seg"]) / f"{e['w']}.txt"),
@@ -334,8 +337,9 @@ def test_match_fast_path_equals_search(start, prog, env):
 #
 # Expressions are generated from templates that mix integer fields (every
 # supported presentation type, padded or not, typed or untyped), free string
-# fields, `choices` fields, whole-segment parameters, SubPath splices and
-# literals chosen to sit next to fields' digit classes ("-", "a", "0", "f").
+# fields, fields padded with explicit fills, `choices` fields, whole-segment
+# parameters, SubPath splices and literals chosen to sit next to fields'
+# digit classes ("-", "a", "0", "f").
 # Wherever an expression has a fast plan, its result must equal the full
 # search, on rendered paths and on paths a few edits away from them.
 
@@ -355,13 +359,21 @@ FP_ROOTS = {"root": Param("root"), "abs": Param("abs", kind=Kind.ABSOLUTE)}
 
 FP_INT_SPECS = ["", "d", "03d", "x", "02x", "X", "o", "03o", "b", "04b"]
 FP_UNTYPED_SPECS = ["d", "x", "05", "02X", "o"]
+# Padded specs, whose fill a value may contain (none has a fast plan).
+FP_INT_SPECS += ["03", "0<3", "->3d", "x^4x"]
+FP_UNTYPED_SPECS += ["03", "+03", "x<3", "0^4"]
+FP_STR_SPECS = ["03", "x<3", "_>4", "0^5"]
 FP_LITERALS = ["_", "-", ".", "a", "f", "0", "9", "x", "-v", "a-", "_1", " ", "\n"]
 FP_ALPHABET = "ab_-.0x1f \n"
 
 fp_field = st.one_of(
     st.tuples(st.just("int"), st.integers(0, 2), st.sampled_from(FP_INT_SPECS)),
     st.tuples(st.just("untyped"), st.just(0), st.sampled_from(FP_UNTYPED_SPECS)),
-    st.tuples(st.just("str"), st.integers(0, 1), st.just("")),
+    st.tuples(
+        st.just("str"),
+        st.integers(0, 1),
+        st.one_of(st.just(""), st.sampled_from(FP_STR_SPECS)),
+    ),
     st.tuples(st.just("choice"), st.integers(0, len(FP_CHOICES) - 1), st.just("")),
 )
 fp_lit = st.sampled_from(["", *FP_LITERALS])  # "" makes the fields adjacent
@@ -482,3 +494,82 @@ def test_fast_plan_equals_search_on_new_shapes(start, parts, env, edits):
     check_fast_equals_search(expr, rendered)
     for e in edits:
         check_fast_equals_search(expr, mutate(rendered, e))
+
+
+# -- Padded fields (docs/SEMANTICS.md §7) ------------------------------------
+#
+# Random standard specs (fill and alignment, sign, "#", the 0 flag, width,
+# grouping, type) on untyped, str and int fields between literals. Whenever a
+# value renders and its type is one the field reads, the full search must
+# return it; every value the search returns must have such a type and render
+# to the path; and the fast path must agree with the search.
+
+pad_lit = st.sampled_from(["", "a", "0", "-", "x", "_", "1"])
+
+
+@st.composite
+def padded_cases(draw):
+    """(declared type, spec parts, value, lead, trail), with spec options the
+    value's type accepts (a str takes no sign, "#", grouping or "=")."""
+    declared = draw(st.sampled_from([None, str, int]))
+    is_str = declared is str or (declared is None and draw(st.booleans()))
+    if is_str:
+        value = draw(st.text(alphabet="01-x_ a+,", max_size=6))
+    else:
+        value = draw(st.integers(-3000, 3000))
+    parts = (
+        draw(st.sampled_from(["", "0", "x", "-", "1", " ", "_"])),  # fill, if aligned
+        draw(st.sampled_from(["", "<", ">", "^"] + ([] if is_str else ["="]))),
+        "" if is_str else draw(st.sampled_from(["", "+", "-", " ", "#", "-#"])),
+        draw(st.booleans()),  # the 0 flag
+        draw(st.one_of(st.none(), st.integers(1, 6))),
+        "" if is_str else draw(st.sampled_from(["", ",", "_"])),
+        draw(st.sampled_from(["", "s"] if is_str else ["", "d", "x"])),
+    )
+    return declared, parts, value, draw(pad_lit), draw(pad_lit)
+
+
+def pad_reads(parts, declared):
+    """The types a field reads (§7), from the parts of its spec."""
+    _, align, _, zero, width, _, kind = parts
+    if declared is not None:
+        return {declared}
+    if kind:
+        return {str} if kind == "s" else {int}
+    return {str, int} if zero and width is not None and not align else {str}
+
+
+@settings(
+    max_examples=1000,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow, HealthCheck.filter_too_much],
+)
+@given(padded_cases())
+def test_padded_fields_match_every_reading(case):
+    declared, parts, value, lead, trail = case
+    fill, align, sign, zero, width, grouping, kind = parts
+    spec = (
+        (fill + align if align else "")
+        + sign
+        + ("0" if zero else "")
+        + ("" if width is None else str(width))
+        + grouping
+        + kind
+    )
+    p = Param("u", type=declared)
+    expr = P("/d") / T(Template(lead, Interpolation(p, "u", None, spec), trail))
+    kind_, rendered = outcome(lambda: expr.render(u=value))
+    assume(kind_ == "ok")
+    reads = pad_reads(parts, declared)
+    slow = expr.match_all(rendered, fast=False)
+    for sol in slow:
+        assert type(sol["u"]) in reads, (spec, declared, rendered, slow)
+        assert expr.render(sol) == rendered
+    if type(value) in reads:
+        assert (type(value), value) in {(type(s["u"]), s["u"]) for s in slow}, (
+            spec,
+            declared,
+            rendered,
+            slow,
+        )
+    assert typed(expr.match_all(rendered)) == typed(slow)

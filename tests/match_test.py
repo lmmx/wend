@@ -165,11 +165,103 @@ def test_choices_fields_compile_to_alternations():
     assert _expr_plan(T(t"{nested}_{stem}")) is None
 
 
-def test_untyped_zero_padded_spec_parses_as_str():
+def readings(expr, path, name):
+    """The (type, value) pairs the full search finds for one parameter."""
+    return {(type(m[name]), m[name]) for m in expr.match_all(path, fast=False)}
+
+
+def test_untyped_zero_padded_spec_reads_str_and_int():
+    # Issue #45: "05" fills a str with 0 on the right and an int after its
+    # sign, so one path can be several bindings, and match must say so.
     u = Param("u")
-    e = T(t"x{u:05}")
+    e = P("d") / T(t"{u:05}")
     assert _expr_plan(e) is None
-    assert e.match("x00003") == {"u": "00003"}
+    assert e.render(u="ab") == e.render(u="ab000") == "d/ab000"
+    assert e.render(u=5) == e.render(u="00005") == "d/00005"
+    assert readings(e, "d/ab000", "u") == {
+        (str, "ab"),
+        (str, "ab0"),
+        (str, "ab00"),
+        (str, "ab000"),
+    }
+    assert readings(e, "d/00005", "u") == {(str, "00005"), (int, 5)}
+    assert readings(e, "d/-0005", "u") == {(str, "-0005"), (int, -5)}
+    for path in ("d/ab000", "d/00005", "d/-0005"):
+        with pytest.raises(AmbiguousMatchError):
+            e.match(path)
+    assert e.match("d/abcdef") == {"u": "abcdef"}  # wider than 5: not padded
+    # A sign is numeric only: no str formats under "+05".
+    assert T(t"x{u:+05}").match("x+0005") == {"u": 5}
+
+
+def test_declared_type_picks_the_zero_padded_reading():
+    ui = Param("u", type=int)
+    e = P("d") / T(t"{ui:05}")
+    assert _expr_plan(e) is not None
+    assert e.match("d/00005") == {"u": 5}
+    assert e.match_all("d/00005", fast=False) == [{"u": 5}]
+    assert e.match("d/ab000") is None
+    us = Param("u", type=str)
+    e = P("d") / T(t"{us:05}")
+    assert e.match("d/00005") == {"u": "00005"}
+    assert readings(e, "d/50000", "u") == {
+        (str, "5"),
+        (str, "50"),
+        (str, "500"),
+        (str, "5000"),
+        (str, "50000"),
+    }
+
+
+def test_fill_characters_may_belong_to_the_value():
+    u, n = Param("u"), Param("n", type=int)
+    assert readings(T(t"{u:x<5}"), "abxxx", "u") == {
+        (str, "ab"),
+        (str, "abx"),
+        (str, "abxx"),
+        (str, "abxxx"),
+    }
+    # "^" puts half the fill (rounded down) before the value.
+    assert readings(T(t"{u:*^7}"), "**ab***", "u") == {
+        (str, "ab"),
+        (str, "ab*"),
+        (str, "*ab*"),
+        (str, "*ab**"),
+        (str, "**ab**"),
+        (str, "**ab***"),
+    }
+    assert readings(T(t"{u:x^7}"), "xxxabxx", "u") == {
+        (str, "xab"),
+        (str, "xxab"),
+        (str, "xxabx"),
+        (str, "xxxabx"),
+        (str, "xxxabxx"),
+    }
+    assert readings(T(t"{u:5}"), "a    ", "u") == {
+        (str, "a" + " " * k) for k in range(5)
+    }
+    assert readings(T(t"{n:1>5d}"), "11115", "n") == {
+        (int, 5),
+        (int, 15),
+        (int, 115),
+        (int, 1115),
+        (int, 11115),
+    }
+    assert readings(T(t"{n:->4d}"), "---5", "n") == {(int, 5), (int, -5)}
+    assert T(t"{n:0>5d}").match("000-5") == {"n": -5}
+    assert readings(T(t"{u!s:*<4}"), "ab**", "u") == {
+        (str, "ab"),
+        (str, "ab*"),
+        (str, "ab**"),
+    }
+
+
+def test_character_fields_invert():
+    n = Param("n", type=int)
+    assert T(t"x{n:c}").match("xq") == {"n": ord("q")}  # "q" is no int character
+    assert T(t"x{n:c}_{n:d}").match("xq_113") == {"n": 113}
+    assert T(t"x{n:3c}").match("x  A") == {"n": 65}
+    assert T(t"x{n:03c}").match("x000") == {"n": ord("0")}
 
 
 def test_fast_path_reads_newlines_and_long_numbers():

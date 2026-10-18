@@ -70,3 +70,30 @@ Parity with the real render (`tools/jaxraster_check.py`, hard limit, the current
   - L-BFGS-B, x64.
 - Before trusting a fit: directional derivatives against finite differences of real Three.js renders.
 - Deliver grey and colour renders beside the reference and the baseline.
+
+## 2. Review fixes: arc length and colour bleed
+
+**Arc length** (`jaxsurface.py`). The fairness terms divided by a fixed `h`, so a moving spline would have been penalised for its sample spacing, not its shape. They are now independent of the parameterisation:
+- On every surface line the discrete curvature vector is k = Δ(unit tangent) / local arc length.
+- Bending is Σ|k|²·ds and its variation Σ|Δk/ds|²·ds, both per unit length.
+- A `spread` term (the variance of the centreline spacing) keeps samples from bunching.
+
+Test: the same surface sampled three ways (spacing CV 0.32, 0.54, 0.63) gives bending within 0.4%, where the old fixed-h version varied 4×. The variation term is also stable except under extreme bunching (u^1.8, where spacing goes to ~0 near one end), which `spread` prevents in a fit. Gradients still match central differences (1.4e-8).
+
+**Colour bleed** (`jaxraster.py`): a real bug.
+- The colour softmax used log a + z/γ, so a ball nearer the camera that does not cover a pixel could still win it, bleeding past the edge of its disc by about Δz·τ/γ.
+- The score is now sharp·log a + z/γ, so bleed ≈ Δz·τ/(sharp·γ). The hard z-buffer is the limit of that going to zero, not of τ and γ alone; the earlier docstring overclaimed.
+- Two-ball test (front ball 40 px nearer): the boundary was 12–25 px off with sharp = 1, and is 0.4–1.1 px off with sharp = 20. Gradients at the occlusion boundary match finite differences.
+
+Parity with the real render after the fix:
+
+| window | blue IoU | yellow IoU | silhouette IoU | pixel agreement |
+|---|---|---|---|---|
+| left valley | 0.944 (was 0.873) | 0.949 (0.880) | 0.976 | 0.974 (0.948) |
+| right valley | 0.944 (0.897) | 0.932 (0.892) | 0.976 | 0.970 (0.954) |
+| central arch | 0.951 (0.859) | 0.942 (0.839) | 0.976 | 0.972 (0.935) |
+| left arm (includes the yellow neck, not modelled) | 0.926 | 0.836 | 0.960 | 0.930 |
+
+`02-soft-raster-bleed-fix.png` shows render labels | raster with sharp = 1 | differences | raster with sharp = 20 | differences, for the right valley and the central arch.
+
+**Still to do:** fidelity of the surrogate to real renders. These checks show only that JAX differentiates its own objective correctly. Once the spline body exists, small control-point perturbations will be rendered through Three.js, and the measured change compared with the JAX-predicted one.

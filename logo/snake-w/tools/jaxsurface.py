@@ -5,12 +5,18 @@ A strand is a centreline P(s) and a radius r(s), both linear in their spline con
 scene builds it: rotation-minimising frames along P (double reflection, Wang et al. 2008, as a
 lax.scan) and rings S[i, j] = P[i] + r[i] (cos phi_j N[i] + sin phi_j Bn[i]).
 
-Fairness is measured on that evaluated surface, not on the centreline:
-  bend    mean |d2 S / ds2|^2 over all longitudinal surface lines (bending energy)
-  jerk    mean |d3 S / ds3|^2 (how fast that bending changes: kinks, abrupt bulges)
-  fold    a barrier on the ring-to-ring advance of each surface line relative to the
-          centreline's, ~ 1 - r kappa cos(phi - phi_kappa): below `fold_min` the tube is about
-          to pass through itself on the inside of a bend
+Fairness is measured on that evaluated surface, not on the centreline, and does not depend
+on how the samples are spaced (they need not be uniform in arc length, and won't be while
+control points move). On each longitudinal surface line X_i, with edges e_i = X_{i+1} - X_i,
+lengths l_i and unit tangents t_i, the discrete curvature vector at a vertex is
+k_i = (t_i - t_{i-1}) / ((l_{i-1} + l_i) / 2), and
+  bend    sum |k_i|^2 * ds_i over all lines, per unit length (bending energy)
+  jerk    sum |(k_{i+1} - k_i) / ds|^2 * ds (how fast the bending changes: kinks, abrupt bulges)
+  fold    a barrier on each surface line's advance relative to the centreline's, a ratio of
+          lengths (~ 1 - r kappa cos(phi - phi_kappa)): below `fold_min` the tube is about to
+          pass through itself on the inside of a bend
+  spread  the variance of the centreline's own sample spacing, relative to its mean (keeps a
+          moving spline's samples from bunching; a regulariser on the parameterisation)
 """
 import jax
 import jax.numpy as jnp
@@ -43,39 +49,52 @@ def rings(P, r, nphi=24):
     return P[:, None] + r[:, None, None] * dirs, T
 
 
-def fairness(P, r, h, nphi=24, fold_min=0.25):
-    """Fairness terms of the swept surface for centreline samples P (n, 3) spaced ~h apart."""
-    S, T = rings(P, r, nphi)
-    d1 = (S[1:] - S[:-1]) / h
-    d2 = (S[2:] - 2 * S[1:-1] + S[:-2]) / h ** 2
-    d3 = (S[3:] - 3 * S[2:-1] + 3 * S[1:-2] - S[:-3]) / h ** 3
-    adv = jnp.einsum("ijk,ik->ij", d1, T[:-1])                   # surface line advance / centreline advance (~1 - r kappa cos)
-    cl = jnp.linalg.norm((P[1:] - P[:-1]) / h, axis=1)
+def fairness(P, r, nphi=24, fold_min=0.25):
+    """Fairness terms of the swept surface for centreline samples P (n, 3) and radii r (n,)."""
+    S, T = rings(P, r, nphi)                                       # (n, nphi, 3)
+    e = S[1:] - S[:-1]
+    l = jnp.linalg.norm(e, axis=-1)
+    t = e / l[..., None]
+    ds = 0.5 * (l[1:] + l[:-1])                                    # per interior vertex
+    k = (t[1:] - t[:-1]) / ds[..., None]
+    total = jnp.sum(l, axis=0)                                     # length of each surface line
+    bend = jnp.mean(jnp.sum(jnp.sum(k ** 2, -1) * ds, axis=0) / total)
+    dsk = 0.5 * (ds[1:] + ds[:-1])
+    jerk = jnp.mean(jnp.sum(jnp.sum(((k[1:] - k[:-1]) / dsk[..., None]) ** 2, -1) * dsk, axis=0) / total)
+    adv = jnp.einsum("ijk,ik->ij", e, T[:-1])
+    cl = jnp.linalg.norm(P[1:] - P[:-1], axis=1)
     j = adv / cl[:, None]
     fold = jnp.mean(jax.nn.softplus((fold_min - j) * 20.0) / 20.0) * 100
-    return dict(bend=jnp.mean(jnp.sum(d2 ** 2, -1)), jerk=jnp.mean(jnp.sum(d3 ** 2, -1)), fold=fold, jmin=jnp.min(j))
+    spread = jnp.var(cl) / jnp.mean(cl) ** 2
+    return dict(bend=bend, jerk=jerk, fold=fold, spread=spread, jmin=jnp.min(j))
 
 
 if __name__ == "__main__":
-    # gradient check: JAX against central finite differences of the same function, x64
     import numpy as np
     from scipy.interpolate import BSpline
     rng = np.random.default_rng(0)
-    n, K = 400, 24
-    t = np.linspace(0, 1, n)
+    K = 24
     kn = np.r_[[0] * 3, np.linspace(0, 1, K - 2), [1] * 3]
-    B = BSpline.design_matrix(t, kn, 3).toarray()
     ctrl = np.column_stack([np.linspace(0, 600, K), 80 * np.sin(np.linspace(0, 6, K)), 30 * np.cos(np.linspace(0, 9, K))]) + rng.normal(size=(K, 3))
     rc = 40 + 3 * rng.normal(size=K)
-    B, ctrl, rc = jnp.asarray(B), jnp.asarray(ctrl), jnp.asarray(rc)
+    def at(tt):
+        B = jnp.asarray(BSpline.design_matrix(tt, kn, 3).toarray())
+        return B
+    # 1. gradients against central differences
+    B = at(np.linspace(0, 1, 600))
     def loss(c, q):
-        P = B @ c; rr = B @ q
-        f = fairness(P, rr, 1.5)
-        return f["bend"] + 0.1 * f["jerk"] + f["fold"]
-    g_c, g_r = jax.grad(loss, argnums=(0, 1))(ctrl, rc)
-    v = rng.normal(size=ctrl.shape); w = rng.normal(size=rc.shape)
-    eps = 1e-4
-    fd = (loss(ctrl + eps * v, rc + eps * w) - loss(ctrl - eps * v, rc - eps * w)) / (2 * eps)
+        f = fairness(B @ c, B @ q)
+        return f["bend"] * 1e3 + f["jerk"] * 1e5 + f["fold"] + f["spread"]
+    c0, q0 = jnp.asarray(ctrl), jnp.asarray(rc)
+    g_c, g_r = jax.grad(loss, argnums=(0, 1))(c0, q0)
+    v = rng.normal(size=ctrl.shape); w = rng.normal(size=rc.shape); eps = 1e-4
+    fd = (loss(c0 + eps * v, q0 + eps * w) - loss(c0 - eps * v, q0 - eps * w)) / (2 * eps)
     ad = jnp.sum(g_c * v) + jnp.sum(g_r * w)
-    print(f"directional derivative: autodiff {float(ad):.8e}  finite difference {float(fd):.8e}  rel err {abs(float(ad - fd)) / abs(float(fd)):.2e}")
-    f = fairness(B @ ctrl, B @ rc, 1.5); print({k: float(v_) for k, v_ in f.items()})
+    print(f"gradient: autodiff {float(ad):.8e}  finite difference {float(fd):.8e}  rel err {abs(float(ad - fd)) / abs(float(fd)):.1e}")
+    # 2. the same surface sampled uniformly and very non-uniformly in the spline parameter
+    u = np.linspace(0, 1, 600)
+    warped = u + 0.08 * np.sin(2 * np.pi * u) / (2 * np.pi) * 6 * (u * (1 - u))   # monotone, uneven spacing
+    warped = (warped - warped[0]) / (warped[-1] - warped[0])
+    for name, tt in (("uniform", u), ("warped", warped)):
+        Bt = at(tt); f = fairness(Bt @ c0, Bt @ q0)
+        print(f"{name:8s} spacing cv {float(jnp.sqrt(f['spread'])):.3f}  bend {float(f['bend']):.6e}  jerk {float(f['jerk']):.6e}  jmin {float(f['jmin']):.3f}")

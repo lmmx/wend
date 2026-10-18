@@ -327,6 +327,31 @@ class Seg(_Cached):
                 out |= p.param_names
         return frozenset(out)
 
+    @cached_property
+    def suffix_split(self) -> tuple[tuple[Piece, ...], tuple[Piece, ...]] | None:
+        """(stem, suffix) pieces when the split is statically decidable."""
+        if self.literal is not None:
+            p = PurePosixPath(self.literal)
+            suffix = p.suffix
+            return _norm([p.stem]), _norm([suffix])
+        pieces = self.pieces
+        for i in range(len(pieces) - 1, -1, -1):
+            piece = pieces[i]
+            if not _may_contain_dot(piece):
+                continue
+            if isinstance(piece, Field):
+                return None  # the deciding dot may come from a value
+            k = piece.rfind(".")
+            if not (
+                any(c != "." for c in piece[:k])
+                or any(_guarantees_nondot(q) for q in pieces[:i])
+            ):
+                return None  # the dot might be stripped as a leading dot
+            stem = _norm([*pieces[:i], piece[:k]])
+            suffix = _norm([piece[k:], *pieces[i + 1 :]])
+            return stem, suffix
+        return pieces, ()
+
 
 @dataclass(frozen=True)
 class Splice:
@@ -616,6 +641,21 @@ class PathExpr(_Cached):
                 )
         return out
 
+    @cached_property
+    def _direct(self) -> bool:
+        """No deferred head and no field whose text derives from a path, so
+        binding a parameter removes that parameter and no other."""
+        if isinstance(self.head, Deferred):
+            return False
+        for part in self.parts:
+            if isinstance(part, Seg):
+                for p in part.pieces:
+                    if isinstance(p, Field) and not isinstance(
+                        p.source, (Param, Const)
+                    ):
+                        return False
+        return True
+
     def required_params(self) -> set[str]:
         """Names of all parameters needed to resolve this expression."""
         return set(self.param_names)
@@ -698,7 +738,7 @@ class PathExpr(_Cached):
 
     def _parent(self) -> PathExpr:
         if self._last_seg() is not None:
-            return PathExpr(self.head, self.parts[:-1])
+            return _new(self.head, self.parts[:-1])
         if self._empty_static():
             return self
         h = self.head
@@ -734,29 +774,7 @@ class PathExpr(_Cached):
     def _suffix_split(self) -> tuple[tuple[Piece, ...], tuple[Piece, ...]] | None:
         """Split the last segment into (stem, suffix) pieces when statically decidable."""
         seg = self._last_seg()
-        if seg is None:
-            return None
-        if seg.literal is not None:
-            p = PurePosixPath(seg.literal)
-            suffix = p.suffix
-            return _norm([p.stem]), _norm([suffix])
-        pieces = seg.pieces
-        for i in range(len(pieces) - 1, -1, -1):
-            piece = pieces[i]
-            if not _may_contain_dot(piece):
-                continue
-            if isinstance(piece, Field):
-                return None  # the deciding dot may come from a value
-            k = piece.rfind(".")
-            if not (
-                any(c != "." for c in piece[:k])
-                or any(_guarantees_nondot(q) for q in pieces[:i])
-            ):
-                return None  # the dot might be stripped as a leading dot
-            stem = _norm([*pieces[:i], piece[:k]])
-            suffix = _norm([piece[k:], *pieces[i + 1 :]])
-            return stem, suffix
-        return pieces, ()
+        return None if seg is None else seg.suffix_split
 
     @property
     def suffix(self) -> Text:
@@ -820,7 +838,7 @@ class PathExpr(_Cached):
         split = self._suffix_split()
         if split is not None:
             stem, _ = split
-            return PathExpr(self.head, self.parts[:-1] + (Seg(_norm([*stem, suffix])),))
+            return _new(self.head, self.parts[:-1] + (Seg(_norm([*stem, suffix])),))
         if self._empty_static():
             raise PathOperationError(f"{self.pattern!r} has an empty name")
         return PathExpr(Deferred("with_suffix", self, suffix))
@@ -1015,7 +1033,7 @@ def _derived(result: PathExpr, op: str, args: tuple[Any, ...]) -> PathExpr:
     copied, keeping its cached state, so no shared expression is changed.
     """
     d = _new_tuple(Derivation, (op, args))
-    if result.derivation is None and op != "bind":
+    if result.derivation is None:
         for a in args:
             if a is result:
                 break
@@ -1084,14 +1102,43 @@ def _fstring_error() -> TypeError:
     )
 
 
+def _new(
+    head: Head, parts: tuple[Part, ...], params: dict[str, Param] | None = None
+) -> PathExpr:
+    """A PathExpr built without the dataclass ``__init__`` (construction is
+    hot), with its parameter table when the caller already knows it."""
+    e = object.__new__(PathExpr)
+    d = e.__dict__
+    d["head"] = head
+    d["parts"] = parts
+    if params is not None:
+        d["params"] = params
+        d["param_names"] = frozenset(params)
+    return e
+
+
+# Parsed literal paths: the anchor and the segments. Segments are immutable
+# and their cached properties are pure, so expressions can share them.
+_LITERALS: dict[str, tuple[str, tuple[Seg, ...]]] = {}
+
+
 def _literal_expr(s: str) -> PathExpr:
-    if has_marker(s):
-        raise _fstring_error()
-    p = PurePosixPath(s)
-    anchor = p.anchor
-    names = p.parts[1:] if anchor else p.parts
-    head: Head = Root(anchor) if anchor else REL
-    return PathExpr(head, tuple(Seg((n,)) for n in names))
+    hit = _LITERALS.get(s)
+    if hit is None:
+        if has_marker(s):
+            raise _fstring_error()
+        p = PurePosixPath(s)
+        anchor = p.anchor
+        names = p.parts[1:] if anchor else p.parts
+        hit = (anchor, tuple(Seg((n,)) for n in names))
+        if len(_LITERALS) >= _CACHE_SIZE:
+            _LITERALS.clear()
+        _LITERALS[s] = hit
+    anchor, segs = hit
+    return _new(Root(anchor) if anchor else REL, segs, {})
+
+
+_CACHE_SIZE = 4096
 
 
 def _param_expr(p: Param, *, at_head: bool) -> PathExpr:
@@ -1099,10 +1146,10 @@ def _param_expr(p: Param, *, at_head: bool) -> PathExpr:
     if kind is Kind.AUTO:
         kind = Kind.PATH if at_head else Kind.SEGMENT
     if kind in (Kind.PATH, Kind.ABSOLUTE):
-        return PathExpr(HeadParam(p))
+        return _new(HeadParam(p), (), {p.name: p})
     if kind is Kind.SEGMENT:
-        return PathExpr(REL, (Seg((Field(p, role="segment"),)),))
-    return PathExpr(REL, (Splice(p),))
+        return _new(REL, (Seg((Field(p, role="segment"),)),), {p.name: p})
+    return _new(REL, (Splice(p),), {p.name: p})
 
 
 def _coerce(x: Any, *, at_head: bool) -> PathExpr:
@@ -1134,14 +1181,14 @@ def _head_param(h: Deferred) -> Param | None:
 def _join(left: PathExpr, right: PathExpr) -> PathExpr:
     h = right.head
     if isinstance(h, _Rel):
-        out = PathExpr(left.head, left.parts + right.parts)
+        out = _new(left.head, left.parts + right.parts)
     elif isinstance(left.head, _Rel) and not left.parts:
         return right  # "." is the identity for joins
     elif isinstance(h, Root):
         return right
     elif isinstance(h, HeadParam) and h.param.kind is Kind.AUTO:
         seg = Seg((Field(h.param, role="segment"),))
-        out = PathExpr(left.head, left.parts + (seg,) + right.parts)
+        out = _new(left.head, left.parts + (seg,) + right.parts)
     elif isinstance(h, HeadParam) and h.param.kind is Kind.ABSOLUTE:
         return right
     elif isinstance(h, Deferred) and (p := _head_param(h)) is not None:
@@ -1157,7 +1204,12 @@ def _join(left: PathExpr, right: PathExpr) -> PathExpr:
     # Concatenation: merge the operands' cached parameter tables instead of
     # re-walking the tree (this also surfaces declaration conflicts now).
     merged = dict(left.params)
-    for name, p in right.params.items():
+    rp = right.params
+    if not rp and not isinstance(h, HeadParam):
+        out.__dict__["params"] = merged
+        out.__dict__["param_names"] = left.param_names
+        return out
+    for name, p in rp.items():
         prev = merged.setdefault(name, p)
         if prev != p:
             raise ParamConflictError(
@@ -1232,7 +1284,41 @@ def _interp_pieces(interp: Interpolation) -> list[Piece]:
     return [s]
 
 
+# Built templates by structure: a t-string's strings and, for each
+# interpolation, the type and value (a Param, str or int only: values whose
+# equality decides their formatting), conversion and spec. Specs that refer
+# to a Param by marker are not cached: the marker names an object, not a value.
+_TEMPLATES: dict[tuple[Any, ...], tuple[Head, tuple[Part, ...], dict[str, Param]]] = {}
+_CACHEABLE = (Param, str, int)
+
+
+def _template_key(t: Template) -> tuple[Any, ...] | None:
+    key: list[Any] = [t.strings]
+    for i in t.interpolations:
+        v = i.value
+        tv = type(v)
+        if tv not in _CACHEABLE or "\x00" in i.format_spec:
+            return None
+        key.append((tv, v, i.conversion, i.format_spec))
+    return tuple(key)
+
+
 def _from_template(t: Template) -> PathExpr:
+    key = _template_key(t)
+    if key is not None:
+        hit = _TEMPLATES.get(key)
+        if hit is not None:
+            head, parts, params = hit
+            return _new(head, parts, dict(params))
+    expr = _build_template(t)
+    if key is not None and not isinstance(expr.head, Deferred):
+        if len(_TEMPLATES) >= _CACHE_SIZE:
+            _TEMPLATES.clear()
+        _TEMPLATES[key] = (expr.head, expr.parts, expr.params)
+    return expr
+
+
+def _build_template(t: Template) -> PathExpr:
     segments: list[list[str | Interpolation]] = [[]]
     anchor = ""
     for idx, item in enumerate(t):
@@ -1423,8 +1509,11 @@ def _make_env(mapping: Mapping[Any, Any] | None, kw: dict[str, Any]) -> dict[str
     return env
 
 
+_SYMBOLIC = (PathExpr, Text, Param, Template)
+
+
 def _is_symbolic(v: Any) -> bool:
-    return isinstance(v, (PathExpr, Text, Param, Template))
+    return isinstance(v, _SYMBOLIC)
 
 
 def _check_missing(names: frozenset[str], env: Mapping[str, Any]) -> None:
@@ -1671,10 +1760,10 @@ def _bind_head(h: Head, env: Mapping[str, Any]) -> PathExpr:
     raise AssertionError(h.op)  # pragma: no cover
 
 
-def _bind_part(part: Part, env: Mapping[str, Any]) -> PathExpr:
+def _bound_parts(part: Part, env: Mapping[str, Any]) -> tuple[Part, ...]:
     if isinstance(part, Seg):
         if not (part.param_names & env.keys()):
-            return PathExpr(REL, (part,))
+            return (part,)
         pieces = _bind_pieces(part.pieces, env)
         if len(pieces) == 1 and isinstance(pieces[0], str):
             check_seg(pieces[0])
@@ -1684,13 +1773,13 @@ def _bind_part(part: Part, env: Mapping[str, Any]) -> PathExpr:
                 )
         elif not pieces:
             check_seg("")
-        return PathExpr(REL, (Seg(pieces),))
+        return (Seg(pieces),)
     p = part.param
     if p.name not in env:
-        return PathExpr(REL, (part,))
+        return (part,)
     v = env[p.name]
     if isinstance(v, Param):
-        return PathExpr(REL, (Splice(v),))
+        return (Splice(v),)
     if isinstance(v, Template):
         v = _from_template(v)
     if isinstance(v, PathExpr):
@@ -1698,14 +1787,37 @@ def _bind_part(part: Part, env: Mapping[str, Any]) -> PathExpr:
             raise InvalidBindingError(
                 f"{p.name!r} must be bound to a relative path, got {v!r}"
             )
-        return v
-    return PathExpr(REL, tuple(Seg((s,)) for s in splice_value(p, v)))
+        return v.parts
+    return tuple(Seg((s,)) for s in splice_value(p, v))
 
 
 def _bind_expr(e: PathExpr, env: Mapping[str, Any]) -> PathExpr:
     if not (e.param_names & env.keys()):
         return e
     out = _bind_head(e.head, env)
+    # Every bound part is relative, so joining it is concatenation: collect
+    # the parts and build once.
+    parts = list(out.parts)
+    keys = env.keys()
     for part in e.parts:
-        out = _join(out, _bind_part(part, env))
-    return out
+        if (
+            part.param_names & keys
+            if isinstance(part, Seg)
+            else part.param.name in keys
+        ):
+            parts.extend(_bound_parts(part, env))
+        else:
+            parts.append(part)
+    if e._direct:
+        for v in env.values():
+            if isinstance(v, _SYMBOLIC):
+                break
+        else:
+            # Concrete values add no parameters, and in an expression without
+            # derived text or deferred operations no other parameter can
+            # fold away, so the table is the old one without them.
+            params = {k: p for k, p in e.params.items() if k not in env}
+            return _new(out.head, tuple(parts), params)
+    result = _new(out.head, tuple(parts))
+    result.params  # noqa: B018 - surface declaration conflicts now
+    return result

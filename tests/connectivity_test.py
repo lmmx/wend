@@ -3,7 +3,7 @@
 import pickle
 
 import pytest
-from contract_test import ANY, ROOT, SEG, SUB, build, terms
+from contract_test import ANY, ROOT, SEG, SUB, build, envs, terms
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
@@ -190,3 +190,20 @@ def test_a_join_is_its_base_joined_with_its_base_rel(term, param):
         assert joined.base is left
         assert joined.base / joined.base_rel == joined
         assert joined.rebase(left) == joined
+
+
+@settings(max_examples=400, deadline=None)
+@given(terms, envs)
+def test_bound_and_joined_parameter_tables_equal_a_fresh_walk(term, env):
+    """Construction and bind keep parameter tables without re-walking the
+    expression; they must equal the table a fresh walk computes."""
+    from wend._expr import PathExpr
+
+    e = _try_build(term)
+    if e is None:
+        return
+    for x in (e, _outcome(lambda: e.bind(env))[1]):
+        if isinstance(x, PathExpr):
+            fresh = PathExpr(x.head, x.parts)
+            assert x.params == fresh.params, term
+            assert x.param_names == fresh.param_names, term

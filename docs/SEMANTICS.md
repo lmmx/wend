@@ -95,7 +95,7 @@ Let `v` be the bound value. Declared `type` and `choices` are checked against
 - for `SEGMENT`: the same for `str` and `os.PathLike`. `bytes` are invalid.
   Any other value is formatted as an f-string formats `{v}`, so `3` gives
   `"3"` and `None` gives `"None"` (a declared `type=` rejects values you do
-  not expect). A format call that raises makes the binding invalid.
+  not expect). A format call that fails makes the binding invalid (§4).
 
 Text containing NUL is invalid. No path can contain NUL, so the rule
 applies to literal text too: a literal path, template text, name, stem or
@@ -191,8 +191,12 @@ pathlib. A segment is one of:
   - a spec may contain nested parameters (`{x:0{w}d}`). Each is checked
     against its declaration and replaced by `format(w, "")`. A spec with no
     nested parameter is *static*;
-  - the field's text is `format(convert(v, c), s)`, and a `format` call that
-    raises makes the binding invalid;
+  - the field's text is `format(convert(v, c), s)`. A `format` call *fails*
+    when it raises `TypeError`, `ValueError` or an `ArithmeticError`, such
+    as the `OverflowError` of `{n:c}` with `n=-1` or of `{n:f}` with
+    `n=10**400`. A failing call, for a field or for a nested spec
+    parameter, makes the binding invalid; any other exception (from a
+    value's own `__format__`, say) propagates;
   - the text must contain neither `/` nor NUL;
   - an *integer-formatted* field (no conversion, a static spec, and a
     presentation type of `b`, `d`, `o`, `x` or `X`, or no presentation type
@@ -265,19 +269,64 @@ wend's obligations, for every expression `e` and environment `env`:
 
 - **Soundness:** every returned binding renders to the path.
 - **Completeness:** every binding that renders to the path appears in the
-  result (up to `limit`). Field values are parsed as the parameter's declared
-  `type`, or the type the format spec implies (`d` → `int`, `f` → `float`,
-  otherwise `str`). An untyped field whose spec zero-pads like a number (the
-  `0` flag before a width, with no alignment and no presentation type, as in
-  `{u:05}`) is read both as `str` and as `int`. `format` fills a `str` with
-  `0` on the right and an `int` with `0` after its sign, so `00005` reads as
-  `"00005"` and `5`, and `ab000` as `"ab"`, `"ab0"`, `"ab00"` and `"ab000"`.
+  result (up to `limit`), with the *limits* below. Field values are parsed
+  as the parameter's declared `type`, or as the types its format spec
+  implies:
+  - a presentation type implies one: `s` → `str`; `b`, `c`, `d`, `n`, `o`,
+    `x`, `X` → `int`; `e`, `E`, `f`, `F`, `g`, `G`, `%` → `float`;
+  - without one, the first of `str`, `int` and `float` that formats under
+    the spec. A `str` takes no sign, `z`, `#`, grouping or `=` alignment,
+    and an `int` no `z` or precision, so `{u}`, `{u:>5}` and `{u:.3}` read
+    `str`; `{u:+5}`, `{u:,}`, `{u:=5}`, `{u: }`, `{u:_}` and `{u:#}` read
+    `int`; `{u:z}` and `{u:+.3}` read `float`. Such a field reads what a
+    field declared with that type reads, where reading `str` would find
+    nothing.
+  - The exception: an untyped field whose spec zero-pads like a number (the
+    `0` flag before a width, with no alignment, precision or presentation
+    type, as in `{u:05}`) is read both as `str` and as `int`. `format` fills
+    a `str` with `0` on the right and an `int` with `0` after its sign, so
+    `00005` reads as `"00005"` and `5`, and `ab000` as `"ab"`, `"ab0"`,
+    `"ab00"` and `"ab000"`.
+- **Declared types:** a field reads values of exactly its declared type: an
+  `int` field does not read `True`, although `{n:d}` renders it as `1`.
+  (Under `!r` and `!a` it reads the literal the text spells, if the declared
+  type accepts it: `{n!r}` reads `False` for an `int` field.) A `bool`
+  formats as `True` or `False` under the empty spec and as the number `1` or
+  `0` under any other, so a `bool` field reads `True` and `False` from those
+  texts. An `int` or a `bool` formats under a float presentation type (`e`,
+  `f`, `g`, `%`, ...) as the float it converts to, and is read from it.
+  Under `!s`, a declared type reads each value whose `str` is the text:
+  `int(text)`, `float(text)` or `T(text)` for another type `T`, and `True` or
+  `False` for `bool`.
 - **Padding:** a field padded to its width is read with every number of fill
   characters that `format` could have added, from none to the whole run on
   the padded side (both sides for `^`, after the sign for `=`). A value may
   itself begin or end with the fill character: `{u:x<5}` reads `abxxx` as
   `"ab"`, `"abx"`, `"abxx"` and `"abxxx"`, and `{n:->4d}` reads `---5` as `5`
   and `-5`.
+- **Limits:** completeness does not hold where formatting discards part of
+  a value, so that a field's text has more preimages than its readings:
+  infinitely many, or more than one value of the type represents. Soundness
+  still holds there: every returned binding is verified by rendering.
+  - A precision truncates a `str`: `{u:.3}` renders `abc` for every `u` that
+    starts with `abc`. The field reads its text, `"abc"`, alone.
+  - A float presentation type (`e`, `f`, `g`, `%`, ...) rounds: `{x:.1f}`
+    renders `0.5` for every float from about `0.45` to `0.55`. The field
+    reads `float(text)` alone, and an `int` field the integer of that float:
+    `{n:.1e}` renders `1234` as `1.2e+03`, read as `1200` alone. Floats an
+    untyped spec implies (`{u:+.3}`) are read the same way.
+  - An untyped field reads only the types its spec implies (above), so a
+    float that renders under an untyped spec that implies `str` or `int` is
+    not read: `{u:05}` renders `5.0` as `005.0`, read as `"005.0"` and
+    `"005."` only, and `{u:+}` renders it as `+5.0`, read as nothing.
+  - `n` writes the current locale's separators. Its text is read as if
+    they were `,` or `_`, or there were none, as in the default C locale.
+  - `!r` and `!a` are read with `ast.literal_eval`, so a value whose repr is
+    no literal (`inf`, `nan`, most objects) is not read.
+
+  In these cases `match` may return one binding where several render to the
+  path, rather than raise `AmbiguousMatchError`: it reports ambiguity among
+  the readings, not among every preimage.
 - `match` returns the single binding, `None` if there is none, and raises
   `AmbiguousMatchError` if there are several.
 - **Defaults** play no part (§3.1). Every returned binding binds every
@@ -299,7 +348,7 @@ wend's obligations, for every expression `e` and environment `env`:
 | a path rendered with `Under(b)` declared is contained in `b`, and every contained rendering is returned unchanged (§10) | **by construction** (each render checks the rendered strings) and **tested** (Hypothesis, random terms and bases, interpreted and compiled) |
 | a union's readings of a path are exactly its alternatives' verified readings, and `match` reports one, none, or ambiguity accordingly (§11) | **by construction** (readings are the alternatives' `match_all`) and **tested** (Hypothesis, random pairs of terms) |
 | an inferred schema, declared with `from_inferred` or written out with `source()`, validates the tree it was inferred from (§12) | **tested** (Hypothesis, random trees with and without empty directories; real trees in the journal) |
-| matching completeness | **tested** (Hypothesis round trips; exhaustive enumeration over small domains) |
+| matching completeness, outside the limits of §7 | **tested** (Hypothesis round trips; exhaustive enumeration over small domains, which also checks that the limits return only verified bindings) |
 | compiled successes equal interpreted successes | **tested** |
 | Polars results equal `render` | **tested**, on the supported subset |
 | every observed path matches an inferred layout of its kind (file or directory), and the layouts' counts partition the observed paths of each kind | **by construction** (inference verifies each path against its layout and the counts per kind, and raises otherwise) and tested |

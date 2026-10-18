@@ -60,6 +60,13 @@ None
 None
 ```
 
+## Where to go
+
+- [Quickstart](getting-started/quickstart.md): build, render, match and glob one
+  expression, in about ten minutes.
+- [How wend works](concepts/index.md): the idea behind the library, and a map of the
+  concept pages.
+
 ## Install
 
 wend needs Python 3.14 or later.
@@ -67,6 +74,9 @@ wend needs Python 3.14 or later.
 ```sh
 pip install wend
 ```
+
+Until the next release, install from GitHub instead, as
+[Installation](getting-started/installation.md) explains.
 
 The optional integrations are extras: `wend[pydantic]` for path fields on Pydantic
 models, `wend[fsspec]` for object stores, and `wend[polars]` for resolving whole columns

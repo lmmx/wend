@@ -7,6 +7,7 @@ already handle pathlib's `ValueError` keep working.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 
@@ -46,9 +47,9 @@ class NotInvertibleError(WendError):
 class AmbiguousMatchError(WendError, ValueError):
     """A concrete path matches the expression with more than one set of bindings."""
 
-    def __init__(self, path: str, candidates: list[dict[str, Any]]) -> None:
+    def __init__(self, path: str, candidates: Sequence[Mapping[str, Any]]) -> None:
         self.path = path
-        self.candidates = candidates
+        self.candidates = list(candidates)
         shown = ", ".join(repr(c) for c in candidates[:3])
         more = "" if len(candidates) <= 3 else f" (+{len(candidates) - 3} more)"
         super().__init__(
@@ -97,3 +98,18 @@ class ContainmentError(ConditionError, InvalidBindingError):
     Raised by `render` when the bindings take the path lexically outside the
     base, and by `check` when it resolves outside it through symlinks.
     """
+
+
+class NoAlternativeError(ConditionError, FileNotFoundError):
+    """No alternative of a union exists (or meets its preconditions).
+
+    ``tried`` lists each rendered alternative with the condition error that
+    ruled it out, in order.
+    """
+
+    def __init__(self, tried: list[tuple[str, ConditionError]]) -> None:
+        self.tried = tried
+        self.path = tried[0][0] if tried else ""
+        self.condition = None
+        shown = ", ".join(f"{s!r} ({e.condition!r})" for s, e in tried)
+        super(ConditionError, self).__init__(f"No alternative qualifies: tried {shown}")

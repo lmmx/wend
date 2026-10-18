@@ -35,7 +35,7 @@ from dataclasses import dataclass, fields
 from functools import cached_property
 from pathlib import Path, PurePosixPath
 from string.templatelib import Interpolation, Template
-from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
+from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, overload
 
 from . import _spec
 from ._params import MARKER_RE, Kind, Param, has_marker, lookup_marker
@@ -49,7 +49,9 @@ from .errors import (
 
 
 if TYPE_CHECKING:
+    from ._union import PathUnion
     from .conditions import Conditions
+    from .query import Query
 
 
 # ---------------------------------------------------------------------------
@@ -415,7 +417,17 @@ class PathExpr(_Cached):
 
     # -- construction -------------------------------------------------------
 
-    def __truediv__(self, other: Any) -> PathExpr:
+    @overload
+    def __truediv__(self, other: PathUnion) -> PathUnion: ...
+    @overload
+    def __truediv__(
+        self, other: str | os.PathLike[str] | Param | PathExpr | Text | Template
+    ) -> PathExpr: ...
+    def __truediv__(self, other: Any) -> Any:
+        if _is_alternation(other):
+            from ._union import union
+
+            return union((self,)) / other
         if self.conditions is not None:
             from .conditions import declares_file
 
@@ -439,6 +451,37 @@ class PathExpr(_Cached):
         for o in others:
             out = out / o
         return out
+
+    # -- unions and queries (§11) -------------------------------------------
+
+    def __or__(self, other: Any) -> PathUnion:
+        """The union of this path and ``other``: ``a | b`` (§11)."""
+        from ._union import union
+
+        return union((self, other))
+
+    def __ror__(self, other: Any) -> PathUnion:
+        from ._union import union
+
+        return union((other, self))
+
+    def __sub__(self, other: Any) -> Query:
+        """A query for the paths this one finds that ``other`` does not match."""
+        from .query import Query
+
+        return Query(self) - other
+
+    def __and__(self, other: Any) -> Query:
+        """A query for the paths this one finds that ``other`` also matches."""
+        from .query import Query
+
+        return Query(self) & other
+
+    def where(self, *predicates: Any) -> Query:
+        """A query for the paths this one finds for which every predicate holds."""
+        from .query import Query
+
+        return Query(self).where(*predicates)
 
     # -- connectivity (§9) ----------------------------------------------------
 
@@ -1144,6 +1187,21 @@ def _split_spec(spec: str) -> tuple[str | Param, ...]:
     return tuple(out)
 
 
+# Set by ._union when it is imported (as wend's __init__ does): the types that
+# offer alternatives, and the test for a t-string holding them (§11).
+_ALTERNATIVES: tuple[type, ...] = ()
+_has_alternatives: Any = None
+
+
+def _is_alternation(x: Any) -> bool:
+    """A union, or a t-string offering alternatives (§11)."""
+    if isinstance(x, (str, PathExpr, Param)):
+        return False
+    if isinstance(x, Template):
+        return _has_alternatives is not None and _has_alternatives(x)
+    return isinstance(x, _ALTERNATIVES)
+
+
 def _interp_pieces(interp: Interpolation) -> list[Piece]:
     v = interp.value
     conv = interp.conversion
@@ -1154,6 +1212,11 @@ def _interp_pieces(interp: Interpolation) -> list[Piece]:
         if conv is None and not spec:
             return list(v.pieces)
         return [Field(v, conv, spec)]
+    if isinstance(v, _ALTERNATIVES):
+        raise TypeError(
+            f"{interp.expression!r} offers alternatives: build the union with"
+            " U(t'...') or '|', not T() or a name"
+        )
     if isinstance(v, (PathExpr, Template)):
         raise TypeError(
             f"Cannot interpolate a path inside a segment ({interp.expression!r}); "

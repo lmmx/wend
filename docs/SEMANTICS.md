@@ -28,8 +28,9 @@ Decisions this version adopts, provisional until ratification:
 - matching raises rather than choosing between readings (§7).
 
 `glob`'s symlink policy is a traversal policy documented on `glob`, outside this
-contract. This version adds connectivity (§9) and conditions (§10). Later versions are expected to
-extend the contract for union expressions and Windows path flavours.
+contract. This version adds connectivity (§9), conditions (§10) and unions
+and queries (§11). A later version is expected to extend the contract for
+Windows path flavours.
 
 ## 1. Terms
 
@@ -46,6 +47,7 @@ An expression is built from these terms:
 | `name(a)`, `stem(a)`, `suffix(a)` | properties; these yield strings, not paths |
 | `child`, `under`, `sibling(a, n)`, `cousin(a, p, *names)`, `rebase` | the methods of the same names, defined in §9 by `parent` and `/` |
 | `requires(a, *cs)`, `ensures(a, *cs)` | the methods of the same names; they denote `a` and declare conditions (§10) |
+| union `a₁ \| … \| aₙ` | `\|`, `U(...)`, `U(t"...{Alt(...)}...")`; not an expression, an ordered set of them (§11) |
 
 ## 2. Position of a parameter operand
 
@@ -214,6 +216,7 @@ wend's obligations, for every expression `e` and environment `env`:
 | `rebase(old, new)` equals building the expression afresh with `new` in place of `old` (§9) | **tested** (Hypothesis, random terms and substitutions) |
 | a join equals its `base` joined with its `base_rel` | **tested** |
 | a path rendered with `Under(b)` declared is contained in `b`, and every contained rendering is returned unchanged (§10) | **by construction** (each render checks the rendered strings) and **tested** (Hypothesis, random terms and bases, interpreted and compiled) |
+| a union's readings of a path are exactly its alternatives' verified readings, and `match` reports one, none, or ambiguity accordingly (§11) | **by construction** (readings are the alternatives' `match_all`) and **tested** (Hypothesis, random pairs of terms) |
 | matching completeness | **tested** (Hypothesis round trips; exhaustive enumeration over small domains) |
 | compiled successes equal interpreted successes | **tested** |
 | Polars results equal `render` | **tested**, on the supported subset |
@@ -313,3 +316,62 @@ Checks describe the filesystem at the moment they run. They are not atomic
 with any later use of the path, and `access` reports the real user's
 permissions. Like `glob`'s symlink policy, they catch mistakes and state
 intent; they are not a sandbox.
+
+## 11. Unions and queries
+
+A **union** `u = a₁ | … | aₙ` is an ordered, non-empty sequence of
+expressions without repeats (equal alternatives keep the first). `|` and
+`U(...)` flatten unions. Each alternative is an ordinary expression: unions
+live outside the normal form, so every rule above applies to each alternative
+unchanged.
+
+**Alternatives in a t-string.** In a t-string given to `U`, an interpolation
+`Alt(o₁, …, oₘ)` stands for `m` templates, one per option, with the option
+spliced in place as text (a str), as a template (a t-string, which may hold
+further alternatives), or as a parameter field. An interpolation whose value
+is a union stands for one template per alternative, each joining that
+alternative like any interpolated path. A template with several such
+interpolations stands for the product of their options, the leftmost varying
+slowest. Only `U`, `|`, and `/` with a union or with such a t-string produce
+unions. `Alt` and union values are errors in `T`, `P`, names and suffixes.
+
+**Operations distribute.** For a path operation `op` (`/` on either side,
+`joinpath`, `child`, `under`, `parent`, `with_name`, `with_suffix`,
+`with_stem`, `relative_to`, `bind`, `requires`, `ensures`):
+`op(u) = U(op(a₁), …, op(aₙ))`. An operation error in any alternative is the
+union's error. `u / v` for two unions is the product `U(aᵢ / bⱼ)` in order.
+
+**Rendering.** A union with one alternative renders as that alternative. With
+more, `render` is an operation error, because no single path is meant.
+`renderings(u, env)` is the tuple of the alternatives' renderings, failing as
+soon as one does. `first(u, env)` is an effect: it renders every alternative
+(a rendering error is an error, not a reason to skip one) and returns the
+first whose path exists and meets its own `requires`, checked as in §10. If
+none qualifies, it is a no-alternative error listing what was tried.
+
+**Matching.** The readings of a path `s` by `u` are the pairs `(i, env)` for
+every verified reading `env` of `s` by `aᵢ` (§7). `match` returns the only
+reading, with its alternative. It returns nothing when there are none, and is
+an ambiguity error when there are several, whether one alternative or two
+produced them. As in §7, wend does not choose between readings: alternatives
+that overlap are disambiguated by declaring a field's `type` or `choices`.
+
+**Discovery.** `glob(u)` yields, in path order, every path some alternative's
+`glob` finds, with its reading. A path that two alternatives find is an
+ambiguity error.
+
+**Queries.** A query is a source (an expression or a union) with filters.
+- `q - x` admits a path when `x` has no reading of it.
+- `q & x` admits a path when `x` has exactly one reading of it that agrees
+  with the bindings so far (two agreeing readings are an ambiguity error). It
+  adds that reading's bindings.
+- `q.where(p…)` admits a path when every predicate holds:
+  - a condition holds when §10's check passes;
+  - a filesystem predicate (`modified_after`, `larger_than`, ...) holds when
+  the stat it makes satisfies it;
+  - a callable holds when it returns true for the match.
+
+Filters form a conjunction, so their order does not change which paths are
+admitted. wend evaluates pattern filters first, then callables, then
+predicates that touch the filesystem. `glob(q)` streams the source's results
+through the filters. `match(q, s)` applies them to the source's reading of `s`.

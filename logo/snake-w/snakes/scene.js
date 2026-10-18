@@ -171,7 +171,10 @@ function unbake(baked, params, lines) {
     positions: dec(h.positions, Float32Array), normals: dec(h.normals, Float32Array), indices: dec(h.indices, Uint32Array), balls: h.balls }]));
 }
 
-export function createScene(canvas, params, look = LOOK, { still = false, bakedHeads = null } = {}) {
+// `body` (optional): { yellow, blue } strands in the shape centrelines() returns them (pts, r,
+// head, s, and mate/mateS/mateW for the press), used instead of the centreline model, so
+// another body representation can be rendered through this scene unchanged
+export function createScene(canvas, params, look = LOOK, { still = false, bakedHeads = null, body = null } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: still, alpha: false });
   renderer.toneMapping = { none: THREE.NoToneMapping, neutral: THREE.NeutralToneMapping, agx: THREE.AgXToneMapping, aces: THREE.ACESFilmicToneMapping }[look.toneMapping];
   renderer.toneMappingExposure = look.exposure;
@@ -187,7 +190,7 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
   camera.up.set(0, 1, 0);
   camera.lookAt(target);
 
-  const lines = centrelines(params);
+  const lines = body ? { ...centrelines(params), ...body } : centrelines(params);
   const baked = unbake(bakedHeads, params, lines);
   // with head cones, each head and its neck are a separate smooth surface (head.js), and
   // the tube takes over from the neck at `join`, starting with a round cap inside it

@@ -269,3 +269,25 @@ def test_parameters_inside_format_specs_are_checked():
     with pytest.raises(InvalidBindingError):
         e.render(n=7, w="3")  # w is declared int, even inside a spec
     assert e.bind(w=3).match("c007") == {"n": 7}  # binding w folds the spec
+
+
+def test_no_literal_text_contains_nul():
+    # §3: no path can contain NUL, whether written literally or bound.
+    from wend import SubPath
+
+    s = SubPath("s")
+    for build in (
+        lambda: P("a\x00"),
+        lambda: P("/b") / "x\x00",
+        lambda: T(t"a\x00{s}"),
+        lambda: P("/b/a.txt").with_name("x\x00"),
+        lambda: P("/b/a.txt").with_stem("x\x00"),
+        lambda: (P("/b") / s).with_stem("x\x00"),
+        lambda: P("/b/a.txt").with_suffix(".x\x00"),
+        lambda: P("/b/a").sibling("n\x00"),
+        lambda: P("/b/a").cousin("../x\x00"),
+    ):
+        with pytest.raises(PathOperationError):
+            build()
+    with pytest.raises(InvalidBindingError):
+        (P("/b") / Param("x")).render(x="a\x00")

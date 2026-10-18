@@ -29,8 +29,8 @@ Decisions this version adopts, provisional until ratification:
 
 `glob`'s symlink policy is a traversal policy documented on `glob`, outside this
 contract. This version adds connectivity (§9), conditions (§10), unions
-and queries (§11), and schemas (§12). A later version is expected to extend
-the contract for Windows path flavours.
+and queries (§11), schemas (§12) and lineage (§13). A later version is
+expected to extend the contract for Windows path flavours.
 
 ## 1. Terms
 
@@ -47,6 +47,7 @@ An expression is built from these terms:
 | `name(a)`, `stem(a)`, `suffix(a)` | properties; these yield strings, not paths |
 | `child`, `under`, `sibling(a, n)`, `cousin(a, p, *names)`, `rebase` | the methods of the same names, defined in §9 by `parent` and `/` |
 | `requires(a, *cs)`, `ensures(a, *cs)` | the methods of the same names; they denote `a` and declare conditions (§10) |
+| `tag(a, **kw)` | the method of the same name; it denotes `a` and attaches tags (§13) |
 | union `a₁ \| … \| aₙ` | `\|`, `U(...)`, `U(t"...{Alt(...)}...")`; not an expression, an ordered set of them (§11) |
 
 ## 2. Position of a parameter operand
@@ -440,3 +441,44 @@ skipped when one has none.
 as Python that rebuilds the same entries. An inferred schema's declaration
 validates the tree it was inferred from wherever each layout's paths have the
 layout's kind (#51 tracks the exception).
+
+## 13. Lineage
+
+**Tags.** `tag(e, **kw)` denotes `e`. Tags are metadata, as conditions are
+(§10): outside equality and hashing, kept by `bind` and `rebase`, and absent
+from every other operation's result. The tags *of* an expression in the
+lineage sense, `lineage.tags(e)`, are the union of the tags on every expression
+in `e`'s derivation (§9), sources first, so a nearer expression's tag wins.
+
+**Lineage of expressions** is the derivation (§9):
+- `upstream(e)` is every expression the derivation reaches, sources first,
+  each listed once;
+- `explain(e)` writes each recorded operation out.
+
+Both are pure.
+
+**Lineage of artefacts** is an append-only ledger of records. A record says
+that path `o` was made from paths `i₁ … iₙ` by an operation, with the
+bindings, tags and content digests at that time. Paths are made absolute and
+normalised, and a path's latest record is its provenance.
+- `upstream(o)` follows provenance from `o` to its inputs, transitively.
+- `downstream(i)` follows it from `i` to the paths made from it, using each
+  path's latest record.
+- `stale(o)` lists the inputs of `o`'s provenance that are missing now, or
+  whose current digest differs from the recorded one. It does not recurse:
+  combine it with `downstream` for transitive invalidation.
+
+Recording and checking staleness read files, so they are effects.
+`Ledger.run(step, env)` runs a `Step` (§10). On success it records every path
+the step declares it creates, writes or deletes as made from the paths it
+declares it reads.
+
+**Content keys.**
+- `content_key(p₁ … pₙ)` is the first 16 hex digits of the SHA-256 of the
+  files' digests, in order. It is an effect.
+- `values_key(**v)` is the same of the values' canonical JSON, with keys
+  sorted. It is pure.
+
+A key is bound to an ordinary parameter, so `render` stays pure and `match`
+reads the key back. Whether a keyed path still names its inputs is a check
+done now: recompute the key and compare.

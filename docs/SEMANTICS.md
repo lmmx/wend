@@ -28,7 +28,7 @@ Decisions this version adopts, provisional until ratification:
 - matching raises rather than choosing between readings (§7).
 
 `glob`'s symlink policy is a traversal policy documented on `glob`, outside this
-contract. This version adds connectivity (§9). Later versions are expected to
+contract. This version adds connectivity (§9) and conditions (§10). Later versions are expected to
 extend the contract for union expressions and Windows path flavours.
 
 ## 1. Terms
@@ -45,6 +45,7 @@ An expression is built from these terms:
 | `parent(a)`, `with_suffix(a, s)`, `with_name(a, n)`, `with_stem(a, s)`, `relative_to(a, b)` | the methods of the same names |
 | `name(a)`, `stem(a)`, `suffix(a)` | properties; these yield strings, not paths |
 | `child`, `under`, `sibling(a, n)`, `cousin(a, p, *names)`, `rebase` | the methods of the same names, defined in §9 by `parent` and `/` |
+| `requires(a, *cs)`, `ensures(a, *cs)` | the methods of the same names; they denote `a` and declare conditions (§10) |
 
 ## 2. Position of a parameter operand
 
@@ -212,6 +213,7 @@ wend's obligations, for every expression `e` and environment `env`:
 | below a literal base, no binding of an `AUTO`, `Segment` or `SubPath` parameter leads outside it, whatever operations the term applies | **tested** (Hypothesis, random terms) |
 | `rebase(old, new)` equals building the expression afresh with `new` in place of `old` (§9) | **tested** (Hypothesis, random terms and substitutions) |
 | a join equals its `base` joined with its `base_rel` | **tested** |
+| a path rendered with `Under(b)` declared is contained in `b`, and every contained rendering is returned unchanged (§10) | **by construction** (each render checks the rendered strings) and **tested** (Hypothesis, random terms and bases, interpreted and compiled) |
 | matching completeness | **tested** (Hypothesis round trips; exhaustive enumeration over small domains) |
 | compiled successes equal interpreted successes | **tested** |
 | Polars results equal `render` | **tested**, on the supported subset |
@@ -262,3 +264,52 @@ and rendering, matching and every obligation above ignore derivations.
   substituted expression afresh: rebasing a path moves its siblings, cousins
   and suffix variants with it. If `old` is not in `a`'s derivation, `old` must
   be a structural prefix of `a`, and the result is `new / relative_to(a, old)`.
+
+## 10. Conditions
+
+An expression may declare *conditions*: what its path must be when it is used
+(`requires`) and after it has been produced (`ensures`). Like a derivation,
+conditions are not part of the path an expression denotes. Expressions with
+different conditions compare and hash equal, and §6's obligations are about the
+path alone. Conditions only add failures:
+
+- `render(e.requires(Under(b)), env)` is `render(e, env)` if that path is
+  *contained* in `render(b, env)`. Otherwise it is a containment error (a
+  binding error). Every route that renders applies this: `resolve`, compiled
+  renderers, verification in `match` and `glob`, lenses, and `resolve_frame`.
+  `b`'s parameters must be among `e`'s.
+- A path `p` is contained in a base `q` when `p == q`, or when `p` and `q` have
+  the same anchor, `q`'s components are a prefix of `p`'s, and no component
+  after them is `..`. The rule is lexical and conservative: `/srv/a/../b` is not
+  contained in `/srv`.
+- Joining onto an expression declared `File` (in either phase) is an operation
+  error: nothing is below a file.
+- Declaring two conditions that cannot hold together in one phase (`Exists` and
+  `Absent`, `File` and `Dir`, `Absent` with `Readable` or `Listable`, `File` and
+  `Listable`) is an operation error.
+
+Conditions belong to the expression they are declared on. `bind` and `rebase`
+keep them, and pass each `Under` base through the same binding or rebasing.
+Every other operation's result has none, including an argument that an
+operation returns unchanged.
+
+Everything else is checked against the filesystem by an explicit step:
+`check(e, env)` for `requires`, `confirm(e, env)` for `ensures`, or a `Step`
+grouping several paths. Each step renders first, so containment is checked
+before anything is looked up, and raises the first condition that fails:
+
+| condition | holds when | otherwise |
+|---|---|---|
+| `Under(b)` | contained in `b`, and `realpath(p)` is `realpath(b)` or below it | containment error |
+| `Exists` | `stat(p)` succeeds (symlinks followed) | missing-path error |
+| `Absent` | `lstat(p)` fails: nothing at the name, not even a broken link | path-exists error |
+| `File` / `Dir` | `p` is missing, or is a regular file / a directory | wrong-kind error |
+| `Readable` | `p` exists and `access(p, R_OK)` | missing-path or capability error |
+| `Listable` | `p` is a directory and `access(p, R_OK \| X_OK)` | missing-path, wrong-kind or capability error |
+| `Writable` | `p` exists and `access(p, W_OK)` (with `X_OK` for a directory), or `p` is `Creatable` | capability error |
+| `Creatable` | `p` exists, or its nearest existing ancestor is a directory with `access(·, W_OK \| X_OK)` | capability error |
+
+Checks describe the filesystem at the moment they run. They are not atomic
+with any later use of the path, and `access` reports the real user's
+permissions. Like `glob`'s symlink policy, they catch mistakes and state
+intent; they are not a sandbox.

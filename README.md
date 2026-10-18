@@ -177,6 +177,49 @@ frag = P("cache") / "models"
 
 The rules are in [SEMANTICS.md §9](docs/SEMANTICS.md#9-connectivity).
 
+### Conditions
+
+A path can declare what it must be when it is used, and what a step promises
+about it afterwards (Future Paths [part 1](https://cog.spin.systems/future-paths-types)):
+
+```py
+from wend import Absent, Creatable, Exists, File, Readable, Step, Under
+
+name = Param("name")
+src = (P(root) / "raw" / T(t"{name}.csv")).requires(File, Exists, Readable)
+dst = (P(root) / "out" / T(t"{name}.parquet")).requires(Absent, Creatable)
+dst = dst.ensures(File, Exists)
+
+convert = Step(src=src, dst=dst)
+with convert(root="/data", name="a") as p:  # checks every precondition first
+    write(transform(read(p["src"])), p["dst"])
+# leaving the block checks the postconditions: dst now exists, as a file
+
+convert.effects()  # [<src: read {root}/raw/{name}.csv>, <dst: create {root}/out/{name}.parquet>]
+```
+
+Each failure is a typed `ConditionError`, and each subclass also derives from
+the matching builtin error:
+- `MissingPathError` is a `FileNotFoundError`;
+- `PathExistsError` is a `FileExistsError`;
+- `CapabilityError` is a `PermissionError`;
+- `WrongKindError` covers paths of the wrong kind.
+
+`e.check(...)` and `e.confirm(...)` check a single path.
+
+`render` stays pure. The one condition it enforces is `Under(base)`, lexically:
+a binding can't lead outside the base, through `..` or an absolute value.
+`check` also resolves symlinks:
+
+```py
+upload = (P(root) / AnyPath("rel")).requires(Under(P(root)))
+upload.render(root="/srv", rel="../etc/passwd")  # ContainmentError
+```
+
+`File` is a structural fact too: nothing can be joined below a path declared to
+be a file. Checks are point-in-time, not a sandbox: a path can change between
+`check` and `open`. The rules are in [SEMANTICS.md §10](docs/SEMANTICS.md#10-conditions).
+
 ### Discovery and lenses
 
 ```py
@@ -257,6 +300,7 @@ Layouts are ordinary expressions (`rename`, `match`, `under(root).glob()`, ...),
 - source-to-build mapping with staleness checks;
 - a project layout bound per environment;
 - untrusted input;
+- pipeline pre- and postconditions;
 - layout inference.
 
 ### Limitations
@@ -271,6 +315,9 @@ Layouts are ordinary expressions (`rename`, `match`, `under(root).glob()`, ...),
 - `glob` raises `AmbiguousMatchError` if any path it finds parses more than one way
   (`{stem}.{ext}` on `a.tar.gz`); constrain a field with `choices=` or `type=`.
 - `glob`'s symlink policy decides what it traverses; it is not a sandbox.
+- Conditions are checked at runtime, at the moment `check` runs; type checkers see a
+  plain `PathExpr`. [The conditions journal entry](docs/journal/2026-10-18-conditions-49.md)
+  records what static checking could add.
 - The Rust backend sketched in the blog series is not implemented; see the journal for
   what the measurements say a native backend would need to beat.
 

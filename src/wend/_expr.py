@@ -35,7 +35,7 @@ from dataclasses import dataclass, fields
 from functools import cached_property
 from pathlib import Path, PurePosixPath
 from string.templatelib import Interpolation, Template
-from typing import Any, ClassVar, NamedTuple
+from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
 
 from . import _spec
 from ._params import MARKER_RE, Kind, Param, has_marker, lookup_marker
@@ -46,6 +46,10 @@ from .errors import (
     ParamConflictError,
     PathOperationError,
 )
+
+
+if TYPE_CHECKING:
+    from .conditions import Conditions
 
 
 # ---------------------------------------------------------------------------
@@ -398,16 +402,28 @@ class PathExpr(_Cached):
     # How the expression was built (§9). Not a dataclass field: it takes no
     # part in construction, equality or hashing; operations set it per instance.
     derivation: ClassVar[Derivation | None] = None
+    # Declared conditions (§10), metadata like the derivation.
+    conditions: ClassVar[Conditions | None] = None
 
     def __getstate__(self) -> dict[str, Any]:
         state = super().__getstate__()
         if self.derivation is not None:
             state["derivation"] = self.derivation
+        if self.conditions is not None:
+            state["conditions"] = self.conditions
         return state
 
     # -- construction -------------------------------------------------------
 
     def __truediv__(self, other: Any) -> PathExpr:
+        if self.conditions is not None:
+            from .conditions import declares_file
+
+            if declares_file(self):
+                raise PathOperationError(
+                    f"{self.pattern!r} is declared a File: nothing can be"
+                    " joined below it"
+                )
         # §2: an operand joined onto the empty path is still at the head.
         empty = isinstance(self.head, _Rel) and not self.parts
         return _derived(
@@ -476,6 +492,38 @@ class PathExpr(_Cached):
         """Whether ``other`` is among the expressions this one was built from."""
         o = _coerce(other, at_head=True)
         return _rederive(self, o, o, {}) is not None
+
+    # -- conditions (§10) -----------------------------------------------------
+
+    def requires(self, *conditions: Any) -> PathExpr:
+        """This path, declaring conditions that must hold before it is used
+        (checked by `check`): ``e.requires(File, Exists, Readable)``. See
+        `wend.conditions`. The path, its equality and its derivation are
+        unchanged."""
+        from .conditions import declare
+
+        return declare(self, conditions, ())
+
+    def ensures(self, *conditions: Any) -> PathExpr:
+        """This path, declaring conditions that must hold after it has been
+        produced (checked by `confirm`): ``e.ensures(File, Exists)``."""
+        from .conditions import declare
+
+        return declare(self, (), conditions)
+
+    def check(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> Path:
+        """Render, check every precondition against the filesystem now, and
+        return the path. Raises a `ConditionError` for the first that fails."""
+        from .conditions import realise
+
+        return realise(self, _make_env(mapping, kw), after=False)
+
+    def confirm(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> Path:
+        """Render, check every postcondition against the filesystem now, and
+        return the path. Raises a `ConditionError` for the first that fails."""
+        from .conditions import realise
+
+        return realise(self, _make_env(mapping, kw), after=True)
 
     # -- introspection ------------------------------------------------------
 
@@ -571,7 +619,15 @@ class PathExpr(_Cached):
         return _combine(base, segs) if segs or base else "."
 
     def __repr__(self) -> str:
-        return f"PathExpr({self.pattern!r})"
+        c = self.conditions
+        if c is None:
+            return f"PathExpr({self.pattern!r})"
+        extra = "".join(
+            f", {label}=({', '.join(map(repr, cs))})"
+            for label, cs in (("requires", c.requires), ("ensures", c.ensures))
+            if cs
+        )
+        return f"PathExpr({self.pattern!r}{extra})"
 
     __str__ = __repr__
 
@@ -792,7 +848,12 @@ class PathExpr(_Cached):
         env = _make_env(mapping, kw)
         if not (self.param_names & env.keys()):
             return self
-        return _derived(_bind_expr(self, env), "bind", (self, env))
+        out = _derived(_bind_expr(self, env), "bind", (self, env))
+        if self.conditions is not None:
+            from .conditions import attach, moved
+
+            out = attach(out, moved(self.conditions, lambda b: b.bind(env)))
+        return out
 
     def rebase(self, *args: Any) -> PathExpr:
         """Move this path to a new base (§9).
@@ -810,11 +871,25 @@ class PathExpr(_Cached):
                     f"{self.pattern!r} was not built by joining onto a base;"
                     " use rebase(old, new)"
                 )
-            return _coerce(args[0], at_head=True) / d.args[1]
-        if len(args) != 2:
+            old, new = d.args[0], _coerce(args[0], at_head=True)
+            out = new / d.args[1]
+        elif len(args) == 2:
+            old = _coerce(args[0], at_head=True)
+            new = _coerce(args[1], at_head=True)
+            out = self._rebased(old, new)
+        else:
             raise TypeError(f"rebase() takes 1 or 2 arguments ({len(args)} given)")
-        old = _coerce(args[0], at_head=True)
-        new = _coerce(args[1], at_head=True)
+        if self.conditions is not None:
+            from .conditions import attach, moved
+
+            def move(b: PathExpr) -> PathExpr:
+                r = _rederive(b, old, new, {})
+                return b if r is None else r
+
+            out = attach(out, moved(self.conditions, move))
+        return out
+
+    def _rebased(self, old: PathExpr, new: PathExpr) -> PathExpr:
         redone = _rederive(self, old, new, {})
         if redone is not None:
             return redone
@@ -832,7 +907,12 @@ class PathExpr(_Cached):
         if any(_is_symbolic(v) for v in env.values()):
             return self.bind(env).render()
         _check_missing(self.param_names, env)
-        return _render_expr(self, env)
+        s = _render_expr(self, env)
+        if self.conditions is not None:
+            from .conditions import guard
+
+            return guard(self, s, env)
+        return s
 
     def resolve(
         self,
@@ -899,8 +979,13 @@ def _derived(result: PathExpr, op: str, args: tuple[Any, ...]) -> PathExpr:
         else:
             result.__dict__["derivation"] = d
             return result
-    out = object.__new__(PathExpr)
-    out.__dict__.update(result.__dict__)
+    if result.conditions is not None:
+        # Conditions belong to the expression they were declared on (§10),
+        # and cached state (the compiled renderer) depends on them.
+        out = PathExpr(result.head, result.parts)
+    else:
+        out = object.__new__(PathExpr)
+        out.__dict__.update(result.__dict__)
     out.__dict__["derivation"] = d
     return out
 

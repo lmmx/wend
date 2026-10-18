@@ -252,7 +252,31 @@ def to_polars(expr: X.PathExpr, schema: pl.Schema | None = None) -> pl.Expr:
 
 
 def resolve_frame(expr: X.PathExpr, df: pl.DataFrame | pl.LazyFrame) -> pl.Series:
-    """Validate every row of ``df`` and render ``expr`` for each, as a String Series."""
+    """Validate every row of ``df`` and render ``expr`` for each, as a String Series.
+
+    Declared ``Under`` conditions are checked on every row, as `render` checks
+    them (docs/SEMANTICS.md §10).
+    """
+    out = _resolve_frame(expr, df)
+    conds = expr.conditions
+    if conds is not None:
+        from .conditions import Under, contained
+        from .errors import ContainmentError
+
+        for base in conds.bases:
+            if base.param_names:
+                bs: Any = _resolve_frame(base, df)
+            else:
+                bs = [base.render()] * len(out)
+            for i, (s, b) in enumerate(zip(out, bs, strict=True)):
+                if not contained(s, b):
+                    raise ContainmentError(
+                        s, Under(base), f"is not under {b!r} (row {i})"
+                    )
+    return out
+
+
+def _resolve_frame(expr: X.PathExpr, df: pl.DataFrame | pl.LazyFrame) -> pl.Series:
     lazy = df.lazy()
     schema = lazy.collect_schema()
     missing = expr.param_names - set(schema.names())

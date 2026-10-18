@@ -208,14 +208,14 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
       heads[name] = (baked && !look.headParts && baked[name]) ||
         headSurface2(lines[name], params.head_profiles[i], nk, elev, { k: params.neck_blend ?? 12, parts: look.headParts || "both" });
       const st = lines[name], i0 = st.s.findIndex((x) => x >= nk.join_s - 2);
-      strands[name] = Object.fromEntries(Object.entries(st).map(([k, v]) => [k, v.slice(i0)]));
+      strands[name] = Object.fromEntries(Object.entries(st).map(([k, v]) => [k, Array.isArray(v) ? v.slice(i0) : v]));
     });
   } else if (params.head_cones) {
     ["yellow", "blue"].forEach((name, i) => {
       const cone = params.head_cones[i], join = cone.cut + (params.neck_join || 150);
       heads[name] = headSurface(lines[name], cone, elev, { join, k: look.headBlend });
       const st = lines[name], i0 = st.s.findIndex((x) => x >= join - 2);
-      strands[name] = Object.fromEntries(Object.entries(st).map(([k, v]) => [k, v.slice(i0)]));
+      strands[name] = Object.fromEntries(Object.entries(st).map(([k, v]) => [k, Array.isArray(v) ? v.slice(i0) : v]));
     });
   }
   const capHead = params.head_cones || params.head_profiles ? { ...look.head, snoutLen: 1, snoutQ: 2 } : look.head;

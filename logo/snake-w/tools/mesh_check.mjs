@@ -34,7 +34,7 @@ const inBox = (q) => !box || (q[0] >= box[0] && q[0] <= box[2] && q[1] >= box[1]
 const strands = {};
 ["yellow", "blue"].forEach((name, i) => {
   const st = body[name], nk = params.necks[i], i0 = st.s.findIndex((x) => x >= nk.join_s - 2);
-  strands[name] = Object.fromEntries(Object.entries(st).map(([k, v]) => [k, v.slice(i0)]));
+  strands[name] = Object.fromEntries(Object.entries(st).map(([k, v]) => [k, Array.isArray(v) ? v.slice(i0) : v]));
 });
 const tube = { head: { snoutLen: 1, snoutQ: 2, q: 2.4, wide: 1.06, flat: 0.96 }, ...(params.tube || {}) };
 if (tube.press) ["yellow", "blue"].forEach((name, i) => {

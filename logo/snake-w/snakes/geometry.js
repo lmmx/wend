@@ -230,7 +230,8 @@ function evenly(strand, step) {
   const d = [0];
   for (let i = 1; i < strand.pts.length; i++) d.push(d[i - 1] + norm(sub(strand.pts[i], strand.pts[i - 1])));
   const n = Math.max(8, Math.round(d.at(-1) / step));
-  const out = { pts: [], r: [], head: [], mate: strand.mate ? [] : null, press: strand.press ? [] : null, sec: strand.sec ? [] : null };
+  const out = { pts: [], r: [], head: [], mate: strand.mate ? [] : null, press: strand.press ? [] : null, sec: strand.sec ? [] : null,
+    s: strand.s ? [] : null, disp: strand.disp ? strand.disp.handles : null };
   let j = 0;
   for (let k = 0; k <= n; k++) {
     const t = (k * d.at(-1)) / n;
@@ -242,6 +243,7 @@ function evenly(strand, step) {
     if (out.mate) out.mate.push(add(strand.mate[j], mul(sub(strand.mate[j + 1], strand.mate[j]), f)));
     if (out.press) out.press.push(lerp(strand.press));
     if (out.sec) out.sec.push([0, 1, 2].map((k) => strand.sec[j][k] + (strand.sec[j + 1][k] - strand.sec[j][k]) * f));
+    if (out.s) out.s.push(lerp(strand.s));
   }
   return out;
 }
@@ -280,6 +282,26 @@ function rmf(pts) {
 
 // A superellipse power: exponent q = 2 is a circle, larger is squarer.
 const spow = (x, e) => Math.sign(x) * Math.abs(x) ** e;
+
+// Strand-local radial displacement of the swept surface (the "disp" handles of a spec strand):
+//   D(s, psi) = sum_i a_i b((s - s_i) / sig_s_i) b(wrap(psi - psi_i) / sig_psi_i)
+// where b(x) = (1 - x^2)^3 on |x| < 1 and 0 beyond (C2, compact), s the strand's own station and
+// psi the angle round the strand in the section frame of ellipse(): 0 towards the depth axis d
+// (the view direction made perpendicular to the tangent), 90 degrees along the lateral axis
+// l = T x d, which lies in the screen plane. sig_s is the half-width of the support in stations,
+// sig_psi in degrees (<= 180), a a fraction of the radius: the ring vertex moves along its
+// direction to r (1 + D). Handles carry degrees in the spec; this takes them as they are.
+const bump = (x) => { const u = 1 - x * x; return u > 0 ? u * u * u : 0; };
+export function dispField(handles, s, psi) {
+  let D = 0;
+  for (const h of handles) {
+    const bs = bump((s - h.s) / h.sig_s);
+    if (bs <= 0) continue;
+    const dp = ((((psi - (h.psi * Math.PI) / 180) % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI)) - Math.PI;
+    D += h.a * bs * bump(dp / ((h.sig_psi * Math.PI) / 180));
+  }
+  return D;
+}
 
 // The surface grid of one strand: rings along the body, then caps. Returns positions,
 // a per-vertex "head" weight, ring count and radial count; the mesh is closed with a pole
@@ -358,6 +380,19 @@ export function strandSurface(strand, opts) {
     const along = mul(t, dot(dir, t));
     return add(along, add(mul(a1, dot(dir, a1) * ql), mul(a2, dot(dir, a2) * qd)));
   };
+  // the displacement field D at ring sample i and unit-circle direction arg (before ellipse()):
+  // its psi is the angle in the same (l, d) frame; it fades out with the section frame (where
+  // the tangent nearly points at the camera that frame is undefined, and ellipse() is a circle)
+  const disp = (i, arg) => {
+    if (!S.disp || !S.s) return 0;
+    const t = T[i];
+    let d = sub(view, mul(t, dot(view, t)));
+    const dn = norm(d), lev = smoothstep(0.2, 0.45, dn);
+    if (lev <= 0) return 0;
+    d = mul(d, 1 / dn);
+    const l = cross(t, d);
+    return lev * dispField(S.disp, S.s[i], Math.atan2(dot(arg, l), dot(arg, d)));
+  };
   // cap profiles: index 0 is the snout (blunt, superelliptic), the far end is the tail
   const caps = [
     { at: 0, dir: mul(T[0], -1), len: head.snoutLen * S.r[0], q: head.snoutQ, rings: 14 },
@@ -382,8 +417,9 @@ export function strandSurface(strand, opts) {
     const hx = (1 + (head.wide - 1) * w) * spow(ca, qx), hy = (1 + (head.flat - 1) * w) * spow(sa, qx);
     const circ = add(mul(N[i], Math.cos(phi)), mul(B[i], Math.sin(phi)));
     const sq = add(mul(e1, hx), mul(e2, hy));
-    const dir = ellipse(i, add(mul(circ, 1 - w), mul(sq, w)));
-    const X = add(c, mul(dir, r * pinch(i, dir, r)));
+    const arg = add(mul(circ, 1 - w), mul(sq, w));
+    const dir = ellipse(i, arg);
+    const X = add(c, mul(dir, r * pinch(i, dir, r) * (1 + disp(i, arg))));
     return pressed(i, c, X);
   };
   const rings = [], centres = [];
@@ -411,7 +447,17 @@ export function strandSurface(strand, opts) {
   rings.push(...capRings(c0, false));
   for (let i = 0; i < m; i++) rings.push(ringOf(i, S.pts[i], S.r[i], S.head[i]));
   rings.push(...capRings(c1, true));
-  return { rings, centres, tips: [tip0, tip1], radial, centre: S, frames: { T, N, B } };
+  // the body vertex of sample i at the section angle psi (radians; the frame of dispField), for
+  // placing handles: tools/ffd_locate.mjs
+  const pointAt = (i, psi) => {
+    const t = T[i];
+    let d = sub(view, mul(t, dot(view, t)));
+    const dn = norm(d);
+    d = mul(d, 1 / (dn || 1));
+    const l = cross(t, d), arg = add(mul(d, Math.cos(psi)), mul(l, Math.sin(psi)));
+    return offset(i, S.pts[i], S.r[i], 0, Math.atan2(dot(arg, B[i]), dot(arg, N[i])));
+  };
+  return { rings, centres, tips: [tip0, tip1], radial, centre: S, frames: { T, N, B }, pointAt };
 }
 
 // Balls along both strands, for ambient occlusion and the eyes' placement.

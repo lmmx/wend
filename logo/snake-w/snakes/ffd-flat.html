@@ -1,0 +1,186 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Snake W flat silhouette</title>
+<style>html,body{margin:0;background:#fff}canvas{display:block;width:1448px;height:1086px}</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }</script>
+<canvas id="c" width="1448" height="1086"></canvas>
+<script type="module">
+// A fast surrogate of still-spline.html for the displacement-field and lobe-handle fits: the same
+// camera, spec, strand slicing, press and strandSurface, and the baked heads (heads-final.json,
+// fixed: the fits leave the necks alone), but flat colours and no ambient occlusion, eyes or
+// shadow, so a build takes tens of ms instead of 20 s. window.__run(spec) rebuilds the body from
+// a spec object and renders; it returns the local fold areas (whole body, and inside the box)
+// measured on the rings as the scene builds them. window.__ids(spec, clip) renders, without
+// antialiasing, which surface point each pixel shows: R = 1 yellow / 2 blue strand, 3 / 4 yellow
+// / blue head, G, B = the strand's own station x 40 (16 bits), A = the section angle psi (the
+// frame of geometry.js dispField: 0 towards the camera-facing depth axis, +-90 degrees along the
+// screen-plane lateral axis), (psi + pi) / 2 pi; returns the clip's RGBA bytes, base64, rows from
+// the top.
+import * as THREE from "three";
+import { strandSurface, smoothstep } from "./geometry.js";
+import { strandsFromSpec } from "./strandspline.js";
+const FRAME = { width: 1448, height: 1086 };
+const params = await (await fetch("w-final.params.json")).json();
+const look = JSON.parse(new URLSearchParams(location.search).get("look") || "{}");
+const COL = { yellow: look.yellow || "#ffc22e", blue: look.blue || "#0d4fd6" };
+const canvas = document.getElementById("c");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true, alpha: false });
+renderer.setClearColor("#ffffff");
+renderer.setPixelRatio(1);
+renderer.setSize(FRAME.width, FRAME.height, false);
+const elev = (params.cam.elev * Math.PI) / 180;
+const camera = new THREE.OrthographicCamera(-FRAME.width / 2, FRAME.width / 2, FRAME.height / 2, -FRAME.height / 2, 1, 20000);
+const target = new THREE.Vector3(FRAME.width / 2, -FRAME.height / 2 / Math.cos(elev), 0);
+camera.position.copy(target).add(new THREE.Vector3(0, Math.sin(elev), Math.cos(elev)).multiplyScalar(6000));
+camera.up.set(0, 1, 0); camera.lookAt(target);
+const scene = new THREE.Scene();
+const VIEW = [0, Math.sin(elev), Math.cos(elev)];
+let group = null, built = null;
+
+// the baked heads (fixed), as flat meshes
+const heads = {};
+{
+  const baked = await (await fetch("heads-final.json")).json();
+  const dec = (s, T) => new T(Uint8Array.from(atob(s), (ch) => ch.charCodeAt(0)).buffer);
+  for (const [k, h] of Object.entries(baked.heads)) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(dec(h.positions, Float32Array), 3));
+    g.setAttribute("normal", new THREE.BufferAttribute(dec(h.normals, Float32Array), 3));
+    g.setIndex(new THREE.BufferAttribute(dec(h.indices, Uint32Array), 1));
+    heads[k] = g;
+  }
+}
+
+function geometry(surface, withIds) {
+  const { rings, tips, radial } = surface, nv = 2 + rings.length * radial, pos = new Float32Array(nv * 3);
+  pos.set(tips[0], 0);
+  rings.forEach((ring, i) => ring.forEach((p, j) => pos.set(p, 3 * (1 + i * radial + j))));
+  pos.set(tips[1], 3 * (nv - 1));
+  const idx = [], at = (i, j) => 1 + i * radial + ((j + radial) % radial);
+  for (let j = 0; j < radial; j++) idx.push(0, at(0, j + 1), at(0, j));
+  for (let i = 0; i < rings.length - 1; i++) for (let j = 0; j < radial; j++) { idx.push(at(i, j), at(i, j + 1), at(i + 1, j)); idx.push(at(i, j + 1), at(i + 1, j + 1), at(i + 1, j)); }
+  const last = rings.length - 1;
+  for (let j = 0; j < radial; j++) idx.push(nv - 1, at(last, j), at(last, j + 1));
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(pos, 3)); g.setIndex(idx);
+  if (withIds) {
+    // station and section angle of every vertex: body ring k is sample k - capN; cap rings and
+    // tips take the end sample's station
+    const S = surface.centre, m = S.pts.length, capN = rings.length - m - 11, T = surface.frames.T;
+    const aS = new Float32Array(nv), aPsi = new Float32Array(nv);
+    const sOf = (i) => (S.s ? S.s[i] : 0);
+    aS[0] = sOf(0); aS[nv - 1] = sOf(m - 1);
+    rings.forEach((ring, k) => {
+      const i = Math.min(Math.max(k - capN, 0), m - 1), t = T[i], c = surface.centres[k];
+      const vt = VIEW[0] * t[0] + VIEW[1] * t[1] + VIEW[2] * t[2];
+      let d = [VIEW[0] - t[0] * vt, VIEW[1] - t[1] * vt, VIEW[2] - t[2] * vt];
+      const dn = Math.hypot(...d) || 1; d = d.map((v) => v / dn);
+      const l = [t[1] * d[2] - t[2] * d[1], t[2] * d[0] - t[0] * d[2], t[0] * d[1] - t[1] * d[0]];
+      ring.forEach((p, j) => {
+        const o = [p[0] - c[0], p[1] - c[1], p[2] - c[2]];
+        aS[1 + k * radial + j] = sOf(i);
+        aPsi[1 + k * radial + j] = Math.atan2(o[0] * l[0] + o[1] * l[1] + o[2] * l[2], o[0] * d[0] + o[1] * d[1] + o[2] * d[2]);
+      });
+    });
+    g.setAttribute("aS", new THREE.BufferAttribute(aS, 1));
+    g.setAttribute("aPsi", new THREE.BufferAttribute(aPsi, 1));
+  }
+  return g;
+}
+
+// build the strand surfaces of a spec (as scene.js does), and their local fold areas
+function build(spec, box) {
+  const p = structuredClone(params);
+  if (spec.tube) p.tube = { ...(p.tube || {}), ...spec.tube };
+  const body = strandsFromSpec(spec);
+  const tube = { head: { snoutLen: 1, snoutQ: 2, q: 2.4, wide: 1.06, flat: 0.96 }, ...(p.tube || {}), view: VIEW };
+  const ce = Math.cos(elev), se = Math.sin(elev);
+  let foldTot = 0, foldBox = 0;
+  const surfaces = {};
+  ["yellow", "blue"].forEach((name, i) => {
+    const st = body[name], nk = p.necks[i], i0 = st.s.findIndex((x) => x >= nk.join_s - 2);
+    const sl = Object.fromEntries(Object.entries(st).map(([k, v]) => [k, Array.isArray(v) ? v.slice(i0) : v]));
+    if (tube.press) { const mj = p.necks[1 - i].join_s; sl.press = sl.mateW.map((w, j) => w * smoothstep(mj, mj + 30, sl.mateS[j])); }
+    const S = strandSurface(sl, tube);
+    surfaces[name] = S;
+    const capN = 13, m = S.centre.pts.length, rings = S.rings.slice(capN, capN + m);
+    for (let k = 0; k + 1 < m; k++) {
+      const T = S.frames.T[k], ar = (3 * 2 * Math.PI * S.centre.r[k]) / rings[k].length;
+      for (let j = 0; j < rings[k].length; j++) {
+        const v = rings[k][j], w = rings[k + 1][j];
+        if ((w[0] - v[0]) * T[0] + (w[1] - v[1]) * T[1] + (w[2] - v[2]) * T[2] < 0) {
+          foldTot += ar;
+          const qx = v[0], qy = -(v[1] * ce - v[2] * se);
+          if (box && qx >= box[0] && qx <= box[2] && qy >= box[1] && qy <= box[3]) foldBox += ar;
+        }
+      }
+    }
+  });
+  return { surfaces, fold_area: Math.round(foldTot), fold_box: Math.round(foldBox) };
+}
+
+function setGroup(meshes) {
+  if (group) { scene.remove(group); group.traverse((o) => { if (o.geometry && !Object.values(heads).includes(o.geometry)) o.geometry.dispose(); if (o.material) o.material.dispose(); }); }
+  group = new THREE.Group();
+  for (const m of meshes) group.add(m);
+  scene.add(group);
+}
+
+window.__run = (spec, box) => {
+  const t0 = performance.now();
+  built = build(spec, box);
+  const meshes = [];
+  for (const [name, S] of Object.entries(built.surfaces)) meshes.push(new THREE.Mesh(geometry(S), new THREE.MeshBasicMaterial({ color: COL[name], side: THREE.DoubleSide })));
+  for (const [name, g] of Object.entries(heads)) meshes.push(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: COL[name], side: THREE.DoubleSide })));
+  setGroup(meshes);
+  renderer.render(scene, camera);
+  return { ms: Math.round(performance.now() - t0), fold_area: built.fold_area, fold_box: built.fold_box };
+};
+
+const idMat = (id) => new THREE.ShaderMaterial({
+  uniforms: { uId: { value: id } }, side: THREE.DoubleSide, blending: THREE.NoBlending,
+  vertexShader: `attribute float aS; attribute float aPsi; varying float vS; varying float vPsi;
+    void main(){ vS = aS; vPsi = aPsi; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+  fragmentShader: `precision highp float; uniform float uId; varying float vS; varying float vPsi;
+    void main(){ float v = clamp(floor(vS * 40.0 + 0.5), 0.0, 65535.0); float hi = floor(v / 256.0); float lo = v - hi * 256.0;
+      gl_FragColor = vec4(uId / 255.0, hi / 255.0, lo / 255.0, clamp((vPsi + 3.14159265) / 6.2831853, 0.0, 1.0)); }`,
+});
+window.__ids = (spec, clip) => {
+  built = build(spec, null);
+  const meshes = [];
+  [["yellow", 1], ["blue", 2]].forEach(([name, id]) => meshes.push(new THREE.Mesh(geometry(built.surfaces[name], true), idMat(id))));
+  [["yellow", 3], ["blue", 4]].forEach(([name, id]) => {
+    const g = heads[name].clone();
+    const n = g.attributes.position.count;
+    g.setAttribute("aS", new THREE.BufferAttribute(new Float32Array(n), 1)); g.setAttribute("aPsi", new THREE.BufferAttribute(new Float32Array(n), 1));
+    meshes.push(new THREE.Mesh(g, idMat(id)));
+  });
+  setGroup(meshes);
+  const rt = new THREE.WebGLRenderTarget(FRAME.width, FRAME.height, { type: THREE.UnsignedByteType, format: THREE.RGBAFormat, samples: 0, depthBuffer: true });
+  const cc = renderer.getClearColor(new THREE.Color()), ca = renderer.getClearAlpha();
+  renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, camera);
+  const [x0, y0, x1, y1] = clip || [0, 0, FRAME.width, FRAME.height], W = x1 - x0, H = y1 - y0;
+  const buf = new Uint8Array(W * H * 4);
+  renderer.readRenderTargetPixels(rt, x0, FRAME.height - y1, W, H, buf);
+  renderer.setRenderTarget(null); renderer.setClearColor(cc, ca); rt.dispose();
+  // rows from the top
+  const out = new Uint8Array(W * H * 4);
+  for (let y = 0; y < H; y++) out.set(buf.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
+  let s = "";
+  for (let k = 0; k < out.length; k += 0x8000) s += String.fromCharCode.apply(null, out.subarray(k, k + 0x8000));
+  return { w: W, h: H, data: btoa(s) };
+};
+
+// grey Lambert shading of the same group (a clay-like check of lumpiness, for the fit's crease term)
+const lights = new THREE.Group();
+lights.add(new THREE.AmbientLight(0xffffff, 0.55));
+const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(-3, 4, 5); lights.add(key);
+const fill = new THREE.DirectionalLight(0xffffff, 0.35); fill.position.set(4, -1, 3); lights.add(fill);
+window.__shade = () => {
+  const mats = [];
+  group.traverse((o) => { if (o.isMesh) { if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals(); else if (!Object.values(heads).includes(o.geometry)) o.geometry.computeVertexNormals(); mats.push([o, o.material]); o.material = new THREE.MeshLambertMaterial({ color: 0xcccccc, side: THREE.DoubleSide }); } });
+  scene.add(lights); renderer.render(scene, camera); scene.remove(lights);
+  for (const [o, m] of mats) { o.material.dispose(); o.material = m; }
+};
+window.__ready = true;
+</script>

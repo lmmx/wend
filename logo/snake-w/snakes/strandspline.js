@@ -12,6 +12,9 @@
 // With st.sec = { seg, ql, qd, psi } (cubic B-spline control values over the same [s0, s1]),
 // also sec = [ql, qd, psi] per sample: elliptical sections (geometry.js strandSurface,
 // tools/jaxsurface.py ellipse()).
+// With spec[strand].disp = [{ s, psi, sig_s, sig_psi, a }, ...] (own stations s, section angle psi in degrees, half-widths
+// sig_s in stations and sig_psi in degrees, amplitude a as a fraction of the radius): a strand-local radial
+// displacement of the swept surface (geometry.js dispField). Absent, the geometry is unchanged.
 
 const P = 3;
 
@@ -98,6 +101,9 @@ export function strandsFromSpec(spec) {
     const A = out[name], B = out[other], so = spec[other];
     const st = { pts: A.pts, r: A.r, s: A.u, head: A.u.map(() => 0), mate: [], mateS: [], mateW: [] };
     if (A.sec) st.sec = A.sec;
+    // strand-local displacement handles (geometry.js strandSurface, dispField): an object, not a
+    // per-sample array, so slicing the strand at the neck join leaves it alone
+    if (spec[name].disp && spec[name].disp.length) st.disp = { handles: spec[name].disp };
     for (let i = 0; i < A.u.length; i++) {
       let m, ms;
       if (mode === "closest") {

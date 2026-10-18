@@ -17,12 +17,13 @@ inferred from an existing directory tree.
 
 ```sh
 uv pip install wend          # or: uv pip install "wend[polars]" for vectorised resolution
+uv pip install "wend[pydantic]"  # path fields for Pydantic models
 ```
 
 ## Requirements
 
 - Python 3.14+ (t-strings, PEP 750)
-- Optional: Polars for `wend.frame`
+- Optional: Polars for `wend.frame`, Pydantic for `wend.pydantic`
 
 ## About
 
@@ -140,6 +141,117 @@ config.relative_to(root)  # PathExpr('config/settings.yaml')
 config.bind(root=P("/tmp/test")).render()  # '/tmp/test/config/settings.yaml'
 config.rebase(root, "/elsewhere").render()  # '/elsewhere/config/settings.yaml'
 ```
+
+### Defaults and bindings from objects
+
+A parameter can declare a default. Rendering uses it when no binding is given
+for the name:
+
+```py
+total = Param("total", type=int, default=100)
+shard = root / "data" / split / T(t"chunk_{idx:04d}-of-{total:04d}.parquet")
+shard.required_params()  # {'root', 'split', 'idx'}
+shard.render(root="/mnt", split="train", idx=7)
+# '/mnt/data/train/chunk_0007-of-0100.parquet'
+```
+
+The default is part of the parameter's declaration, and is checked against its
+`type`, `choices` and kind when the parameter is declared. It stands in for a
+missing binding *when a path is rendered*, and nowhere else:
+- `bind` leaves a defaulted parameter free, and `e.bind(e.defaults)` applies the defaults;
+- `match` reads every part from the path, so a default never makes a part optional;
+- `glob` discovers a defaulted parameter's values rather than fixing it.
+
+Bindings can come from an object instead of a mapping. A dataclass, attrs or
+Pydantic instance, a named tuple, or any object's instance attributes bind by
+field name. This is Future Paths [part 1](https://cog.spin.systems/future-paths-types)'s
+`PathVar`:
+
+```py
+ROOT = Param("root")
+CONFIG, DATA = ROOT / "config.yaml", ROOT / "data"
+
+
+@dataclass
+class Settings:
+    root: Path
+
+
+CONFIG.resolve(Settings(Path("/actual/root")))  # PosixPath('/actual/root/config.yaml')
+```
+
+`wend.bindings(obj)` shows what an object binds. Properties, methods and
+Pydantic computed fields don't bind, so a computed field can render a path
+from its own model (`CONFIG.resolve(self)`). Keyword bindings override an
+object's fields. The rules are in
+[SEMANTICS.md §3.1–3.2](docs/SEMANTICS.md#31-defaults).
+
+### Counters and anchors
+
+`counter` writes the sized and unsized counter filenames of Future Paths
+[part 3](https://cog.spin.systems/future-paths-template-strings):
+
+```py
+from wend import counter
+
+chunk = root / "chunks" / counter("chunk", width=3, of_total=True, suffix=".parquet")
+chunk.resolve(root="/data", idx=1, total=10)
+# PosixPath('/data/chunks/chunk_001-of-010.parquet')
+
+# {root}/logs/log_{idx:05d}.parquet
+log = root / "logs" / counter("log", width=5, suffix=".parquet")
+```
+
+Anchors are the standard places a path starts from: `HOME`, `CWD` and the XDG
+base directories. Each is a parameter named after its environment variable,
+so an expression stays symbolic until you ask for the environment:
+
+```py
+from wend import anchors
+from wend.anchors import XDG
+
+models = (P("models") / Param("name")).under(XDG.CACHE_HOME / "myapp")
+models  # PathExpr('{XDG_CACHE_HOME}/myapp/models/{name}')
+models.render(
+    anchors.bindings(), name="bert"
+)  # reads $XDG_CACHE_HOME (or ~/.cache) now
+```
+
+### Pydantic
+
+`wend.pydantic` (the `pydantic` extra) validates path fields against a layout:
+
+```py
+from typing import Annotated
+
+from pydantic import BaseModel
+
+from wend import Exists, File, Match
+from wend.pydantic import PathOf
+
+raw = P(root) / "raw" / T(t"{Param('name')}.csv")
+
+
+class Job(BaseModel):
+    src: Annotated[Path, PathOf(raw.requires(File, Exists))]  # must match, then exist
+    out: Annotated[Match, PathOf(chunk)]  # the path and its typed bindings
+    config: Annotated[
+        Path, File, Exists
+    ]  # conditions are validators: Pydantic's FilePath
+
+
+job = Job(
+    src="/data/raw/a.csv",
+    out={"root": "/data", "idx": 1, "total": 10},
+    config="app.toml",
+)
+job.out  # Match('/data/chunks/chunk_001-of-010.parquet', {'root': '/data', 'idx': 1, 'total': 10})
+```
+
+A path given as input must have exactly one reading. Bindings given as input
+(a mapping, or another model) are rendered through the layout when the model
+is validated, as Pydantic's `ImportString` imports. Either way, the layout's
+preconditions are then checked against the filesystem.
 
 ### Matching
 
@@ -408,7 +520,8 @@ Layouts are ordinary expressions (`rename`, `match`, `under(root).glob()`, ...),
 - log rotation and config fallbacks with unions;
 - a declared project schema, inferred, validated and scaffolded;
 - lineage, invalidation and a content-addressed cache;
-- layout inference.
+- layout inference;
+- defaults, settings objects, counters, anchors and Pydantic fields.
 
 ### Limitations
 
@@ -422,6 +535,9 @@ Layouts are ordinary expressions (`rename`, `match`, `under(root).glob()`, ...),
 - `glob` raises `AmbiguousMatchError` if any path it finds parses more than one way
   (`{stem}.{ext}` on `a.tar.gz`); constrain a field with `choices=` or `type=`.
 - `glob`'s symlink policy decides what it traverses; it is not a sandbox.
+- The XDG anchors follow the XDG specification on every POSIX platform, macOS
+  included. For `~/Library/...` conventions, bind the anchor to a value from a
+  library such as platformdirs.
 - Conditions are checked at runtime, at the moment `check` runs; type checkers see a
   plain `PathExpr`. [The conditions journal entry](docs/journal/2026-10-18-conditions-49.md)
   records what static checking could add.

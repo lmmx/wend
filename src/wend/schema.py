@@ -717,6 +717,8 @@ def _param_source(p: Param) -> tuple[str, set[str]]:
         args.append(f"type={p.type.__name__}")
     if p.choices is not None:
         args.append(f"choices={sorted(p.choices, key=repr)!r}")
+    if p.has_default:
+        args.append(f"default={p.default!r}")
     used = {maker} | ({"Kind"} if "kind=Kind" in "".join(args) else set())
     return f"{maker}({', '.join(args)})", used
 

@@ -9,6 +9,11 @@ The generated fast path only has to be right when it succeeds. Any exception
 inside it (a missing key, a format error, a failed check) falls back to the
 reference interpreter, so errors and messages are identical by construction;
 differential tests check that successful results are identical too.
+
+A parameter with a default reads ``env[name]`` when the name is present and
+the default otherwise (§3.1), unless the mapping has `Param` keys, which only
+the interpreter resolves. An object given in place of a mapping fails the
+fast path once, and is converted to its bindings and rendered again.
 """
 
 from __future__ import annotations
@@ -18,7 +23,7 @@ from pathlib import Path
 from typing import Any
 
 from . import _expr as X
-from ._params import Kind, Param
+from ._params import NO_DEFAULT, Kind, Param
 
 
 class CompiledPath:
@@ -34,18 +39,19 @@ class CompiledPath:
     def __repr__(self) -> str:
         return f"CompiledPath({self.expr.pattern!r})"
 
-    def render(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> str:
-        # Param keys and symbolic values miss the fast path's lookups or checks
-        # and fall back to the interpreter, which handles them.
+    def render(self, mapping: Any = None, /, **kw: Any) -> str:
+        # Param keys, objects and symbolic values miss the fast path's lookups
+        # or checks and fall back to the interpreter, which handles them.
         if kw:
             mapping = X._make_env(mapping, kw)
         return self._fn(mapping if mapping is not None else {})
 
-    def __call__(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> Path:
+    def __call__(self, mapping: Any = None, /, **kw: Any) -> Path:
         return Path(self.render(mapping, **kw))
 
-    def many(self, rows: Iterable[Mapping[str, Any]]) -> list[str]:
-        """Render each mapping in ``rows`` (keys are parameter names)."""
+    def many(self, rows: Iterable[Any]) -> list[str]:
+        """Render each mapping in ``rows`` (keys are parameter names), or each
+        object (its fields bind by name)."""
         fn = self._fn
         return [fn(r) for r in rows]
 
@@ -80,7 +86,14 @@ class _Gen:
         if name not in self.vars:
             v = f"_v{len(self.vars)}"
             self.vars[name] = v
-            self.lines.append(f"{v} = env[{name!r}]")
+            p = self.expr.params[name]
+            if p.default is NO_DEFAULT:
+                self.lines.append(f"{v} = env[{name!r}]")
+            else:
+                self.lines.append(
+                    f"{v} = env[{name!r}] if {name!r} in env else "
+                    f"_default({self.const(p)}, env)"
+                )
         return self.vars[name]
 
     def field(self, f: X.Field) -> str:
@@ -225,13 +238,34 @@ class _Bail(Exception):
     pass
 
 
+def _default(p: Param, env: Any) -> Any:
+    """``p``'s default, for a mapping that does not bind ``p``'s name. A
+    mapping keyed by `Param` may bind it under its declaration, which only the
+    interpreter looks up."""
+    for k in env:
+        if isinstance(k, Param):
+            raise _Bail
+    return p.default
+
+
 def compile_expr(expr: X.PathExpr) -> CompiledPath:
     expr.params  # noqa: B018 - surface declaration conflicts now
     gen = _Gen(expr)
     source = gen.build()
+    interpret = expr.render
+
+    def slow(env: Any) -> str:
+        if type(env) is not dict and not isinstance(env, Mapping):
+            # An object: render its bindings through the fast path.
+            from ._bindings import object_bindings
+
+            return ns["_render"](object_bindings(env))
+        return interpret(env)
+
     ns: dict[str, Any] = {
         "_Bail": _Bail,
-        "_slow": expr.render,
+        "_default": _default,
+        "_slow": slow,
         "_seg_value": X.seg_value,
         "_head_value": X.head_value,
         "_splice_value": X.splice_value,

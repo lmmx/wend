@@ -24,7 +24,7 @@ the cheapest order and gives the same results.
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Iterator, Mapping
+from collections.abc import Callable, Iterator
 from datetime import datetime
 from typing import Any
 
@@ -191,9 +191,7 @@ class Query:
                 return None
         return out
 
-    def glob(
-        self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any
-    ) -> Iterator[Match]:
+    def glob(self, mapping: Any = None, /, **kw: Any) -> Iterator[Match]:
         """Discover the source's paths and yield those every filter admits,
         as they are found (see `wend.glob` for the options)."""
         preds = self._order()

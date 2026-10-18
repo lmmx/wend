@@ -4,8 +4,10 @@ requires = ["uv_build>=0.9.26,<0.10.0"]
 
 [dependency-groups]
 test = [
+    "attrs>=25.1",
     "hypothesis>=6.140",
     "polars>=1.30",
+    "pydantic>=2.11",
     "pytest>=8.4.0",
 ]
 
@@ -37,6 +39,9 @@ dependencies = []
 [project.optional-dependencies]
 polars = [
     "polars>=1.30",
+]
+pydantic = [
+    "pydantic>=2.11",
 ]
 
 [project.license]

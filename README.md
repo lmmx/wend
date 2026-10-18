@@ -510,12 +510,24 @@ Inference works like JSON schema inference (genson, polars-genson), applied to t
   that share no skeleton (terminfo's `a/att4410`, `b/bvt100`), collapse into one map.
 - **Names:** dates become `{year}`, `{month}`, `{day}`; UUIDs and long hex tokens become
   `{uuid}` and `{hex}` string fields.
+- **Kinds:** empty directories (or, in an iterable, entries ending in `/`) are observed
+  paths too. Each layout is `file` or `dir` and covers paths of its kind only: an empty
+  `examples/` in some package directories becomes a `dir` layout `{dir}/examples`, even
+  where a `file` layout `{dir}/{name}` has a matching pattern.
 - **Cardinality:** each layout reports how many of its paths a directory matching its
   parent holds: `1`, `0..1`, `1..*` or `0..*`. The lower bound is `optional`: some
   directory matching a prefix of the layout contains none of its paths.
 
 Layouts are ordinary expressions (`rename`, `match`, `under(root).glob()`, ...), and
-`schema.check(paths)` lists paths that don't fit.
+`schema.check(paths)` lists paths that don't fit. Both take kinds as `infer` does:
+
+```py
+schema.match("apt/examples", kind="dir")  # only dir layouts; kind="file" for files
+schema.match("apt/examples/")  # a trailing "/" is a directory
+schema.check(["a/README", "apt/examples/", ("bc/examples", True)])  # (path, is_dir)
+```
+
+A path given without a kind (no trailing `/`, not a pair) matches layouts of either kind.
 
 ### Examples
 

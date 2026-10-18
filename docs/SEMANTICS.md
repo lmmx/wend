@@ -28,8 +28,8 @@ Decisions this version adopts, provisional until ratification:
 - matching raises rather than choosing between readings (§7).
 
 `glob`'s symlink policy is a traversal policy documented on `glob`, outside this
-contract. Later versions are expected to extend the contract for relations
-between paths, union expressions and Windows path flavours.
+contract. This version adds connectivity (§9). Later versions are expected to
+extend the contract for union expressions and Windows path flavours.
 
 ## 1. Terms
 
@@ -44,6 +44,7 @@ An expression is built from these terms:
 | join `a / b` | `/`, `joinpath` |
 | `parent(a)`, `with_suffix(a, s)`, `with_name(a, n)`, `with_stem(a, s)`, `relative_to(a, b)` | the methods of the same names |
 | `name(a)`, `stem(a)`, `suffix(a)` | properties; these yield strings, not paths |
+| `child`, `under`, `sibling(a, n)`, `cousin(a, p, *names)`, `rebase` | the methods of the same names, defined in §9 by `parent` and `/` |
 
 ## 2. Position of a parameter operand
 
@@ -72,6 +73,8 @@ statically 0. The number of segments is static for:
 - `parent(a)`: one fewer than `a`'s count, and never below 0;
 - `with_suffix`, `with_name` and `with_stem` of `a`: `a`'s count;
 - `relative_to(x, x)`: 0, and `relative_to(x / y, x)`: `y`'s count.
+
+- `sibling` and `cousin`: as their definitions in §9.
 
 It is not static otherwise (for example, for a `PATH` or `SUBPATH` parameter).
 
@@ -207,6 +210,8 @@ wend's obligations, for every expression `e` and environment `env`:
 | the matching fast path returns at most one binding | **argued** (below) and tested |
 | obligations 1–3 above (agreement, no spurious rejection, strictness) | **tested** (Hypothesis, independent reference evaluator). Random terms cover every term of §1, every parameter kind, nested format specs, text fields, and values whose `__format__` breaks their format type |
 | below a literal base, no binding of an `AUTO`, `Segment` or `SubPath` parameter leads outside it, whatever operations the term applies | **tested** (Hypothesis, random terms) |
+| `rebase(old, new)` equals building the expression afresh with `new` in place of `old` (§9) | **tested** (Hypothesis, random terms and substitutions) |
+| a join equals its `base` joined with its `base_rel` | **tested** |
 | matching completeness | **tested** (Hypothesis round trips; exhaustive enumeration over small domains) |
 | compiled successes equal interpreted successes | **tested** |
 | Polars results equal `render` | **tested**, on the supported subset |
@@ -234,3 +239,26 @@ So each field's span is forced, and at most one parse exists. Values come from
 the spans by `int()` or identity, so at most one binding exists per segment.
 With no `SubPath` and a fixed head extent, the expression has at most one
 candidate overall.
+
+## 9. Connectivity
+
+An expression records how it was built: the public operation and the
+arguments it was given, its *derivation*. A derivation is not part of the path
+an expression denotes. Expressions compare and hash by the paths they denote,
+and rendering, matching and every obligation above ignore derivations.
+
+- `x / y`, `x.child(*parts)` and `y.under(x)` are joins. A join's **base** is
+  its left operand `x`. Its **relative part** (`base_rel`) is its right
+  operand, in the position the join gave it (§2). Bases chain:
+  `(root / "a" / "b").base.base` is `root`, and `relative_to` flattens a chain.
+- `sibling(a, n)` is `parent(a) / n`.
+- `cousin(a, p, *names)` starts at `parent(a)`. Each component of the relative
+  path `p` is either `..`, which takes the parent, or a name, which is joined.
+  Then each of `names` is joined. An absolute `p` is an operation error.
+- `rebase(a, new)`, for `a` built by a join, is `new / base_rel(a)`.
+- `rebase(a, old, new)` rebuilds `a` with `new` in place of every expression in
+  its derivation that is equal to `old`, re-applying each recorded operation.
+  Positions, structural results and errors are therefore those of building the
+  substituted expression afresh: rebasing a path moves its siblings, cousins
+  and suffix variants with it. If `old` is not in `a`'s derivation, `old` must
+  be a structural prefix of `a`, and the result is `new / relative_to(a, old)`.

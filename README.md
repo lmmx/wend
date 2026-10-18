@@ -152,6 +152,31 @@ config.rebase(root, "/elsewhere").render()  # '/elsewhere/config/settings.yaml'
 - **Not invertible:** deferred operations and fields derived from other paths raise
   `NotInvertibleError`.
 
+### Connectivity
+
+Paths remember how they were built, so relations survive composition (Future Paths
+[part 2](https://cog.spin.systems/future-paths-connectivity)):
+
+```py
+root = Param("root")
+config = P(root).child("config.yaml")
+config.base, config.base_rel  # PathExpr('{root}'), PathExpr('config.yaml')
+config.rebase(P("/tmp/test"))  # PathExpr('/tmp/test/config.yaml')
+
+data = P(root) / "data" / T(t"{Param('name')}.csv")
+schema = data.sibling("schema.json")  # defined by data, not by root
+report = data.cousin("../reports", "summary.md")  # {root}/reports/summary.md
+
+# rebasing a path moves everything derived from it
+moved = data.rebase(P(root) / "data", P("/archive"))
+schema.rebase(data, moved)  # PathExpr('/archive/schema.json')
+
+frag = P("cache") / "models"
+[frag.under(b) for b in ("/home/a/.app", "/home/b/.app")]  # one fragment, many bases
+```
+
+The rules are in [SEMANTICS.md §9](docs/SEMANTICS.md#9-connectivity).
+
 ### Discovery and lenses
 
 ```py

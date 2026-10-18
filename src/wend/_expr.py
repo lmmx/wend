@@ -35,7 +35,7 @@ from dataclasses import dataclass, fields
 from functools import cached_property
 from pathlib import Path, PurePosixPath
 from string.templatelib import Interpolation, Template
-from typing import Any
+from typing import Any, ClassVar, NamedTuple
 
 from . import _spec
 from ._params import MARKER_RE, Kind, Param, has_marker, lookup_marker
@@ -362,6 +362,25 @@ class Deferred:
 
 Head = _Rel | Root | HeadParam | Deferred
 
+
+class Derivation(NamedTuple):
+    """How an expression was built: the public operation ``op`` applied to
+    ``args``, as they were passed (§9).
+
+    Recorded by the operations themselves and left out of equality and hashing,
+    so expressions still compare by the paths they denote.
+    """
+
+    op: str
+    args: tuple[Any, ...]
+
+    def __repr__(self) -> str:
+        shown = ", ".join(
+            a.pattern if isinstance(a, PathExpr) else repr(a) for a in self.args
+        )
+        return f"Derivation({self.op}: {shown})"
+
+
 _NAME_OPS = frozenset({"with_name", "with_suffix", "with_stem"})
 
 
@@ -376,22 +395,87 @@ class PathExpr(_Cached):
 
     head: Head
     parts: tuple[Part, ...] = ()
+    # How the expression was built (§9). Not a dataclass field: it takes no
+    # part in construction, equality or hashing; operations set it per instance.
+    derivation: ClassVar[Derivation | None] = None
+
+    def __getstate__(self) -> dict[str, Any]:
+        state = super().__getstate__()
+        if self.derivation is not None:
+            state["derivation"] = self.derivation
+        return state
 
     # -- construction -------------------------------------------------------
 
     def __truediv__(self, other: Any) -> PathExpr:
         # §2: an operand joined onto the empty path is still at the head.
         empty = isinstance(self.head, _Rel) and not self.parts
-        return _join(self, _coerce(other, at_head=empty))
+        return _derived(
+            _join(self, _coerce(other, at_head=empty)), "join", (self, other)
+        )
 
     def __rtruediv__(self, other: Any) -> PathExpr:
-        return _join(_coerce(other, at_head=True), self)
+        left = _coerce(other, at_head=True)
+        return _derived(_join(left, self), "join", (left, self))
 
     def joinpath(self, *others: Any) -> PathExpr:
         out = self
         for o in others:
             out = out / o
         return out
+
+    # -- connectivity (§9) ----------------------------------------------------
+
+    def child(self, *parts: Any) -> PathExpr:
+        """``self / part / ...``, remembering ``self`` as the base (§9)."""
+        return self.joinpath(*parts)
+
+    def under(self, base: Any) -> PathExpr:
+        """``base / self``: place a relative fragment under ``base``."""
+        b = _coerce(base, at_head=True)
+        return b / self
+
+    @property
+    def base(self) -> PathExpr | None:
+        """The path this one was joined onto, or None if it was not built by a
+        join. Bases chain: ``(root / "a" / "b").base.base`` is ``root``."""
+        d = self.derivation
+        return d.args[0] if d is not None and d.op == "join" else None
+
+    @property
+    def base_rel(self) -> PathExpr | None:
+        """What was joined onto `base`, as an expression in that position."""
+        d = self.derivation
+        if d is None or d.op != "join":
+            return None
+        b = d.args[0]
+        return _coerce(d.args[1], at_head=isinstance(b.head, _Rel) and not b.parts)
+
+    def sibling(self, name: Any) -> PathExpr:
+        """``self.parent / name``, remembering that it is defined by ``self``:
+        rebasing ``self`` elsewhere moves the sibling with it (§9)."""
+        return _derived(self.parent / name, "sibling", (self, name))
+
+    def cousin(self, path: Any, *names: Any) -> PathExpr:
+        """A path reached from this one's directory: ``path`` is relative to
+        ``self.parent``, its leading (or any) ``..`` steps up structurally, and
+        ``names`` are joined after it. ``x.cousin("../out", "y.csv")`` is
+        ``x.parent.parent / "out" / "y.csv"``, defined by ``x`` (§9)."""
+        rel = PurePosixPath(os.fspath(path))
+        if rel.is_absolute():
+            raise PathOperationError(
+                f"cousin() takes a relative path, not {str(rel)!r}"
+            )
+        out = self.parent
+        for part in rel.parts:
+            out = out.parent if part == ".." else out / part
+        out = out.joinpath(*names)
+        return _derived(out, "cousin", (self, path, *names))
+
+    def derived_from(self, other: Any) -> bool:
+        """Whether ``other`` is among the expressions this one was built from."""
+        o = _coerce(other, at_head=True)
+        return _rederive(self, o, o, {}) is not None
 
     # -- introspection ------------------------------------------------------
 
@@ -511,6 +595,9 @@ class PathExpr(_Cached):
 
     @property
     def parent(self) -> PathExpr:
+        return _derived(self._parent(), "parent", (self,))
+
+    def _parent(self) -> PathExpr:
         if self._last_seg() is not None:
             return PathExpr(self.head, self.parts[:-1])
         if self._empty_static():
@@ -604,6 +691,9 @@ class PathExpr(_Cached):
         )
 
     def with_name(self, name: Any) -> PathExpr:
+        return _derived(self._with_name(name), "with_name", (self, name))
+
+    def _with_name(self, name: Any) -> PathExpr:
         text = _to_text(name)
         new = _text_as_segment(text)
         if self._last_seg() is not None:
@@ -613,6 +703,9 @@ class PathExpr(_Cached):
         return PathExpr(Deferred("with_name", self, text))
 
     def with_suffix(self, suffix: str) -> PathExpr:
+        return _derived(self._with_suffix(suffix), "with_suffix", (self, suffix))
+
+    def _with_suffix(self, suffix: str) -> PathExpr:
         if not isinstance(suffix, str):
             raise TypeError("suffix must be a str")
         if suffix and not suffix.startswith("."):
@@ -634,6 +727,9 @@ class PathExpr(_Cached):
         return PathExpr(Deferred("with_suffix", self, suffix))
 
     def with_stem(self, stem: Any) -> PathExpr:
+        return _derived(self._with_stem(stem), "with_stem", (self, stem))
+
+    def _with_stem(self, stem: Any) -> PathExpr:
         text = _to_text(stem)
         static = self._static_path()
         if static is not None and text.literal is not None:
@@ -659,6 +755,9 @@ class PathExpr(_Cached):
         Static when other is structurally a prefix of self, so a relation
         between unbound paths (``config.relative_to(root)``) needs no bindings.
         """
+        return _derived(self._relative_to(other), "relative_to", (self, other))
+
+    def _relative_to(self, other: Any) -> PathExpr:
         o = _coerce(other, at_head=True)
         if o.head == self.head and self.parts[: len(o.parts)] == o.parts:
             return PathExpr(REL, self.parts[len(o.parts) :])
@@ -693,16 +792,39 @@ class PathExpr(_Cached):
         env = _make_env(mapping, kw)
         if not (self.param_names & env.keys()):
             return self
-        return _bind_expr(self, env)
+        return _derived(_bind_expr(self, env), "bind", (self, env))
 
-    def rebase(self, old: Any, new: Any) -> PathExpr:
-        """Replace the prefix ``old`` (structurally) with ``new``."""
+    def rebase(self, *args: Any) -> PathExpr:
+        """Move this path to a new base (§9).
+
+        ``rebase(new)`` replaces the `base` this path was joined onto.
+        ``rebase(old, new)`` replaces ``old`` wherever this path was built from
+        it (a base, a path it is a sibling or cousin of, any expression in its
+        derivation), re-applying the operations that built it; if this path
+        was not built from ``old``, ``old`` must be a structural prefix.
+        """
+        if len(args) == 1:
+            d = self.derivation
+            if d is None or d.op != "join":
+                raise ValueError(
+                    f"{self.pattern!r} was not built by joining onto a base;"
+                    " use rebase(old, new)"
+                )
+            return _coerce(args[0], at_head=True) / d.args[1]
+        if len(args) != 2:
+            raise TypeError(f"rebase() takes 1 or 2 arguments ({len(args)} given)")
+        old = _coerce(args[0], at_head=True)
+        new = _coerce(args[1], at_head=True)
+        redone = _rederive(self, old, new, {})
+        if redone is not None:
+            return redone
         rel = self.relative_to(old)
         if isinstance(rel.head, Deferred):
             raise NotStaticError(
-                f"{old!r} is not a structural prefix of {self.pattern!r}"
+                f"{self.pattern!r} was not built from {old.pattern!r}, and"
+                " it is not a structural prefix"
             )
-        return _coerce(new, at_head=True) / rel
+        return new / rel
 
     def render(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> str:
         """Resolve to a canonical path string (equal to ``str(self.resolve(...))``)."""
@@ -759,6 +881,72 @@ class PathExpr(_Cached):
 # ---------------------------------------------------------------------------
 # Construction
 # ---------------------------------------------------------------------------
+
+
+def _derived(result: PathExpr, op: str, args: tuple[Any, ...]) -> PathExpr:
+    """``result``, recording that the public operation ``op`` built it from
+    ``args`` (§9).
+
+    A fresh result takes the derivation in place. One that already existed (an
+    argument returned unchanged, or a result with its own derivation) is
+    copied, keeping its cached state, so no shared expression is changed.
+    """
+    d = _new_tuple(Derivation, (op, args))
+    if result.derivation is None and op != "bind":
+        for a in args:
+            if a is result:
+                break
+        else:
+            result.__dict__["derivation"] = d
+            return result
+    out = object.__new__(PathExpr)
+    out.__dict__.update(result.__dict__)
+    out.__dict__["derivation"] = d
+    return out
+
+
+_new_tuple = tuple.__new__
+
+
+def _apply(op: str, args: tuple[Any, ...]) -> PathExpr:
+    first = args[0]
+    if op == "join":
+        return first / args[1]
+    if op == "parent":
+        return first.parent
+    if op == "bind":
+        return first.bind(args[1])
+    return getattr(first, op)(*args[1:])
+
+
+def _rederive(e: Any, old: PathExpr, new: PathExpr, memo: dict[int, Any]) -> Any | None:
+    """``e`` rebuilt with ``new`` in place of ``old`` throughout its
+    derivation, or None when ``old`` is not among the expressions it was built
+    from. Each operation is re-applied, so positions and structural decisions
+    are those a fresh build would make."""
+    key = id(e)
+    if key in memo:
+        return memo[key]
+    out: Any = None
+    if isinstance(e, PathExpr):
+        if e == old:
+            out = new
+        elif e.derivation is not None:
+            args = e.derivation.args
+            redone = [_rederive(a, old, new, memo) for a in args]
+            if any(r is not None for r in redone):
+                out = _apply(
+                    e.derivation.op,
+                    tuple(
+                        a if r is None else r for a, r in zip(args, redone, strict=True)
+                    ),
+                )
+    elif isinstance(e, dict):
+        redone = {k: _rederive(v, old, new, memo) for k, v in e.items()}
+        if any(r is not None for r in redone.values()):
+            out = {k: e[k] if r is None else r for k, r in redone.items()}
+    memo[key] = out
+    return out
 
 
 def _fstring_error() -> TypeError:

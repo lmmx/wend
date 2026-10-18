@@ -174,7 +174,11 @@ function unbake(baked, params, lines) {
 // `body` (optional): { yellow, blue } strands in the shape centrelines() returns them (pts, r,
 // head, s, and mate/mateS/mateW for the press), used instead of the centreline model, so
 // another body representation can be rendered through this scene unchanged
-export function createScene(canvas, params, look = LOOK, { still = false, bakedHeads = null, body = null } = {}) {
+// `extra` (optional): { cut: { yellow: [s0, s1], blue: [s0, s1] }, meshes: { yellow: [...], blue: [...] } }:
+// the strand's tube is left out between its own stations s0..s1 (two tube segments remain) and the
+// given meshes ({ positions, normals, indices }) are added with that strand's material and occlusion
+// (tools/beads.py: a lobe-primitive body for one region)
+export function createScene(canvas, params, look = LOOK, { still = false, bakedHeads = null, body = null, extra = null } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: still, alpha: false });
   renderer.toneMapping = { none: THREE.NoToneMapping, neutral: THREE.NeutralToneMapping, agx: THREE.AgXToneMapping, aces: THREE.ACESFilmicToneMapping }[look.toneMapping];
   renderer.toneMappingExposure = look.exposure;
@@ -225,6 +229,16 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
     });
   }
   const surfaces = { yellow: strandSurface(strands.yellow, tube), blue: strandSurface(strands.blue, tube) };
+  if (extra?.cut) {
+    for (const name of ["yellow", "blue"]) {
+      const c = extra.cut[name];
+      if (!c) continue;
+      const st = strands[name];
+      const part = (keep) => Object.fromEntries(Object.entries(st).map(([k, v]) => [k, Array.isArray(v) ? v.filter((_, i) => keep(st.s[i])) : v]));
+      surfaces[name] = strandSurface(part((x) => x < c[0]), tube);
+      surfaces[name + "_2"] = strandSurface(part((x) => x > c[1]), tube);
+    }
+  }
   const spacing = params.a / 2;
   const ballList = balls(params.head_profiles ? [strands.yellow, strands.blue] : [lines.yellow, lines.blue], spacing);
   if (params.head_profiles) {
@@ -245,12 +259,21 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
     geo.setAttribute("ao", new THREE.BufferAttribute(ao, 1));
     return geo;
   };
-  for (const [name, surf] of Object.entries(surfaces)) {
+  for (const [key, surf] of Object.entries(surfaces)) {
+    const name = key.split("_")[0];
     const { specularColor, ...opts } = { ...look.material, ...(look.materials?.[name] || {}) };
     const mat = withVertexAO(new THREE.MeshPhysicalMaterial({ color: look[name], ...opts, ...(specularColor ? { specularColor: new THREE.Color(specularColor) } : {}) }));
     const own = name === "yellow" ? 0 : 1;
-    meshes[name] = new THREE.Mesh(withAO(strandGeometry(surf), own), mat);
-    group.add(meshes[name]);
+    meshes[key] = new THREE.Mesh(withAO(strandGeometry(surf), own), mat);
+    group.add(meshes[key]);
+    if (key !== name) continue;
+    for (const m of extra?.meshes?.[name] || []) {
+      const g = new THREE.BufferGeometry();
+      g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(m.positions), 3));
+      g.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(m.normals), 3));
+      g.setIndex(new THREE.BufferAttribute(new Uint32Array(m.indices), 1));
+      group.add(new THREE.Mesh(withAO(g, own), mat));
+    }
     if (heads[name]) {
       const g = new THREE.BufferGeometry();
       g.setAttribute("position", new THREE.BufferAttribute(heads[name].positions, 3));

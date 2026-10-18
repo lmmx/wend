@@ -46,7 +46,8 @@ if (q.get("spec")) {
 }
 const t0 = performance.now();
 const canvas = document.getElementById("c");
-const s = createScene(canvas, params, look, { still: true, bakedHeads, body });
+const extra = q.get("extra") ? await (await fetch(q.get("extra"))).json() : null;
+const s = createScene(canvas, params, look, { still: true, bakedHeads, body, extra });
 const tBuild = performance.now() - t0;
 const { renderer, scene, camera, group } = s;
 renderer.toneMapping = THREE.NoToneMapping;

@@ -300,3 +300,38 @@ The judging is now separate from the fitting and covers every feature: `audit/RE
   - **lvt60 is the accepted best** (`snakes/spline-lvt60.json`).
 - **Proportions** (parametric body, helix radius against tube radius): R = a = 40 (touching strands) gains 0.03–0.04 IoU on most arm and arch lobes and leaves the valleys unchanged. Heavier beads are worse.
 - **Twist phase, right valley:** −30° fixes L14 in the screen, but the refit and the real render collapse L12 and L14. **Rejected.** L13's error is its shape (too broad), not its phase.
+
+### Iteration 3: refits from lvt60, proportions on the spline body
+
+- **lv60 / lv75** (regionfit from lvt60 and from a 75° twist, L04 and L05 targeted): the metrics improve at L04 (0.66 → 0.73 / 0.76) and L06. The paired judges see a new crease at L06 in both and prefer lvt60. **Both rejected.**
+- **p110 / p106** (iteration 2's c1 proportions carried to the spline body: helix radius ×1.10 / ×1.06, tube radius ×0.92 / ×0.95):
+  - The arch lobes gain 0.01–0.03.
+  - The valley yellows move about 50 px (L04 0.66 → 0.46, L06 0.65 → 0.39).
+  - **Rejected.** A proportion move must leave the valleys out, because the twist sets their geometry, not the helix radius.
+
+### Iteration 4: a lobe-primitive body for the left valley (bounded prototype)
+
+**The prototype (`tools/beads.py`).** Over the left valley's stations, each strand becomes a signed distance field:
+- a core tube (the spec's own centreline and elliptical sections);
+- smooth-min blended with one ellipsoid per reference lobe, initialised from the lobe mask's moments;
+- meshed by marching cubes.
+
+`scene.js` takes the result as `extra`: it cuts the swept tube over the same stations and adds the meshes with the strand's material.
+
+**h2 (1.5 px voxels): rejected.** L05 rises 0.71 → 0.81, but the paired judge sees seams at the tube junctions, faceted zebra and a lumpy L06.
+
+**h3: rejected.** The one bounded correction used 1 px voxels, normals from the field's gradient, and overlapping cuts.
+- Most of the faceting is gone.
+- The judge still prefers lvt60 at L02–L07, by 1–2:
+  - junction seams at L02, L03 and L07;
+  - a crease down L05's left side;
+  - a notch and a squared end at L06.
+
+**h3b (full-radius core): no better.**
+
+**What it showed:**
+1. **The L04/L06 pinch is inherited.** It survives a full core (h3b) and is present in lvt60 itself. It comes from the yellow centreline's tight bend, so additive primitives cannot remove it.
+2. **Junctions between separately meshed surfaces read as seams** to the blind judge, even when they are out of sight in the colour render's silhouette. A replacement surface has to be one continuous surface.
+3. **The judge rates lvt60's L04/L06 at severity 2** (a soft fold, band-like), where the metric says 5. The metric's severity there is driven by the merged/unstable segmentation flags, so it overstates them.
+
+**Next:** the competing strand-local deformation prototype (one continuous swept surface, deformed in place), then a single side-by-side against the reference and lvt60.

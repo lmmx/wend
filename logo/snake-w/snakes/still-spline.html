@@ -23,7 +23,8 @@ if (q.get("spec")) {
   body = strandsFromSpec(spec);
 }
 const t0 = performance.now();
-const s = createScene(document.getElementById("c"), params, look, { still: true, bakedHeads, body });
+const extra = q.get("extra") ? await (await fetch(q.get("extra"))).json() : null;
+const s = createScene(document.getElementById("c"), params, look, { still: true, bakedHeads, body, extra });
 // look.softness: a slight photographic softness (px), as the reference's edges have
 if (look.softness) document.getElementById("c").style.filter = `blur(${look.softness}px)`;
 // ss=2: render at twice the resolution; the canvas is shown (and captured) at 1448 x 1086,

@@ -56,7 +56,7 @@ e1: silhouette IoU 0.941, boundary p95 11.2 px, blue IoU 0.803, yellow IoU 0.806
 
 **Regressions (gate failures):** none
 
-**Improvements:** 
+**Improvements:**
 - L01: metric severity 3 -> 3, IoU 0.81 -> 0.80, critic 4 -> 2
 - L05: metric severity 4 -> 4, IoU 0.56 -> 0.56, critic 5 -> 4
 - L06: metric severity 3 -> 2, IoU 0.77 -> 0.82, critic 4 -> 3

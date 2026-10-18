@@ -10,6 +10,7 @@ files on disk, and compiled for fast batch resolution.
 from __future__ import annotations
 
 from ._bindings import bindings
+from ._compile import CompiledSet, compile_many
 from ._expr import P, PathExpr, T, Text
 from ._fs import glob
 from ._lens import Lens, NoMatchError
@@ -57,6 +58,7 @@ __all__ = [
     "AmbiguousMatchError",
     "AnyPath",
     "CapabilityError",
+    "CompiledSet",
     "Condition",
     "ConditionError",
     "ContainmentError",
@@ -95,6 +97,7 @@ __all__ = [
     "Writable",
     "WrongKindError",
     "bindings",
+    "compile_many",
     "counter",
     "glob",
 ]

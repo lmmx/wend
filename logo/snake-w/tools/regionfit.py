@@ -29,12 +29,22 @@ Objective (all evaluated on the spline itself, X = B @ ctrl, r = Br @ rctrl):
            penalised quadratically. The reference is nearly frontal, so depth is weakly observed:
            without this a fit can hide a large 3D loop where the image term cannot see it
   osc      depth oscillation: the second derivative of the depth displacement along the strand
+  feat     per-feature fidelity (audit/registry.json, the reference's numbered lobes and heads): for
+           every feature whose window lies in the image window, 1 - soft Dice of blue and of yellow
+           inside that feature's window, so each lobe counts equally however small it is and no
+           lobe can be traded away for pixels elsewhere; --targets F1,F2 are weighted --target-boost x
   legs     (--leg-front S1 --leg-back S2, blue shared stations) an explicit depth order for two
            sections of the blue strand that meet head-on: the one at S1 in front of the one at S2
            by --leg-margin px wherever they overlap on screen. A self-collision that is symmetric
            in depth (both at the same depth) has zero depth gradient, so a fit cannot choose which
            goes in front; this makes the choice. Crossing order is not enforced for these two
            sections (their layering is what is being decided).
+  zorder   (--order "B:s0-s1>Y:s0-s1@F", repeatable) an explicit depth order between two strand
+           sections, where they overlap on screen inside reference feature F's mask: the first in
+           front of the second by --order-margin px. For layering the reference shows and the start
+           does not (the soft raster's depth softmax saturates when the wrong strand is tens of px in
+           front, so the image term alone cannot flip it). Crossing order is relaxed for those
+           sections only. Strands: Y yellow, B blue; stations are shared stations.
   order    crossing order: every pair of non-adjacent sections whose discs overlap on screen at the
            start, with a clear depth order (> 15 px), keeps that order with a 10 px margin
   tik      a small pull to the start
@@ -97,6 +107,12 @@ def parse():
     ap.add_argument("--rho-z", type=float, default=20.0)
     ap.add_argument("--w-osc", type=float, default=1.0)
     ap.add_argument("--w-order", type=float, default=1.0)
+    ap.add_argument("--w-feat", type=float, default=0.0)
+    ap.add_argument("--targets", default="")
+    ap.add_argument("--target-boost", type=float, default=4.0)
+    ap.add_argument("--order", action="append", default=[])
+    ap.add_argument("--order-margin", type=float, default=30.0)
+    ap.add_argument("--w-zorder", type=float, default=2.0)
     ap.add_argument("--leg-front", type=float, default=None)
     ap.add_argument("--leg-back", type=float, default=None)
     ap.add_argument("--leg-halfwidth", type=float, default=30.0)
@@ -225,6 +241,33 @@ def main():
     gi = np.asarray(grid).astype(int)
     ref = lab[np.clip(gi[:, 1], 0, lab.shape[0] - 1), np.clip(gi[:, 0], 0, lab.shape[1] - 1)].astype(int)
     ref_oh = jnp.asarray(np.eye(3)[ref])
+    # ---- per-feature windows on the grid (the reference registry)
+    regd = os.path.join(HERE, "..", "audit")
+    feat_w, feat_names = [], []
+    if A.w_feat and os.path.exists(f"{regd}/registry.json"):
+        reg = json.load(open(f"{regd}/registry.json"))
+        targets = set(t for t in A.targets.split(",") if t)
+        gx, gy = np.asarray(grid)[:, 0], np.asarray(grid)[:, 1]
+        for f in reg["features"]:
+            bx0, by0, bx1, by1 = f["bbox"]
+            inwin = (gx >= bx0 - 20) & (gx <= bx1 + 20) & (gy >= by0 - 20) & (gy <= by1 + 20)
+            full = bx0 >= x0 and bx1 <= x1 and by0 >= y0 and by1 <= y1
+            if inwin.sum() < 30 or not full:
+                continue
+            feat_w.append(inwin.astype(float) * (A.target_boost if f["id"] in targets else 1.0)); feat_names.append(f["id"])
+        print(f"features in the image window: {', '.join(feat_names)}; targets {', '.join(sorted(targets)) or '-'}")
+    FW = jnp.asarray(np.array(feat_w)) if feat_w else None              # (nfeat, npix)
+
+    def featloss(prob):
+        if FW is None:
+            return 0.0
+        tot = 0.0
+        for k in (1, 2):                                                   # blue, yellow
+            P, Tm = prob[:, k][None], ref_oh[:, k][None]
+            inter = jnp.sum(FW * P * Tm, 1); den = jnp.sum(FW * (P + Tm), 1)
+            tot = tot + (1 - 2 * inter / (den + 1e-6))
+        wsum = jnp.max(FW, 1)
+        return jnp.sum(wsum * tot / 2) / jnp.sum(wsum)
     fb = [strands[n]["fixed_balls"] for n in names]
     FP = jnp.asarray(np.vstack([fb[0][0], fb[1][0]]) if len(fb[0][0]) + len(fb[1][0]) else np.zeros((0, 3)))
     FR = jnp.asarray(np.r_[fb[0][1], fb[1][1]])
@@ -302,6 +345,31 @@ def main():
         print(f"legs: {legA.sum()} samples in front (blue @{A.leg_front:.0f}), {legB.sum()} behind (@{A.leg_back:.0f}), {len(li)} overlapping pairs")
     else:
         li = lj = np.zeros(0, int)
+    # explicit, feature-scoped depth orders
+    zi, zj = [], []
+    if A.order:
+        from PIL import Image as _I
+        rlab = np.asarray(_I.open(os.path.join(HERE, "..", "audit", "registry-labels.png"))).astype(int)
+        rreg = json.load(open(os.path.join(HERE, "..", "audit", "registry.json")))
+        ids = [f["id"] for f in rreg["features"]]
+        for spec_ in A.order:
+            pair, fid = spec_.split("@")
+            a_, b_ = pair.split(">")
+            def sect(t):
+                k, rng = t.split(":"); lo, hi = (float(v) for v in rng.split("-"))
+                return (sid == (0 if k == "Y" else 1)) & (sh >= lo) & (sh <= hi)
+            sa, sb = sect(a_), sect(b_)
+            fm = rlab == ids.index(fid) + 1
+            mid = 0.5 * (q0[:, None] + q0[None])
+            mx = np.clip(mid[..., 0].astype(int), 0, rlab.shape[1] - 1); my = np.clip(mid[..., 1].astype(int), 0, rlab.shape[0] - 1)
+            pm = sa[:, None] & sb[None] & (dq < 1.0 * (Rc0[:, None] + Rc0[None])) & fm[my, mx]
+            pi, pj = np.nonzero(pm)
+            zi.append(pi); zj.append(pj)
+            ordered &= ~((sa | sb)[:, None] | (sa | sb)[None])
+            print(f"order {spec_}: {sa.sum()} front samples, {sb.sum()} behind, {len(pi)} pairs inside {fid}")
+        oi, oj = np.nonzero(ordered); osign = jnp.asarray(np.sign(dz0[oi, oj]))
+        print(f"crossing order after relaxing: {len(oi)} ordered pairs kept")
+    zi = np.concatenate(zi) if zi else np.zeros(0, int); zj = np.concatenate(zj) if zj else np.zeros(0, int)
     oi, oj = np.nonzero(ordered); osign = jnp.asarray(np.sign(dz0[oi, oj]))
     print(f"crossing order: {len(oi)} ordered pairs kept")
 
@@ -311,6 +379,13 @@ def main():
         Pc = jnp.vstack([g["yellow"][0][::2], g["blue"][0][::2]])
         _, z = scr(Pc)
         return jnp.mean(jax.nn.relu(A.leg_margin - (z[li] - z[lj])) ** 2)
+
+    def zorder(g):
+        if not len(zi):
+            return 0.0
+        Pc = jnp.vstack([g["yellow"][0][::2], g["blue"][0][::2]])
+        _, z = scr(Pc)
+        return jnp.mean(jax.nn.relu(A.order_margin - (z[zi] - z[zj])) ** 2)
 
     def trust(g):
         tr = osc = 0.0
@@ -331,6 +406,7 @@ def main():
         g = geom(v)
         prob = raster(g)
         img = -jnp.mean(jnp.sum(ref_oh * jnp.log(prob + 1e-3), axis=1))
+        fl = featloss(prob)
         slf, con, ovself, ovacross = contact(g)
         bend = jerk = fold = spd = rad = vf = sdev = ssm = area = 0.0
         qdmin = 9.0
@@ -350,11 +426,11 @@ def main():
             r0 = strands[n]["r0"]
             rad += jnp.mean(((r - r0) / r0) ** 2) * 100 + jnp.mean(jax.nn.relu(0.85 - r / r0) ** 2) * 1e4
         tik = jnp.mean(v ** 2)
-        trs, osc = trust(g); ordr = order(g); lg = legs(g)
+        trs, osc = trust(g); ordr = order(g); lg = legs(g); zo = zorder(g)
         dmax = jnp.max(jnp.concatenate([jnp.abs(scr(g[n][0] - P0[n])[1]) for n in names]))
-        return dict(legs=lg, secdev=sdev, secsm=ssm, area=area, qd_min=qdmin, trust=trs, osc=osc, order=ordr, depth_move_max=dmax, img=img, self=slf, contact=con, self_overlap_max=ovself, across_overlap_max=ovacross, bend=bend, jerk=jerk, fold=fold, visfold=vf, speed=spd, radius=rad, tik=tik, jvis=jvis)
+        return dict(zorder=zo, feat=fl, legs=lg, secdev=sdev, secsm=ssm, area=area, qd_min=qdmin, trust=trs, osc=osc, order=ordr, depth_move_max=dmax, img=img, self=slf, contact=con, self_overlap_max=ovself, across_overlap_max=ovacross, bend=bend, jerk=jerk, fold=fold, visfold=vf, speed=spd, radius=rad, tik=tik, jvis=jvis)
 
-    W = dict(legs=A.w_legs, secdev=A.w_secdev, secsm=A.w_secsm, area=A.w_area, trust=A.w_trust, osc=A.w_osc, order=A.w_order, img=A.w_img, self=A.w_self, contact=A.w_contact, bend=A.w_fair, jerk=A.w_jerk, fold=A.w_fold, visfold=A.w_visfold, speed=A.w_speed, radius=A.w_rad, tik=A.w_tik)
+    W = dict(zorder=A.w_zorder, feat=A.w_feat, legs=A.w_legs, secdev=A.w_secdev, secsm=A.w_secsm, area=A.w_area, trust=A.w_trust, osc=A.w_osc, order=A.w_order, img=A.w_img, self=A.w_self, contact=A.w_contact, bend=A.w_fair, jerk=A.w_jerk, fold=A.w_fold, visfold=A.w_visfold, speed=A.w_speed, radius=A.w_rad, tik=A.w_tik)
 
     def loss(v):
         tm = terms(v)

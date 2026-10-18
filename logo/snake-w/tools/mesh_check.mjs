@@ -14,7 +14,10 @@ import { readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 import { resolve } from "node:path";
 const G = await import(pathToFileURL(resolve("geometry.js")).href);
-const [pf, specFile, boxArg] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const di = argv.indexOf("--dump"), dumpPath = di >= 0 ? argv.splice(di, 2)[1] : null;
+const [pf, specFile, boxArg] = argv;
+const dump = { visible_fold: [], visible_self: [] };
 const params = JSON.parse(readFileSync(pf, "utf8"));
 const lines = G.centrelines(params);
 let body = { yellow: lines.yellow, blue: lines.blue };
@@ -94,7 +97,7 @@ for (const name of ["yellow", "blue"]) {
         const rho = Math.hypot(dt(e.a1) / ra, dt(e.a2) / rb, dt(e.t) / ra);
         pen = Math.max(pen, (1 - rho) * Math.min(ra, rb));
       }
-      if (pen > 1) { selfA += area(i); if (visible(q)) { selfAVis += area(i); grow(bb.self, q); } if (inBox(q)) selfABox += area(i); selfN++; selfMax = Math.max(selfMax, pen); if (inBox(q)) { selfBox++; selfMaxBox = Math.max(selfMaxBox, pen); if (visible(q)) selfVisBox++; } }
+      if (pen > 1) { selfA += area(i); if (visible(q)) { selfAVis += area(i); grow(bb.self, q); dump.visible_self.push([+q[0].toFixed(1), +q[1].toFixed(1), +area(i).toFixed(2), +pen.toFixed(1)]); } if (inBox(q)) selfABox += area(i); selfN++; selfMax = Math.max(selfMax, pen); if (inBox(q)) { selfBox++; selfMaxBox = Math.max(selfMaxBox, pen); if (visible(q)) selfVisBox++; } }
       let pa = 0;
       for (let k = 0; k < other.c.length; k += 3) {
         const c = other.c[k], d = Math.hypot(v[0] - c[0], v[1] - c[1], v[2] - c[2]);
@@ -108,7 +111,7 @@ for (const name of ["yellow", "blue"]) {
           foldN++; foldA += area(i);
           const c = A.c[i], n = [v[0] - c[0], v[1] - c[1], v[2] - c[2]], nn = Math.hypot(...n) || 1;
           const facing = (n[0] * view[0] + n[1] * view[1] + n[2] * view[2]) / nn;
-          if (facing > 0.2 && visible(q)) { foldVis++; foldAVis += area(i); grow(bb.fold, q); if (inBox(q)) { foldVisBox++; foldAVisBox += area(i); } }
+          if (facing > 0.2 && visible(q)) { foldVis++; foldAVis += area(i); grow(bb.fold, q); dump.visible_fold.push([+q[0].toFixed(1), +q[1].toFixed(1), +area(i).toFixed(2)]); if (inBox(q)) { foldVisBox++; foldAVisBox += area(i); } }
         }
       }
     }
@@ -121,4 +124,5 @@ for (const name of ["yellow", "blue"]) {
   out[name] = { self_vertices: selfN, self_max_px: +selfMax.toFixed(1), self_in_box: selfBox, self_in_box_visible: selfVisBox, self_max_in_box_px: +selfMaxBox.toFixed(1),
     fold_vertices: foldN, fold_visible: foldVis, fold_visible_in_box: foldVisBox, across_max_px: +acrossMax.toFixed(1) };
 }
+if (dumpPath) (await import("node:fs")).writeFileSync(dumpPath, JSON.stringify(dump));
 console.log(JSON.stringify(out));

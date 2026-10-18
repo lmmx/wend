@@ -3,7 +3,9 @@
 The walk follows the expression's structure, one directory level per part: a
 literal segment is a single ``lstat``, a templated segment filters directory
 entries through the same segment matcher as `match`, and a ``Splice`` recurses
-into subdirectories. Every result is verified by rendering its bindings.
+into subdirectories. Every result is verified by rendering its bindings. The
+walk reads the tree through a `wend.fs.FileSystem`: the local disk, unless
+``fs=`` names another.
 """
 
 from __future__ import annotations
@@ -40,37 +42,14 @@ from .errors import (
     _ambiguity_handler,
     _check_option_keywords,
 )
+from .fs import LOCAL, DirEntry, FileSystem, _check_root, _child
 
 
-def _child(d: str, name: str) -> str:
-    if d == ".":
-        return name
-    if d.endswith("/"):
-        return d + name
-    return d + "/" + name
-
-
-def _entries(d: str) -> list[os.DirEntry[str]]:
-    try:
-        with os.scandir(d) as it:
-            return sorted(it, key=lambda e: e.name)
-    except OSError:
-        return []
-
-
-def _is_dir(entry: os.DirEntry[str], follow: bool) -> bool:
+def _is_dir(entry: DirEntry, follow: bool) -> bool:
     try:
         return entry.is_dir(follow_symlinks=follow)
     except OSError:
         return False
-
-
-def _dir_key(d: str) -> tuple[int, int] | None:
-    try:
-        st = os.stat(d)
-    except OSError:
-        return None
-    return st.st_dev, st.st_ino
 
 
 def glob(
@@ -83,6 +62,7 @@ def glob(
     recurse_symlinks: bool = False,
     ambiguous: Literal["raise", "skip"]
     | Callable[[AmbiguousMatchError], object] = "raise",
+    fs: FileSystem | None = None,
     **kw: Any,
 ) -> Iterator[Match]:
     """Yield a `Match` for every existing path that ``expr`` can render.
@@ -138,6 +118,14 @@ def glob(
     normally, a yielded link points wherever it points, and the tree can
     change between the walk and any use of its results. Where that matters,
     open results with ``O_NOFOLLOW`` or resolve and check them.
+
+    **Filesystems.** ``fs`` is the `wend.fs.FileSystem` to walk: the local
+    disk by default, or a `wend.fs.FsspecFS` for an fsspec filesystem such
+    as an object store, where results are the same as for an identical
+    local tree. Paths are in that filesystem's namespace: bind the root that
+    `wend.fs.url_to_fs` gives (``bucket/data`` for ``s3://bucket/data``). A
+    URL bound as a path is refused. Stores have no symlinks, so the symlink
+    options change nothing there.
     """
     given = _make_env(mapping, kw)
     options = [
@@ -145,6 +133,7 @@ def glob(
         ("follow_symlinks", follow_symlinks, False),
         ("recurse_symlinks", recurse_symlinks, False),
         ("ambiguous", ambiguous, "raise"),
+        ("fs", fs, None),
     ]
     _check_option_keywords("glob", expr, given, options)
     if kind not in (None, "file", "dir"):
@@ -172,10 +161,30 @@ def glob(
                 f"The start of {e.pattern!r} depends on unbound parameters"
             )
         base = _render_deferred(h, {})
+    # The walk starts below the fixed prefix: the head and the literal
+    # segments after it, which are resolved like any other path.
+    parts = e.parts
+    start = 0
+    while start < len(parts):
+        part = parts[start]
+        if not isinstance(part, Seg) or part.literal is None:
+            break
+        base = _child(base, part.literal)
+        start += 1
+    fs = LOCAL if fs is None else fs
+    _check_root(fs, base)
     # Given bindings belong to every result, which is a full binding of expr.
     keep = {k: v for k, v in given.items() if k in expr.param_names}
     return _discover(
-        e, base, keep, kind, follow_symlinks, recurse_symlinks, on_ambiguous
+        e,
+        base,
+        start,
+        keep,
+        kind,
+        follow_symlinks,
+        recurse_symlinks,
+        on_ambiguous,
+        fs,
     )
 
 
@@ -183,14 +192,14 @@ def _same(a: dict[str, Any], b: dict[str, Any]) -> bool:
     return a == b and all(type(v) is type(b[k]) for k, v in a.items())
 
 
-def _through_link(path: str, base: str, cache: dict[str, bool]) -> bool:
+def _through_link(path: str, base: str, cache: dict[str, bool], fs: FileSystem) -> bool:
     """Whether a directory of ``path`` below ``base`` is a symlink."""
     stop = "" if base == "." else base
     d = os.path.dirname(path)
     while len(d) > len(stop):
         hit = cache.get(d)
         if hit is None:
-            hit = cache[d] = os.path.islink(d)
+            hit = cache[d] = fs.kind(d, follow_symlinks=False) == "link"
         if hit:
             return True
         d = os.path.dirname(d)
@@ -200,25 +209,25 @@ def _through_link(path: str, base: str, cache: dict[str, bool]) -> bool:
 def _discover(
     e: PathExpr,
     base: str,
+    start: int,
     keep: dict[str, Any],
     kind: str | None,
     follow_symlinks: bool,
     recurse_symlinks: bool,
     on_ambiguous: Callable[[AmbiguousMatchError], object] | None,
+    fs: FileSystem,
 ) -> Iterator[Match]:
     parts = e.parts
     n = len(parts)
-    # The walk starts below the fixed prefix: the head and the literal
-    # segments after it, which are resolved like any other path.
-    start = 0
-    while start < n:
-        part = parts[start]
-        if not isinstance(part, Seg) or part.literal is None:
-            break
-        base = _child(base, part.literal)
-        start += 1
-    if not (os.path.isdir(base) if start < n else os.path.lexists(base)):
+    if start < n:
+        # One view of the tree below the fixed prefix serves the whole walk,
+        # so an object store can list it with one request.
+        fs = fs.subtree(base)
+        if fs.kind(base) != "dir":
+            return
+    elif fs.kind(base, follow_symlinks=False) is None:
         return
+    scandir, kind_of, dir_key = fs.scandir, fs.kind, fs.dir_key
 
     def walk(
         d: str, i: int, env: dict[str, Any]
@@ -233,16 +242,14 @@ def _discover(
             if lit is not None:
                 child = _child(d, lit)
                 if last:
-                    ok = os.path.lexists(child)
+                    ok = kind_of(child, follow_symlinks=False) is not None
                 else:
-                    ok = os.path.isdir(child) and (
-                        follow_symlinks or not os.path.islink(child)
-                    )
+                    ok = kind_of(child, follow_symlinks=follow_symlinks) == "dir"
                 if ok:
                     yield from walk(child, i + 1, env)
                 return
             plan = seg_plan(part)
-            for entry in _entries(d):
+            for entry in scandir(d):
                 if not last and not _is_dir(entry, follow_symlinks):
                     continue
                 if plan is not None:
@@ -256,37 +263,47 @@ def _discover(
         param = part.param
 
         def splice(
-            d: str, acc: list[str], seen: frozenset[tuple[int, int]]
+            d: str, acc: list[str], seen: frozenset[Any]
         ) -> Iterator[tuple[str, dict[str, Any]]]:
             value = "/".join(acc) or "."
             if _accept(param, value):
                 env2 = _unify(env, param.name, value)
                 if env2 is not None:
                     yield from walk(d, i + 1, env2)
-            for entry in _entries(d):
+            for entry in scandir(d):
                 if not _is_dir(entry, recurse_symlinks):
                     continue
                 child = _child(d, entry.name)
                 if recurse_symlinks:
-                    key = _dir_key(child)
-                    if key is None or key in seen:
+                    try:
+                        key = dir_key(child)
+                    except OSError:
                         continue
-                    yield from splice(child, [*acc, entry.name], seen | {key})
+                    if key is None:
+                        # Nothing to detect a cycle with: descend only
+                        # directories that are not links.
+                        if entry.is_symlink():
+                            continue
+                        yield from splice(child, [*acc, entry.name], seen)
+                    elif key not in seen:
+                        yield from splice(child, [*acc, entry.name], seen | {key})
                 else:
                     yield from splice(child, [*acc, entry.name], seen)
 
-        start = _dir_key(d) if recurse_symlinks else None
-        yield from splice(d, [], frozenset() if start is None else frozenset({start}))
+        top = None
+        if recurse_symlinks:
+            try:
+                top = dir_key(d)
+            except OSError:
+                pass
+        yield from splice(d, [], frozenset() if top is None else frozenset({top}))
 
     render = e._compiled.render
     found: dict[str, dict[str, Any]] = {}
     clashes: dict[str, list[dict[str, Any]]] = {}
     for path, env in walk(base, start, {}):
-        if kind is not None and not follow_symlinks and os.path.islink(path):
-            continue
-        if kind == "file" and not os.path.isfile(path):
-            continue
-        if kind == "dir" and not os.path.isdir(path):
+        # Unless links are followed, a link is neither a file nor a directory.
+        if kind is not None and kind_of(path, follow_symlinks=follow_symlinks) != kind:
             continue
         try:
             if render(env) != path:
@@ -307,7 +324,7 @@ def _discover(
         # from one of its readings. Count those paths' readings by matching.
         links: dict[str, bool] = {}
         for path in found:
-            if not _through_link(path, base, links):
+            if not _through_link(path, base, links, fs):
                 continue
             try:
                 if len(match_all(e, path, limit=2)) > 1:

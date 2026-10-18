@@ -416,14 +416,35 @@ shard.glob(
     root="/mnt", follow_symlinks=True
 )  # pathlib-like; recurse_symlinks for SubPath
 
+# a path that parses more than one way is never yielded as a match; by default it
+# raises AmbiguousMatchError, ambiguous="skip" drops it, and a callable receives it
+stem, ext = Param("stem"), Param("ext")
+report = []
+found = list((P("/mnt/dist") / T(t"{stem}.{ext}")).glob(ambiguous=report.append))
+report[0].path  # '/mnt/dist/tool-1.0.tar.gz'
+report[0].candidates  # every verified reading
+# [{'stem': 'tool-1', 'ext': '0.tar.gz'}, {'stem': 'tool-1.0', 'ext': 'tar.gz'},
+#  {'stem': 'tool-1.0.tar', 'ext': 'gz'}]
+
 from wend import Lens
 
 stem, rel = Param("stem"), SubPath("rel")
 build = Lens(P("src") / rel / T(t"{stem}.md"), P("site") / rel / T(t"{stem}.html"))
 build("src/guide/install.md")  # PosixPath('site/guide/install.html')
 build.backward("site/guide/install.html")  # PosixPath('src/guide/install.md')
-# a lossless lens raises AmbiguousMatchError where two sources would share a target
+# a lossless lens raises AmbiguousMatchError where two sources would share a target;
+# build.map(paths, ambiguous=...) takes the same modes as glob
 ```
+
+Options are keyword-only: `kind=`, `follow_symlinks=`, `recurse_symlinks=` and
+`ambiguous=` for `glob`, `ambiguous=` for `Lens.map`, and `cls=` for `resolve`. Bindings can
+be keywords too, so:
+- a parameter that shares an option's name is bound through the positional mapping, which
+  accepts any name: `layout.glob({"kind": "raw"}, kind="file")`;
+- for such an expression, a `kind=` keyword without `"kind"` in the mapping could mean
+  either, so it raises `TypeError`;
+- `render`, `bind` and `compile()` take no options, and a `Lens` takes its path
+  positionally, so these accept every parameter name as a keyword.
 
 ### Compilation and batch resolution
 
@@ -552,8 +573,10 @@ A path given without a kind (no trailing `/`, not a pair) matches layouts of eit
 - Polars resolution rejects non-canonical path columns that `render` would normalise.
 - Alternation expands to a union of plain expressions, so `n` binary `Alt`s make `2ⁿ`
   alternatives (capped at 4096); matching tries each.
-- `glob` raises `AmbiguousMatchError` if any path it finds parses more than one way
-  (`{stem}.{ext}` on `a.tar.gz`); constrain a field with `choices=` or `type=`.
+- By default `glob` raises `AmbiguousMatchError` if any path it finds parses more than one
+  way (`{stem}.{ext}` on `a.tar.gz`). `ambiguous="skip"` or a callback keeps the other
+  matches, but the ambiguous paths still have no match: constrain a field with `choices=`
+  or `type=` to read them.
 - `glob`'s symlink policy decides what it traverses; it is not a sandbox.
 - The XDG anchors follow the XDG specification on every POSIX platform, macOS
   included. For `~/Library/...` conventions, bind the anchor to a value from a

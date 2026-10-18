@@ -2,13 +2,15 @@
 
 Every error raised deliberately by wend derives from `WendError`. Errors that
 signal an unacceptable value also derive from `ValueError`, so callers that
-already handle pathlib's `ValueError` keep working.
+already handle pathlib's `ValueError` keep working. Misused arguments raise
+`TypeError` or `ValueError`, as Python's own functions do; the private helpers
+at the end hold the argument rules that several entry points share.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from typing import Any
+from collections.abc import Callable, Container, Iterable, Mapping, Sequence
+from typing import Any, Literal
 
 
 class WendError(Exception):
@@ -60,6 +62,59 @@ class AmbiguousMatchError(WendError, ValueError):
 
 class ParamConflictError(WendError, ValueError):
     """Two different parameter declarations share a name within one expression."""
+
+
+# -- Helpers shared by the public entry points ---------------------------------
+
+
+def _check_option_keywords(
+    method: str,
+    expr: Any,
+    env: Container[str],
+    options: Iterable[tuple[str, Any, Any]],
+    *,
+    before: str = "",
+) -> None:
+    """Refuse an option keyword that also names a parameter left unbound.
+
+    The rule, shared by every method that takes both options and keyword
+    bindings: ``options`` lists ``(name, value, default)``; an option whose
+    value is not its default was passed by keyword. A keyword binding can
+    never carry an option's name (Python gives that keyword to the option),
+    so a name found in ``env`` was bound through the positional mapping and
+    the keyword is unambiguously the option. If ``env`` lacks it and ``expr``
+    has a parameter of that name, the caller may have meant either.
+    ``before`` names the positional arguments ahead of the mapping, for the
+    message.
+    """
+    for name, value, default in options:
+        if value is not default and name in expr.param_names and name not in env:
+            raise TypeError(
+                f"{method}() got {name}={value!r}, but {name!r} is both an option"
+                f" of {method}() and a parameter of {expr.pattern!r}. Bind the"
+                f" parameter in the mapping, as {method}({before}{{{name!r}: ...}});"
+                f" a {name}= keyword is then read as the option"
+            )
+
+
+def _ambiguity_handler(
+    ambiguous: Literal["raise", "skip"] | Callable[[AmbiguousMatchError], object],
+) -> Callable[[AmbiguousMatchError], object] | None:
+    """The callback for an ``ambiguous=`` argument; None means raise."""
+    if isinstance(ambiguous, str):
+        if ambiguous == "raise":
+            return None
+        if ambiguous == "skip":
+            return _ignore
+    elif callable(ambiguous):
+        return ambiguous
+    raise ValueError(
+        f"ambiguous must be 'raise', 'skip' or a callable, not {ambiguous!r}"
+    )
+
+
+def _ignore(error: AmbiguousMatchError) -> None:
+    return None
 
 
 class ConditionError(WendError):

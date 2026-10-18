@@ -292,7 +292,7 @@ wend's obligations, for every expression `e` and environment `env`:
 | matching completeness | **tested** (Hypothesis round trips; exhaustive enumeration over small domains) |
 | compiled successes equal interpreted successes | **tested** |
 | Polars results equal `render` | **tested**, on the supported subset |
-| every observed path matches an inferred layout | **by construction** (inference verifies each path and raises otherwise) and tested |
+| every observed path matches an inferred layout of its kind (file or directory), and the layouts' counts partition the observed paths of each kind | **by construction** (inference verifies each path against its layout and the counts per kind, and raises otherwise) and tested |
 
 **Fast-path uniqueness argument.** A fast-path segment is a sequence of
 literal strings and fields in which:

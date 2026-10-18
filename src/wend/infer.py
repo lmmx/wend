@@ -56,14 +56,25 @@ root whose few scripts sit among records (``README.md``, ``pyproject.toml``)
 fails the fourth, so its packages fold below it, if at all; and a tail
 without literal text (``{name}``) is never a candidate.
 
-Every observed path matches at least one inferred layout, and each layout's
-``count`` and field statistics come from the paths it was inferred from, so
-the counts partition the observed paths. ``optional`` and ``cardinality`` are
-properties of the pattern: a layout is optional when some observed directory
-matching a proper prefix of it contains none of the paths it matches, and
-*many* when some directory holds more than one of them directly (every such
-directory matches the pattern's parent prefix). Statistics record the values
-seen without constraining new ones.
+Kinds. The observed paths are files and observed directories: the empty
+directories of a walk, or the entries ending in "/" of an iterable. Each
+layout has one kind and is inferred from paths of that kind only; a
+directory merged with others keeps its own observed path apart from the
+files below it, as a ``dir`` layout of the merged pattern
+(``{dir}/examples`` when some package directories hold an empty
+``examples/``). A dir layout generalises like a file layout, through merged
+parents, digit runs and SubPath folds, but a file and a directory never
+share one, whatever names they share.
+
+Every observed path matches at least one inferred layout of its kind, and
+each layout's ``count`` and field statistics come from the paths it was
+inferred from, so the counts partition the observed paths of each kind.
+``optional`` and ``cardinality`` are properties of the pattern and the kind:
+a layout's paths are the observed paths of its kind that it matches; it is
+optional when some observed directory matching a proper prefix of it
+contains none of them, and *many* when some directory holds more than one of
+them directly (every such directory matches the pattern's parent prefix).
+Statistics record the values seen without constraining new ones.
 
 Field names follow the text before a run (``epoch_{epoch:03d}``), dates
 (``{year:04d}-{month:02d}-{day:02d}``, ``{date:08d}``, a bare four-digit
@@ -208,7 +219,11 @@ class _Rule:
     ``shape`` is ("num", literal pieces, token kinds) for names containing
     tokens (their observed values are in ``runs``), ("lit", name) for other
     names, or ("str", suffix) for a name generalised into a string field.
-    ``opaque`` marks a directory map formed from an opaque family.
+    ``opaque`` marks a directory map formed from an opaque family. ``listed``
+    holds the paths of the directories that are observed paths themselves
+    (an empty directory in a walk, an entry ending in "/" in an iterable):
+    merging keeps them apart from the files below, so they become a ``dir``
+    layout of the rule's own pattern.
     """
 
     kind: str
@@ -220,6 +235,7 @@ class _Rule:
     )  # observed full paths, parallel to names
     children: list[_Rule] = field(default_factory=list)
     opaque: bool = False
+    listed: list[str] = field(default_factory=list)
 
     def skeleton(self) -> tuple[Any, ...]:
         return (self.kind, self.shape)
@@ -245,6 +261,7 @@ def _merge(
     out.names = [n for r in rules for n in r.names]
     out.paths = [p for r in rules for p in r.paths]
     if out.kind == "dir":
+        out.listed = [p for r in rules for p in r.listed]
         out.children = _unify([c for r in rules for c in r.children], cfg, opaque)
     return out
 
@@ -522,11 +539,12 @@ def _stats(name: str, typ: type, values: list[Any]) -> FieldStats:
 class Layout:
     """One inferred path pattern, relative to the inferred root.
 
-    ``count`` and ``fields`` describe the observed paths the layout was
-    inferred from. ``optional`` is true when some observed directory matching
-    a proper prefix of ``expr`` contains none of the observed paths ``expr``
-    matches; ``many`` is true when some observed directory holds more than
-    one of them directly. ``cardinality`` combines the two.
+    ``kind`` is "file" or "dir", and ``count`` and ``fields`` describe the
+    observed paths of that kind the layout was inferred from. ``optional`` is
+    true when some observed directory matching a proper prefix of ``expr``
+    contains none of the observed paths of its kind that ``expr`` matches;
+    ``many`` is true when some observed directory holds more than one of them
+    directly. ``cardinality`` combines the two.
     """
 
     expr: PathExpr
@@ -572,7 +590,12 @@ class Layout:
 
 @dataclass
 class Schema:
-    """The result of `infer`: layouts that together cover every observed path."""
+    """The result of `infer`: layouts that together cover every observed path.
+
+    Each observed path is covered by a layout of its own kind: a file by a
+    ``file`` layout, an observed directory by a ``dir`` layout. ``total``
+    counts the distinct observed paths, which the layouts' counts partition.
+    """
 
     layouts: list[Layout]
     total: int
@@ -586,18 +609,48 @@ class Schema:
             )
         return "\n".join(lines)
 
-    def match(self, path: Any) -> list[tuple[Layout, Match]]:
-        """Every layout that matches ``path``, with its bindings."""
+    def match(self, path: Any, kind: str | None = None) -> list[tuple[Layout, Match]]:
+        """Every layout of ``kind`` that matches ``path``, with its bindings.
+
+        ``kind`` is "file", "dir" or None. Without it, a string ending in "/"
+        is a directory, as in `infer`, and any other path matches layouts of
+        either kind.
+        """
+        if kind is None:
+            kind = _kind_of(path)
+        elif kind not in ("file", "dir"):
+            raise ValueError("kind must be None, 'file' or 'dir'")
         out = []
         for lay in self.layouts:
+            if kind is not None and lay.kind != kind:
+                continue
             m = lay.match(path)
             if m is not None:
                 out.append((lay, m))
         return out
 
     def check(self, paths: Iterable[Any]) -> list[str]:
-        """Paths that no layout matches (empty when the schema covers them all)."""
-        return [str(p) for p in paths if not self.match(p)]
+        """Paths that no layout of their kind matches (empty when all are covered).
+
+        Each entry is a path or a ``(path, is_dir)`` pair. A string ending in
+        "/" is a directory, as in `infer`; any other path is checked against
+        layouts of either kind.
+        """
+        out = []
+        for entry in paths:
+            if isinstance(entry, tuple):
+                path, is_dir = entry
+                kind = "dir" if is_dir else "file"
+            else:
+                path, kind = entry, None
+            if not self.match(path, kind):
+                out.append(str(path))
+        return out
+
+
+def _kind_of(path: Any) -> str | None:
+    """The kind a path carries: a string ending in "/" is a directory."""
+    return "dir" if isinstance(path, str) and path.endswith("/") else None
 
 
 def _ident(s: str) -> str:
@@ -740,31 +793,47 @@ def _flatten(
         my_stats = list(stats)
         seg = _segment(r, parent, my_used, my_stats)
         path = (*prefix, seg)
-        if r.kind == "file" or not r.children:
-            expr = PathExpr(REL, path)
-            names = [n for n, _, _ in my_stats]
-            seen = _seen(expr, r.paths, names)
-            # A field that always repeats an earlier one is the same parameter,
-            # as in n01440764/n01440764_10026.JPEG. Three distinct values, or
-            # two over four paths, make a coincidence unlikely.
-            same: dict[str, str] = {}
-            for i, a in enumerate(names):
-                distinct = len(set(seen[a]))
-                if a in same or distinct < 2 or (distinct == 2 and len(r.paths) < 4):
-                    continue
-                for b in names[i + 1 :]:
-                    if b not in same and seen[a] == seen[b]:
-                        same[b] = a
-            if same:
-                params = expr.params
-                expr = expr.bind({b: params[a] for b, a in same.items()})
-                my_stats = [st for st in my_stats if st[0] not in same]
-                seen = _seen(expr, r.paths, [n for n, _, _ in my_stats])
-            fields = {n: _stats(n, t, seen[n]) for n, t, _ in my_stats}
-            out.append((Layout(expr, r.kind, len(r.paths), fields, False), r.paths))
-        else:
+        if r.kind == "file":
+            out.append(_leaf(path, "file", r.paths, my_stats))
+            continue
+        # A directory rule gives a dir layout for its observed directories
+        # (all of them when it has no children), and its children give the
+        # layouts below it: a file and a directory never share a layout.
+        if r.listed:
+            out.append(_leaf(path, "dir", r.listed, my_stats))
+        if r.children:
             label = r.names[0] if r.literal_like() else parent
             _flatten(r.children, path, label, my_used, my_stats, out)
+
+
+def _leaf(
+    segs: tuple[Seg, ...],
+    kind: str,
+    paths: list[str],
+    stats: list[tuple[str, type, list[Any]]],
+) -> _Item:
+    """The layout of observed ``paths`` of one kind, all matching ``segs``."""
+    expr = PathExpr(REL, segs)
+    names = [n for n, _, _ in stats]
+    seen = _seen(expr, paths, names)
+    # A field that always repeats an earlier one is the same parameter, as in
+    # n01440764/n01440764_10026.JPEG. Three distinct values, or two over four
+    # paths, make a coincidence unlikely.
+    same: dict[str, str] = {}
+    for i, a in enumerate(names):
+        distinct = len(set(seen[a]))
+        if a in same or distinct < 2 or (distinct == 2 and len(paths) < 4):
+            continue
+        for b in names[i + 1 :]:
+            if b not in same and seen[a] == seen[b]:
+                same[b] = a
+    if same:
+        params = expr.params
+        expr = expr.bind({b: params[a] for b, a in same.items()})
+        stats = [st for st in stats if st[0] not in same]
+        seen = _seen(expr, paths, [n for n, _, _ in stats])
+    fields = {n: _stats(n, t, seen[n]) for n, t, _ in stats}
+    return Layout(expr, kind, len(paths), fields, False), paths
 
 
 def _shape_key(segs: tuple[Seg, ...]) -> tuple[str, ...]:
@@ -1057,14 +1126,18 @@ def _below(
 type _Frontier = list[tuple[tuple[str, ...], dict[str, Any], dict[str, Any]]]
 
 
-def _mark_cardinality(layouts: list[Layout], tree: dict[str, Any]) -> None:
+def _mark_cardinality(
+    layouts: list[Layout], tree: dict[str, Any], listed: set[str]
+) -> None:
     """Set each layout's ``optional`` and ``many`` flags from its pattern.
 
     Each pattern is walked down the observed tree with the segment matcher
     that `match` uses (a ``SubPath`` reaches a directory and every directory
     below it), so the flags hold for every directory a prefix matches,
     including directories inferred under a different layout. Layouts share
-    the directories reached by their common prefixes.
+    the directories reached by their common prefixes. A layout's paths are
+    the observed paths of its kind that it matches: files, or the observed
+    directories in ``listed``.
     """
     frontiers: dict[tuple[Any, ...], _Frontier] = {(): [((), {}, tree)]}
 
@@ -1104,8 +1177,9 @@ def _mark_cardinality(layouts: list[Layout], tree: dict[str, Any]) -> None:
         hits: set[tuple[str, ...]] = set()
         for at, env, node in frontier(parts[:-1]):
             for name, found in _step(last, node, env):
-                sub = node[name]
-                if (sub is None) != want_file or (sub and not want_file):
+                if (node[name] is None) != want_file or not (
+                    want_file or "/".join((*at, name)) in listed
+                ):
                     continue
                 if verified(lay.expr, (*at, name), found):
                     hits.add((*at, name))
@@ -1152,21 +1226,28 @@ def infer(
 ) -> Schema:
     """Infer layouts from a directory (walked) or an iterable of relative paths.
 
-    In an iterable, a trailing "/" marks a directory. ``min_dirs`` and
-    ``min_files`` are how many similar siblings it takes to generalise a name
-    into a field; ``similarity`` is the Jaccard threshold on directory
-    contents. Hidden entries are skipped unless ``include_hidden``.
+    The observed paths are the files and, in a walk, the empty directories.
+    In an iterable, a trailing "/" marks a directory, which is an observed
+    path of kind ``dir`` whether or not other paths lie below it; repeated
+    paths count once. ``min_dirs`` and ``min_files`` are how many similar
+    siblings it takes to generalise a name into a field; ``similarity`` is
+    the Jaccard threshold on directory contents. Hidden entries are skipped
+    unless ``include_hidden``.
     """
     cfg = _Config(min_dirs, min_files, similarity)
-    observed = _observe(source, include_hidden)
     tree: dict[str, Any] = {}
-    for path, is_dir in observed:
+    listed: set[str] = set()  # observed directories
+    files = 0
+    for path, is_dir in _observe(source, include_hidden):
         parts = [x for x in PurePosixPath(path).parts if x != "/"]
+        if not parts:
+            continue  # the root itself
         node = tree
         for i, name in enumerate(parts):
             if i == len(parts) - 1 and not is_dir:
                 if isinstance(node.get(name), dict):
                     raise ValueError(f"{path!r} is listed as a file and as a directory")
+                files += name not in node
                 node[name] = None
             else:
                 if name in node and node[name] is None:
@@ -1174,6 +1255,8 @@ def infer(
                         f"{'/'.join(parts[: i + 1])!r} is listed as a file and as a directory"
                     )
                 node = node.setdefault(name, {})
+        if is_dir:
+            listed.add("/".join(parts))
 
     def build(children: dict[str, Any], at: str) -> list[_Rule]:
         rules = []
@@ -1190,12 +1273,26 @@ def infer(
             )
             if sub is not None:
                 r.children = build(sub, full)
+                if full in listed:
+                    r.listed = [full]
             rules.append(r)
         return _unify(rules, cfg)
 
     items: list[_Item] = []
     _flatten(build(tree, ""), (), "", set(), [], items)
-    layouts = [lay for lay, _ in _fold_subpaths(items, tree, cfg)]
-    _mark_cardinality(layouts, tree)
-    layouts.sort(key=lambda lay: (-lay.count, lay.expr.pattern))
-    return Schema(layouts, len(observed))
+    items = _fold_subpaths(items, tree, cfg)
+    # Each layout's paths are observed paths of its kind (they come from rules
+    # of that kind, and `_leaf` and `_folded` verify that they match), and the
+    # counts per kind partition the observed paths of that kind.
+    counted: Counter[str] = Counter()
+    for lay, paths in items:
+        counted[lay.kind] += len(paths)
+    if counted != Counter(file=files, dir=len(listed)):  # pragma: no cover
+        raise AssertionError(
+            f"inferred layouts count {dict(counted)} observed paths, "
+            f"not {files} files and {len(listed)} directories"
+        )
+    layouts = [lay for lay, _ in items]
+    _mark_cardinality(layouts, tree, listed)
+    layouts.sort(key=lambda lay: (-lay.count, lay.expr.pattern, lay.kind))
+    return Schema(layouts, files + len(listed))

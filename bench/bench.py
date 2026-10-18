@@ -171,6 +171,55 @@ def batch() -> None:
     table(f"Batch resolution ({n:,} rows; per row)", rows)
 
 
+def shared() -> None:
+    """Several expressions rendered together: one compiled set vs one call each."""
+    from wend import compile_many
+
+    stem, rel = Param("stem"), SubPath("rel")
+    run, index = Param("run", type=int), Param("index", type=int)
+    sets = {
+        "a lens's two sides": (
+            [P("src") / rel / T(t"{stem}.md"), P("site") / rel / T(t"{stem}.html")],
+            {"rel": "guide/setup", "stem": "install"},
+        ),
+        "a project's 6 paths": (
+            [
+                root / "data/raw",
+                root / "data/processed",
+                root / "models" / T(t"model-{index:03d}.pt"),
+                root / "config.yaml",
+                root / "logs" / T(t"run-{run:04d}") / "stdout.txt",
+                root / "logs" / T(t"run-{run:04d}") / "stderr.txt",
+            ],
+            {"root": "/srv/p", "run": 7, "index": 3},
+        ),
+        "a shard's 3 files": (
+            [
+                shard,
+                shard.with_suffix(".idx"),
+                shard.with_suffix(".sha256"),
+            ],
+            B,
+        ),
+    }
+    n = 2_000 if QUICK else 20_000
+    rows = []
+    for name, (exprs, env) in sets.items():
+        each = [e.compile()._fn for e in exprs]
+        together = compile_many(exprs)._fn
+        assert together(env) == tuple(f(env) for f in each)
+        rows.append(
+            (
+                f"{name}: compiled, one call each",
+                bench(lambda: [f(env) for f in each], n),
+            )
+        )
+        rows.append(
+            (f"{name}: compile_many, one call", bench(lambda: together(env), n))
+        )
+    table("Rendering sets of expressions (per set)", rows)
+
+
 def matching() -> None:
     n = 2_000 if QUICK else 10_000
     rx = re.compile(
@@ -350,6 +399,7 @@ def symbolic() -> None:
 WORKLOADS = {
     "single": single,
     "batch": batch,
+    "shared": shared,
     "matching": matching,
     "shapes": shapes,
     "discovery": discovery,

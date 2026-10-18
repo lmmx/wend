@@ -351,6 +351,7 @@ wend's obligations, for every expression `e` and environment `env`:
 | an inferred schema, declared with `from_inferred` or written out with `source()`, validates the tree it was inferred from (§12) | **tested** (Hypothesis, random trees with and without empty directories; real trees in the journal) |
 | matching completeness, outside the limits of §7 | **tested** (Hypothesis round trips; exhaustive enumeration over small domains, which also checks that the limits return only verified bindings) |
 | compiled successes equal interpreted successes | **tested** |
+| a compiled set (`compile_many`) gives each expression's rendering, in order, and the first failing expression's error | **by construction** (any exception in the shared fast path re-renders each expression with the interpreter, in order) and **tested** (Hypothesis, random sets of terms) |
 | Polars results equal `render` | **tested**, on the supported subset |
 | every observed path matches an inferred layout of its kind (file or directory), and the layouts' counts partition the observed paths of each kind | **by construction** (inference verifies each path against its layout and the counts per kind, and raises otherwise) and tested |
 

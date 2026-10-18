@@ -34,6 +34,7 @@ from .conditions import Condition, check_conditions
 from .errors import (
     AmbiguousMatchError,
     ConditionError,
+    IndeterminateError,
     InvalidBindingError,
     MissingBindingError,
 )
@@ -161,7 +162,7 @@ class Query:
         ]
         return pure + [p for p in self.predicates if p not in pure]
 
-    def _admit(self, m: Match, preds: list[Any]) -> Match | None:
+    def _admit(self, m: Match, preds: list[Any], fs: Any = None) -> Match | None:
         for d in self.drop:
             if d.match_all(m.path, limit=1):
                 return None
@@ -184,7 +185,9 @@ class Query:
         for p in preds:
             if isinstance(p, Condition):
                 try:
-                    check_conditions(out.path, (p,), out.bindings)
+                    check_conditions(out.path, (p,), out.bindings, fs)
+                except IndeterminateError:
+                    raise  # not known to fail: a filter does not guess
                 except ConditionError, MissingBindingError, InvalidBindingError:
                     return None
             elif not p(out):
@@ -193,20 +196,37 @@ class Query:
 
     def glob(self, mapping: Any = None, /, **kw: Any) -> Iterator[Match]:
         """Discover the source's paths and yield those every filter admits,
-        as they are found (see `wend.glob` for the options)."""
+        as they are found (see `wend.glob` for the options). Conditions are
+        checked on the filesystem the walk reads (``fs=``); a condition that
+        cannot be determined raises `IndeterminateError`."""
         preds = self._order()
+        fs = kw.get("fs")
+        self._local_predicates_only(preds, fs)
         for m in self.source.glob(mapping, **kw):
-            out = self._admit(m, preds)
+            out = self._admit(m, preds, fs)
             if out is not None:
                 yield out
 
-    def match(self, path: Any) -> Match | None:
+    def match(self, path: Any, *, fs: Any = None) -> Match | None:
         """The source's reading of ``path``, if every filter admits it. The
-        filesystem predicates look at ``path`` now."""
+        filesystem predicates look at ``path`` now, on ``fs``."""
+        preds = self._order()
+        self._local_predicates_only(preds, fs)
         m = self.source.match(_canonical(path))
         if m is None:
             return None
-        return self._admit(m, self._order())
+        return self._admit(m, preds, fs)
+
+    @staticmethod
+    def _local_predicates_only(preds: list[Any], fs: Any) -> None:
+        from .fs import LocalFS
+
+        if fs is not None and not isinstance(fs, LocalFS):
+            if any(isinstance(p, FsPredicate) for p in preds):
+                raise TypeError(
+                    "modified_after, larger_than and the other stat predicates"
+                    " read the local disk; they cannot filter another filesystem"
+                )
 
 
 def _rebind(m: Match, bindings: dict[str, Any]) -> Match:

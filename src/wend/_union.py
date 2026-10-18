@@ -288,23 +288,33 @@ class PathUnion:
         env = _make_env(mapping, kw)
         return tuple(a.render(env) for a in self.alternatives)
 
-    def first(self, mapping: Any = None, /, **kw: Any) -> Path:
+    def first(self, mapping: Any = None, /, *, fs: Any = None, **kw: Any) -> Path:
         """The first alternative that exists and meets its own preconditions,
-        checked now against the filesystem (an effect, unlike `render`).
+        checked now against the filesystem (an effect, unlike `render`), on
+        ``fs`` (a `wend.fs` filesystem; the local disk by default).
 
         Every alternative must render: a missing or invalid binding is an
         error, not a reason to skip it. Raises `NoAlternativeError` (a
-        `FileNotFoundError`) listing what was tried when none qualifies.
+        `FileNotFoundError`) listing what was tried when none qualifies. An
+        alternative whose conditions cannot be determined raises
+        `IndeterminateError` rather than being skipped: a later alternative
+        is not chosen over one that could not be checked.
         """
-        from .conditions import Exists, check_conditions
+        from .conditions import Exists, _check_fs_option, check_conditions
+        from .errors import IndeterminateError
 
         env = _make_env(mapping, kw)
+        _check_fs_option("first", self, env, fs)
         tried: list[tuple[str, ConditionError]] = []
         for a in self.alternatives:
             s = a.render(env)
             conds = a.conditions
             try:
-                check_conditions(s, (Exists, *(conds.requires if conds else ())), env)
+                check_conditions(
+                    s, (Exists, *(conds.requires if conds else ())), env, fs
+                )
+            except IndeterminateError:
+                raise
             except ConditionError as e:
                 tried.append((s, e))
                 continue

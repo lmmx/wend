@@ -46,8 +46,8 @@ from ._bindings import bindings
 from ._expr import PathExpr, _coerce, canonical
 from ._match import Match
 from ._union import AltMatch, PathUnion
-from .conditions import Condition, ConditionError, Under, check_conditions
-from .errors import AmbiguousMatchError
+from .conditions import Condition, Under, check_conditions
+from .errors import AmbiguousMatchError, ConditionError
 
 
 __all__ = ["PathOf"]

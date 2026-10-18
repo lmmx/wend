@@ -131,6 +131,18 @@ class ConditionError(WendError):
         super().__init__(f"{path!r} {message} (required: {condition!r})")
 
 
+class IndeterminateError(ConditionError):
+    """Whether a condition holds could not be determined (§10).
+
+    The filesystem could not say: the path could not be examined (no
+    permission to look, a symlink loop, a failed request), or the backend
+    cannot report the capability without exercising it (whether an object
+    store would accept a write). It is not a known failure, which is a
+    `CapabilityError`, `MissingPathError`, `PathExistsError` or
+    `WrongKindError`.
+    """
+
+
 class MissingPathError(ConditionError, FileNotFoundError):
     """A path required to exist does not."""
 

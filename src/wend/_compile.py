@@ -241,4 +241,9 @@ def compile_expr(expr: X.PathExpr) -> CompiledPath:
         **gen.consts,
     }
     exec(compile(source, f"<wend {expr.pattern}>", "exec"), ns)  # noqa: S102
-    return CompiledPath(expr, ns["_render"], source)
+    fn = ns["_render"]
+    if expr.conditions is not None and expr.conditions.bases:
+        from .conditions import guarded
+
+        fn = guarded(expr, fn)
+    return CompiledPath(expr, fn, source)

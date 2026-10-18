@@ -59,3 +59,41 @@ class AmbiguousMatchError(WendError, ValueError):
 
 class ParamConflictError(WendError, ValueError):
     """Two different parameter declarations share a name within one expression."""
+
+
+class ConditionError(WendError):
+    """A declared condition does not hold for a rendered path (§10).
+
+    ``path`` is the rendered path and ``condition`` the condition that failed.
+    Subclasses also derive from the builtin exception that describes the same
+    failure, so ``except FileNotFoundError`` keeps working.
+    """
+
+    def __init__(self, path: str, condition: Any, message: str) -> None:
+        self.path = path
+        self.condition = condition
+        super().__init__(f"{path!r} {message} (required: {condition!r})")
+
+
+class MissingPathError(ConditionError, FileNotFoundError):
+    """A path required to exist does not."""
+
+
+class PathExistsError(ConditionError, FileExistsError):
+    """A path required to be absent exists (possibly as a broken symlink)."""
+
+
+class WrongKindError(ConditionError):
+    """A path exists but is not the declared kind (a file, or a directory)."""
+
+
+class CapabilityError(ConditionError, PermissionError):
+    """A path cannot be used as declared: read, written, created or listed."""
+
+
+class ContainmentError(ConditionError, InvalidBindingError):
+    """A path is not under the base it was declared to be under.
+
+    Raised by `render` when the bindings take the path lexically outside the
+    base, and by `check` when it resolves outside it through symlinks.
+    """

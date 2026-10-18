@@ -173,6 +173,8 @@ def observed_trees(draw):
 @example(["0/_", "00/_", "1/_"])  # "00" is not an instance of {n:d}
 @example(["a/examples", "b/examples", "a/y", "b/y", "c/y", "c/examples/"])
 @example(["r/run_1/m.pt", "r/run_2/m.pt", "r/run_3/", "r/"])
+@example(["a/", "b/", "c/", "d/e/a/", "d/e/b/"])  # empty directories form a map
+@example(["p/a/x", "p/b/x", "p/c/", "p/c.d/", "q/"])  # and join one
 @given(observed_trees())
 def test_every_observed_path_is_covered_by_its_kind(entries):
     _check_schema(entries, infer(entries))
@@ -375,6 +377,58 @@ def test_empty_directory_in_a_family_of_directories():
     assert empty.count == 1 and empty.fields["run"].sample == (3,)
     model = lays["runs/run_{run:d}/model.pt", "file"]
     assert model.count == 2 and model.cardinality is Cardinality.OPTIONAL
+
+
+def test_empty_directories_join_a_directory_map():
+    # /usr/share/doc: package directories alike in contents form a map, and
+    # an empty package directory beside them joins it, whatever their number
+    entries = [
+        f"doc/{p}/{f}" for p in ("apt", "bc", "sed") for f in ("copyright", "NEWS.gz")
+    ]
+    entries.append("doc/xproto/")
+    schema = infer(entries)
+    _check_schema(entries, schema)
+    assert sorted((lay.expr.pattern, lay.kind) for lay in schema.layouts) == [
+        ("doc/{doc}", "dir"),
+        ("doc/{doc}/NEWS.gz", "file"),
+        ("doc/{doc}/copyright", "file"),
+    ]
+    [(lay, m)] = schema.match("doc/xproto", kind="dir")
+    assert lay.count == 1 and m == {"doc": "xproto"}
+    # the map may come from merged parents: examples/{examples} in a and b,
+    # which c/examples/z joins though c holds no other example
+    entries = [f"{p}/examples/{e}/run.sh" for p in "ab" for e in "xy"]
+    entries.append("c/examples/z/")
+    schema = infer(entries)
+    _check_schema(entries, schema)
+    assert sorted((lay.expr.pattern, lay.kind) for lay in schema.layouts) == [
+        ("{dir}/examples/{examples}", "dir"),
+        ("{dir}/examples/{examples}/run.sh", "file"),
+    ]
+
+
+def test_empty_directories_form_a_map_like_files():
+    # binutils' empty bfd/, gas/, gprof/ and ld/: like files sharing an
+    # extension, empty directories form a map once there are min_files
+    entries = ["binutils/copyright", "binutils/changelog.Debian.gz"]
+    entries += [f"binutils/{d}/" for d in ("bfd", "gas", "gprof", "ld")]
+    schema = infer(entries)
+    _check_schema(entries, schema)
+    lays = {(lay.expr.pattern, lay.kind): lay for lay in schema.layouts}
+    empty = lays["binutils/{binutils}", "dir"]
+    assert empty.count == 4 and empty.cardinality is Cardinality.AT_LEAST_ONE
+    assert len(schema.layouts) == 3
+    # fewer, or a higher threshold, and they stay records
+    assert len(infer(entries, min_files=5).layouts) == 6
+    assert len(infer(entries[:4]).layouts) == 4
+    # a map of empty directories takes in no directory with contents
+    entries = [*entries, "binutils/doc/README"]
+    schema = infer(entries)
+    _check_schema(entries, schema)
+    assert {lay.expr.pattern for lay in schema.layouts} >= {
+        "binutils/{binutils}",
+        "binutils/doc/README",
+    }
 
 
 def test_listed_directories_are_observed_paths():
@@ -631,14 +685,56 @@ def test_terminfo_letter_directories_collapse():
 
 
 @settings(max_examples=40, deadline=None)
-@given(st.integers(8, 20), st.integers(0, 10**6))
-def test_opaque_families_collapse_to_one_layout(k, seed):
+@given(st.integers(8, 20), st.integers(0, 10**6), st.integers(0, 3))
+def test_opaque_families_collapse_to_one_layout(k, seed, empty):
+    # empty letter directories join the map
     paths = _terminfo("abcdefghijklmnopqrstuvwxyz"[:k], seed)
+    paths += [f"terminfo/{c}/" for c in "zyx"[:empty]]
     schema = infer(paths)
     _check_schema(paths, schema)
-    assert [lay.expr.pattern for lay in schema.layouts] == [
-        "terminfo/{terminfo}/{name}"
+    assert [(lay.expr.pattern, lay.kind) for lay in schema.layouts] == [
+        ("terminfo/{terminfo}/{name}", "file"),
+        *[("terminfo/{terminfo}", "dir")] * bool(empty),
     ]
+
+
+def test_opaque_family_with_an_empty_member():
+    # an empty digit directory says nothing about its siblings' files
+    paths = _terminfo("012345678")
+    entries = [*paths, "terminfo/9/"]
+    schema = infer(entries)
+    _check_schema(entries, schema)
+    assert [(lay.expr.pattern, lay.kind) for lay in schema.layouts] == [
+        ("terminfo/{n:d}/{name}", "file"),
+        ("terminfo/{n:d}", "dir"),
+    ]
+    # only the members holding files count towards min_opaque: seven of nine
+    entries = [p for p in paths if p.split("/")[1] not in "78"]
+    entries += ["terminfo/7/", "terminfo/8/"]
+    schema = infer(entries)
+    _check_schema(entries, schema)
+    assert sum(lay.kind == "file" for lay in schema.layouts) > 1
+
+
+@settings(max_examples=40, deadline=None)
+@given(st.integers(8, 9), st.integers(0, 10**6))
+def test_an_empty_member_changes_no_file_layout(k, seed):
+    # digit directories with one more, empty: the same file layouts as without
+    def files(schema):
+        return [
+            (lay.expr.pattern, lay.count)
+            for lay in schema.layouts
+            if lay.kind == "file"
+        ]
+
+    paths = _terminfo("0123456789"[:k], seed)
+    entries = [*paths, f"terminfo/{k}/"]
+    schema = infer(entries)
+    _check_schema(entries, schema)
+    assert files(schema) == files(infer(paths))
+    assert [
+        (lay.expr.pattern, lay.count) for lay in schema.layouts if lay.kind == "dir"
+    ] == [("terminfo/{n:d}", 1)]
 
 
 # -- naming -------------------------------------------------------------------

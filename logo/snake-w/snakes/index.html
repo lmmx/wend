@@ -1,0 +1,38 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snake W</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #fdfdfb; }
+  canvas { display: block; width: 100vw; height: 100vh; }
+  #status { position: fixed; inset: auto 0 16px 0; text-align: center; font: 13px system-ui, sans-serif; color: #888; }
+</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }</script>
+<canvas id="c"></canvas>
+<div id="status">building…</div>
+<script type="module">
+// The finished reconstruction at the reference camera. Loads the final params, the look and
+// the baked head meshes (tools/bake_heads.mjs; without them the heads are meshed here, which
+// takes several seconds). ?params=, ?look= and ?heads= point at other files.
+import { createScene, LOOK } from "./scene.js";
+const q = new URLSearchParams(location.search);
+const get = async (url) => (await fetch(url)).json();
+const [params, lookFile, bakedHeads] = await Promise.all([
+  get(q.get("params") || "w-final.params.json"),
+  get(q.get("look") || "w-final.look.json"),
+  q.get("heads") === "none" ? null : get(q.get("heads") || "heads-final.json").catch(() => null),
+]);
+const look = Object.assign(structuredClone(LOOK), lookFile);
+const t0 = performance.now();
+const canvas = document.getElementById("c");
+const s = createScene(canvas, params, look, { bakedHeads });
+// look.softness: a slight photographic softness (px), as the reference's edges have
+if (look.softness) document.getElementById("c").style.filter = `blur(${look.softness}px)`;
+s.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+const fit = () => { s.resize(canvas.clientWidth, canvas.clientHeight); s.render(); };
+new ResizeObserver(fit).observe(canvas);
+fit();
+document.getElementById("status").remove();
+console.log("built in", Math.round(performance.now() - t0), "ms");
+window.__ready = true;
+</script>

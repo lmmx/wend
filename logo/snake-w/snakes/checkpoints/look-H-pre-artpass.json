@@ -1,0 +1,1 @@
+{"yellow":"#ffc81a","blue":"#0a4be0","headBlend":60,"ao":{"k":0.085,"groundK":0.35,"groundFall":70,"contact":0.8,"contactFall":22},"material":{"roughness":0.26,"clearcoat":0.4,"clearcoatRoughness":0.05,"specularIntensity":0.7},"env":{"room":0.08,"key":22,"keySize":0.9,"keyPos":[-3.5,4.0,6.5],"over":8.5,"front":3.2,"fill":0.8,"rim":1.0,"floor":1.4}}

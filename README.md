@@ -261,6 +261,38 @@ for m in (src - tests).where(File, modified_after(yesterday)).glob():
 
 The rules are in [SEMANTICS.md §11](docs/SEMANTICS.md#11-unions-and-queries).
 
+### Lineage
+
+A path has two pasts (Future Paths [part 1](https://cog.spin.systems/future-paths-types)).
+
+As a plan, an expression records how it was built:
+
+```py
+from wend.lineage import Ledger, content_key, explain, tags
+
+raw = (P(root) / "raw" / T(t"{day}.csv")).tag(source="upload")
+report = raw.with_suffix(".parquet").cousin("../reports", T(t"{day}.md"))
+print(explain(report))  # each operation, sources first
+tags(report)  # {'source': 'upload'}: tags are found along the derivation
+```
+
+As an artefact, a `Ledger` records which files were made from which, with content
+digests:
+
+```py
+ledger = Ledger("data/.lineage.jsonl")
+with ledger.run(convert, root="data", day="mon") as p:  # a Step; outputs are recorded
+    ...
+ledger.upstream(out)  # what out was made from
+ledger.downstream(raw_file)  # what to rebuild when raw_file changes
+ledger.stale(out)  # inputs whose contents changed since out was made
+```
+
+Content addressing names a path after what it holds. The key is bound like any value,
+so `render` stays pure and `match` reads it back:
+`cache.render(root=..., key=content_key(raw_file))`.
+The rules are in [SEMANTICS.md §13](docs/SEMANTICS.md#13-lineage).
+
 ### Discovery and lenses
 
 ```py
@@ -375,6 +407,7 @@ Layouts are ordinary expressions (`rename`, `match`, `under(root).glob()`, ...),
 - pipeline pre- and postconditions;
 - log rotation and config fallbacks with unions;
 - a declared project schema, inferred, validated and scaffolded;
+- lineage, invalidation and a content-addressed cache;
 - layout inference.
 
 ### Limitations

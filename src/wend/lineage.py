@@ -246,14 +246,16 @@ class Ledger:
     def run(
         self,
         step: Step,
-        mapping: Mapping[Any, Any] | None = None,
+        mapping: Any = None,
         /,
         **bindings: Any,
     ) -> Iterator[dict[str, Path]]:
         """Run ``step`` like ``with step(...)`` and, when it succeeds, record
         each path it declares it creates, writes or deletes as made from the
-        paths it declares it reads (its `effects`). The operation is the
-        step's repr; tags are each output expression's lineage tags."""
+        paths it declares it reads (its `effects`). The bindings are given
+        as to the step: a mapping or an object whose fields bind by name,
+        and keywords. The operation is the step's repr; tags are each output
+        expression's lineage tags."""
         from ._expr import _make_env
 
         env = _make_env(mapping, bindings)

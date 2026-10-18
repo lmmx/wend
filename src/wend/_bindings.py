@@ -2,8 +2,9 @@
 tuple, or any object with instance attributes, binds by field name.
 
 Everything that takes a mapping of bindings (``render``, ``resolve``,
-``bind``, ``glob``, ``check``, compiled renderers, unions, lenses, steps)
-takes such an object in its place, and reads exactly what `bindings` reads.
+``bind``, ``glob``, ``check``, compiled renderers, unions, lenses, steps,
+``Ledger.run``) takes such an object in its place, and reads exactly what
+`bindings` reads.
 """
 
 from __future__ import annotations

@@ -157,6 +157,41 @@ def test_objects_reach_glob_lenses_steps_and_checks(tmp_path):
     assert lens.target.render() == "out/a/b"
 
 
+def test_objects_bind_a_lens_target_in_every_method():
+    # the source gives idx; root and split come from the object
+    lens = Lens(T(t"in/chunk_{idx:04d}.txt"), shard)
+    path = "in/chunk_0007.txt"
+    for src in _sources():
+        assert lens.render(path, src) == WANT, src
+        assert lens(path, src) == Path(WANT)
+        assert lens.forward(path, src) == Path(WANT)
+        assert lens.backward(WANT, src) == Path(path)
+        assert list(lens.map([path, "other"], src)) == [(path, Path(WANT))]
+    run = Run("/mnt", "train")
+    assert lens.render(path, run, split="test") == WANT.replace("train", "test")
+    assert list(lens.map([path], run, split="test")) == [
+        (path, Path(WANT.replace("train", "test")))
+    ]
+
+
+def test_objects_bind_a_ledger_run(tmp_path):
+    from wend import Exists
+    from wend.lineage import Ledger
+
+    ledger = Ledger(tmp_path / "lineage.jsonl")
+    write = Step(out=shard.ensures(Exists))
+    run = Run(str(tmp_path), "train")
+    for overrides in ({}, {"split": "valid"}):  # keywords override the object
+        with ledger.run(write, run, **overrides) as p:
+            p["out"].parent.mkdir(parents=True)
+            p["out"].touch()
+        rec = ledger.provenance(p["out"])
+        assert rec is not None
+        # what the output's expression uses is recorded, not run.note
+        want = {"root": str(tmp_path), "split": "train", "idx": 7} | overrides
+        assert rec.bindings == want
+
+
 def test_a_pydantic_computed_field_can_render_from_its_own_model():
     """Part 1's PathVar example: the model supplies the bindings."""
     pydantic = pytest.importorskip("pydantic")

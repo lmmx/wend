@@ -259,6 +259,9 @@ Contributions are welcome! Please:
 1.  Open an issue to discuss bugs or feature requests
 2.  Fork the repo and submit a PR for changes
 3.  Install dev dependencies with `uv sync` and run `pre-commit install`
+4.  Keep the semantic contract and its tests together: a change to
+    [docs/SEMANTICS.md](docs/SEMANTICS.md) comes with the matching change to the
+    reference evaluator in `tests/contract_test.py`, and the reverse
 
 ## License
 

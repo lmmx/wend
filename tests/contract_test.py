@@ -10,6 +10,7 @@ parameters and nested joins are exercised.
 from __future__ import annotations
 
 import os
+import re
 from pathlib import PurePosixPath
 from string.templatelib import Interpolation, Template
 
@@ -92,16 +93,60 @@ def _convert(v, conversion):
     return {"r": repr, "s": str, "a": ascii}[conversion](v)
 
 
+# Parameters that may appear inside format specs. A t-string evaluates a nested
+# interpolation such as the ``{w}`` in ``{x:{w}}`` eagerly, by calling
+# ``format(w, "")``; for a Param that yields a marker standing for it (§4).
+SPEC_PARAMS: list[Param] = []
+
+_SPEC = re.compile(
+    r"(?:(?P<fill>.)?(?P<align>[<>=^]))?[-+ ]?z?#?0?[0-9]*[_,]?(?:\.[0-9]+)?"
+    r"(?P<type>[bcdeEfFgGnosxX%])?",
+    re.S,
+)
+
+
+def _spec_text(spec: str, env: dict) -> tuple[str, bool]:
+    """§4: the spec with each nested parameter formatted as format(v, ""), and
+    whether it was static (had no nested parameter)."""
+    static = True
+    for p in SPEC_PARAMS:
+        marker = format(p, "")
+        if marker in spec:
+            static = False
+            spec = spec.replace(marker, format(_checked(p, env[p.name]), ""))
+    return spec, static
+
+
+def _int_fill(spec: str, declared) -> str | None:
+    """§4: the fill character of an integer-formatted spec, else None."""
+    m = _SPEC.fullmatch(spec)
+    if m is None:
+        return None
+    kind = m["type"]
+    if kind is not None and kind in "bdoxX":
+        return m["fill"] or " " if m["align"] else " "
+    if kind is None and declared is int:
+        return m["fill"] or " " if m["align"] else " "
+    return None
+
+
 def _field(x: Interpolation, env: dict) -> str:
     v = x.value
     if isinstance(v, Param):
+        declared = v.type
         v = _checked(v, env[v.name])
+    else:
+        declared = type(v)
+    spec, static = _spec_text(x.format_spec, env)
     try:
-        s = format(_convert(v, x.conversion), x.format_spec)
+        s = format(_convert(v, x.conversion), spec)
     except (TypeError, ValueError) as e:
         raise Invalid(f"format: {e}") from None
     if "/" in s or "\x00" in s:
         raise Invalid("field contains a separator or NUL")
+    fill = _int_fill(spec, declared) if static and x.conversion is None else None
+    if fill is not None and (not s or (fill != "." and "." in s)):
+        raise Invalid("integer-formatted field breaks its format type")
     return s
 
 
@@ -159,10 +204,20 @@ def template(t: Template, env: dict, at_head: bool) -> PurePosixPath:
     return result
 
 
+def _plain(term):
+    """``joinp`` (a join with a bare Param on the right) is a join (§1)."""
+    if term[0] == "joinp":
+        return ("join", term[1], ("param", term[2]))
+    return term
+
+
 def _has_params(term) -> bool:
+    term = _plain(term)
     kind = term[0]
     if kind == "param":
         return True
+    if kind == "tfield":
+        return _has_params(term[2])
     if kind == "tpl":
         return any(isinstance(x.value, Param) for x in term[1].interpolations)
     if kind == "lit":
@@ -222,6 +277,7 @@ def _template_len(t: Template, at_head: bool) -> int | None:
 def static_len(term, at_head: bool) -> int | None:
     """§2: the number of segments of a relative term, when its structure fixes
     it for every binding (None when it depends on a binding or is absolute)."""
+    term = _plain(term)
     if not _has_params(term):
         try:
             q = evaluate(term, {}, at_head)
@@ -233,6 +289,8 @@ def static_len(term, at_head: bool) -> int | None:
         return _operand_len(term[1], at_head)
     if kind == "tpl":
         return _template_len(term[1], at_head)
+    if kind == "tfield":
+        return 1
     if kind == "join":
         a = static_len(term[1], at_head)
         if a is None:
@@ -259,6 +317,7 @@ def is_empty(term, at_head: bool) -> bool:
 
 
 def evaluate(term, env: dict, at_head: bool = True):
+    term = _plain(term)
     kind = term[0]
     try:
         if kind == "lit":
@@ -267,6 +326,8 @@ def evaluate(term, env: dict, at_head: bool = True):
             return operand(term[1], env, at_head)
         if kind == "tpl":
             return template(term[1], env, at_head)
+        if kind == "tfield":
+            return text_field(term, env)
         if kind == "join":
             a = evaluate(term[1], env, at_head)
             b = evaluate(term[2], env, at_head and is_empty(term[1], at_head))
@@ -286,8 +347,25 @@ def evaluate(term, env: dict, at_head: bool = True):
     raise AssertionError(kind)
 
 
+def text_field(term, env: dict) -> PurePosixPath:
+    """§4: one segment ``pre{x.attr!conv:spec}post``, where ``x`` is a path."""
+    _, attr, sub, conv, spec, (pre, post) = term
+    value = getattr(evaluate(sub, env), attr)
+    try:
+        text = format(_convert(value, conv), spec)
+    except (TypeError, ValueError) as e:
+        raise Invalid(f"format: {e}") from None
+    if "/" in text or "\x00" in text:
+        raise Invalid("field contains a separator or NUL")
+    segment = pre + text + post
+    if segment in ("", ".", ".."):
+        raise Invalid(f"segment renders to {segment!r}")
+    return PurePosixPath(segment)
+
+
 def elimination_free(term) -> bool:
     """Only joins of relative literals, non-head-sensitive operands and templates."""
+    term = _plain(term)
     kind = term[0]
     if kind == "lit":
         return not PurePosixPath(term[1]).is_absolute()
@@ -311,6 +389,8 @@ from hypothesis import HealthCheck, event, given, settings  # noqa: E402
 from hypothesis import strategies as st  # noqa: E402
 
 from wend import (  # noqa: E402
+    Absolute,
+    AnyPath,
     InvalidBindingError,
     MissingBindingError,
     P,
@@ -326,6 +406,35 @@ SEG = Param("seg")
 SUB = SubPath("sub")
 N = Param("n", type=int)
 W = Param("w", type=str)
+WID = Param("wid", type=int)
+ANY = AnyPath("any")
+ABS = Absolute("abs")
+SPEC_PARAMS.extend([ROOT, SEG, SUB, N, W, WID, ANY, ABS])
+
+
+class _Formats(int):
+    """An int whose ``__format__`` ignores the spec, to probe §4's facts."""
+
+    text = ""
+
+    def __format__(self, spec: str) -> str:
+        return self.text
+
+    def __repr__(self) -> str:
+        return f"{type(self).__name__}({int(self)})"
+
+
+class Dotty(_Formats):
+    text = "1.5"
+
+
+class Blank(_Formats):
+    text = ""
+
+
+class Slashy(_Formats):
+    text = "a/b"
+
 
 TEMPLATES = [
     t"chunk_{N:04d}.parquet",
@@ -341,7 +450,13 @@ TEMPLATES = [
     t"/anchored/{W}",
     t"{W:>4}",
     t"",
+    t"c{N:0{WID}d}",
+    t"{W:>{WID}}",
+    t"v{N:#{WID}x}",
+    t"{N:{WID}}.bin",
 ]
+CONV_SPECS = [(None, ""), ("r", ""), (None, ">6"), (None, ".2"), ("s", "^5"), ("a", "")]
+AFFIXES = [("", ""), ("bk_", ""), ("", ".bak"), ("x", "y")]
 LITERALS = [
     "a",
     "b.txt",
@@ -371,23 +486,37 @@ def build(term):
         return T(term[1])
     if kind == "join":
         return build(term[1]) / build(term[2])
+    if kind == "joinp":
+        return build(term[1]) / term[2]  # §1: ``x / p`` with a bare Param
     if kind == "parent":
         return build(term[1]).parent
     if kind in ("with_suffix", "with_name", "with_stem"):
         return getattr(build(term[1]), kind)(term[2])
     if kind == "relative_to":
         return build(term[1]).relative_to(build(term[2]))
+    if kind == "tfield":
+        _, attr, sub, conv, spec, (pre, post) = term
+        text = getattr(build(sub), attr)
+        return T(Template(pre, Interpolation(text, attr, conv, spec), post))
     raise AssertionError(kind)
 
 
 leaves = st.one_of(
     st.tuples(st.just("lit"), st.sampled_from(LITERALS)),
-    st.tuples(st.just("param"), st.sampled_from([ROOT, SEG, SUB])),
+    st.tuples(st.just("param"), st.sampled_from([ROOT, SEG, SUB, ANY, ABS])),
     st.tuples(st.just("tpl"), st.sampled_from(TEMPLATES)),
 )
 terms = st.recursive(
     leaves,
     lambda kids: st.one_of(
+        st.tuples(st.just("joinp"), kids, st.sampled_from([ROOT, SEG, SUB, ANY, ABS])),
+        st.tuples(
+            st.just("tfield"),
+            st.sampled_from(["name", "stem", "suffix"]),
+            kids,
+            st.sampled_from(CONV_SPECS),
+            st.sampled_from(AFFIXES),
+        ).map(lambda t: (t[0], t[1], t[2], t[3][0], t[3][1], t[4])),
         st.tuples(st.just("join"), kids, kids),
         st.tuples(st.just("parent"), kids),
         st.tuples(st.just("with_suffix"), kids, st.sampled_from(SUFFIXES)),
@@ -432,8 +561,26 @@ envs = st.fixed_dictionaries(
         "sub": st.one_of(
             st.lists(name, max_size=3).map(lambda xs: "/".join(xs) or "."), hostile
         ),
-        "n": st.one_of(st.integers(-5, 70000), st.just("7"), st.just(True)),
+        "n": st.one_of(
+            st.integers(-5, 70000),
+            st.just("7"),
+            st.just(True),
+            st.builds(
+                lambda c, i: c(i),
+                st.sampled_from([Dotty, Blank, Slashy]),
+                st.integers(0, 9),
+            ),
+        ),
         "w": st.one_of(name, hostile, st.just("x/y")),
+        "wid": st.one_of(
+            st.integers(-2, 9), st.just("3"), st.just(True), st.just(Dotty(3))
+        ),
+        "any": st.one_of(
+            st.sampled_from(["/mnt/y", "rel/x", "", ".", "a/../b", "//h", "q"]), hostile
+        ),
+        "abs": st.one_of(
+            st.sampled_from(["/abs", "/a/b/", "//net/x", "rel", "/"]), hostile
+        ),
     }
 )
 

@@ -34,6 +34,7 @@ from ._expr import (
     Seg,
     Splice,
     _Rel,
+    _render_spec,
     canonical,
 )
 from ._params import Kind, Param
@@ -124,13 +125,13 @@ def _field_values(f: Field, text: str, env: dict[str, Any]) -> list[Any]:
     spec = f.static_spec
     if spec is None:
         try:
-            spec = "".join(
-                s if isinstance(s, str) else format(env[s.name], "") for s in f.spec
-            )
+            spec = _render_spec(f.spec, env)
         except KeyError:
             raise NotInvertibleError(
                 f"{f.pattern} has a format spec that depends on unbound parameters"
             ) from None
+        except InvalidBindingError:
+            return []  # the spec's own parameter is bound to a value it rejects
     return [
         v for v in _spec.invert(text, spec, f.conversion, src.type) if _accept(src, v)
     ]

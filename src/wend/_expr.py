@@ -362,6 +362,8 @@ class Deferred:
 
 Head = _Rel | Root | HeadParam | Deferred
 
+_NAME_OPS = frozenset({"with_name", "with_suffix", "with_stem"})
+
 
 # ---------------------------------------------------------------------------
 # PathExpr
@@ -378,7 +380,9 @@ class PathExpr(_Cached):
     # -- construction -------------------------------------------------------
 
     def __truediv__(self, other: Any) -> PathExpr:
-        return _join(self, _coerce(other, at_head=False))
+        # §2: an operand joined onto the empty path is still at the head.
+        empty = isinstance(self.head, _Rel) and not self.parts
+        return _join(self, _coerce(other, at_head=empty))
 
     def __rtruediv__(self, other: Any) -> PathExpr:
         return _join(_coerce(other, at_head=True), self)
@@ -511,6 +515,12 @@ class PathExpr(_Cached):
             return PathExpr(self.head, self.parts[:-1])
         if self._empty_static():
             return self
+        h = self.head
+        if not self.parts and isinstance(h, Deferred) and h.op in _NAME_OPS:
+            # with_name/with_suffix/with_stem replace only the last segment, so
+            # the parent is the base's (§2 counts; the replaced segment is
+            # discarded as §6 permits).
+            return h.base.parent
         return PathExpr(Deferred("parent", self))
 
     @property
@@ -1099,7 +1109,17 @@ def _combine(base: str, segs: list[str]) -> str:
 
 
 def _render_spec(spec: tuple[str | Param, ...], env: Mapping[str, Any]) -> str:
-    return "".join(s if isinstance(s, str) else format(env[s.name], "") for s in spec)
+    """A dynamic format spec's text: each nested parameter, checked against its
+    declaration, formatted as ``format(v, "")``."""
+    out = []
+    for s in spec:
+        if isinstance(s, str):
+            out.append(s)
+        else:
+            v = env[s.name]
+            s.check(v)
+            out.append(format(v, ""))
+    return "".join(out)
 
 
 def _render_field(f: Field, env: Mapping[str, Any]) -> str:

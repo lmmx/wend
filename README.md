@@ -488,10 +488,10 @@ from wend.infer import infer
 schema = infer("path/to/tree")  # or an iterable of relative paths
 print(schema)
 # Schema(18 paths, 4 layouts)
-#       10  file data/{data}/part-{part:03d}.parquet
-#        6  file checkpoints/run_{run:d}/epoch_{epoch:02d}.pt
-#        1  file README.md
-#        1  file checkpoints/run_{run:d}/notes.txt  (optional)
+#       10  file 1..*  data/{data}/part-{part:03d}.parquet
+#        6  file 1..*  checkpoints/run_{run:d}/epoch_{epoch:02d}.pt
+#        1  file 1     README.md
+#        1  file 0..1  checkpoints/run_{run:d}/notes.txt
 ```
 
 Inference works like JSON schema inference (genson, polars-genson), applied to trees:
@@ -503,8 +503,16 @@ Inference works like JSON schema inference (genson, polars-genson), applied to t
 - **Files:** files sharing an extension become `{stem}.ext`.
 - **Repeated fields:** a field that always equals an earlier one becomes the same parameter
   (`train/n{n:08d}/n{n:08d}_{i:d}.JPEG`), so `check` catches misfiled paths.
-- **Optional entries:** a layout is optional when some directory matching a prefix of it
-  contains none of its paths.
+- **Variable depth:** a tail that recurs at three or more depths below a directory whose
+  subdirectories form a family becomes a `SubPath` layout (`src/pkg/{rel...}/{stem}.py`).
+  A deep tree of literal directories stays literal.
+- **Opaque families:** eight or more sibling directories holding only files, with names
+  that share no skeleton (terminfo's `a/att4410`, `b/bvt100`), collapse into one map.
+- **Names:** dates become `{year}`, `{month}`, `{day}`; UUIDs and long hex tokens become
+  `{uuid}` and `{hex}` string fields.
+- **Cardinality:** each layout reports how many of its paths a directory matching its
+  parent holds: `1`, `0..1`, `1..*` or `0..*`. The lower bound is `optional`: some
+  directory matching a prefix of the layout contains none of its paths.
 
 Layouts are ordinary expressions (`rename`, `match`, `under(root).glob()`, ...), and
 `schema.check(paths)` lists paths that don't fit.

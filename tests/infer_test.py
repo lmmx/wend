@@ -1,8 +1,15 @@
-from hypothesis import example, given, settings
+import os
+import random
+import tempfile
+from collections import Counter
+from pathlib import Path
+
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 
 from wend import P
-from wend.infer import _int_spec, infer
+from wend._expr import REL, PathExpr, Splice
+from wend.infer import Cardinality, _int_spec, _tokens, infer
 
 
 def test_dataset_shards_generalise():
@@ -150,7 +157,11 @@ name = st.one_of(
 def test_every_observed_path_is_covered(paths):
     # a path that is a prefix of another is a directory, not a file
     files = [p for p in paths if not any(q.startswith(p + "/") for q in paths)]
-    schema = infer(files)
+    _check_schema(files, infer(files))
+
+
+def _check_schema(files, schema):
+    """The properties every inferred schema has over its observed files."""
     assert schema.check(files) == []
     assert sum(lay.count for lay in schema.layouts) == len(files)
     patterns = [(lay.expr.pattern, lay.kind) for lay in schema.layouts]
@@ -162,20 +173,32 @@ def test_every_observed_path_is_covered(paths):
         assert lay.expr.is_absolute() is False
         assert P("/root") / lay.expr == lay.under("/root")
         assert lay.optional == _optional_oracle(lay, files, dirs)
+        assert lay.cardinality == _cardinality_oracle(lay, files, dirs)
 
 
 def _optional_oracle(lay, files, dirs):
-    """Some directory matching a prefix of the pattern holds none of its paths."""
-    e, k = lay.expr, len(lay.expr.parts)
+    """Some directory matching a proper prefix of the pattern holds none of its paths.
+
+    A prefix ending in a SubPath matches directories at any depth.
+    """
     mine = [f for f in files if lay.match(f) is not None]
-    for j in range(1, k):
-        prefix = e.parents[k - 1 - j]
+    for j in range(1, len(lay.expr.parts)):
+        prefix = PathExpr(REL, lay.expr.parts[:j])
         for d in dirs:
-            if d.count("/") + 1 != j or prefix.match(d) is None:
+            if prefix.match(d) is None:
                 continue
             if not any(f.startswith(d + "/") for f in mine):
                 return True
     return False
+
+
+def _cardinality_oracle(lay, files, dirs):
+    """Lower bound from the optional oracle; upper bound: some directory holds two."""
+    mine = [f for f in files if lay.match(f) is not None]
+    many = any(c > 1 for c in Counter(f.rpartition("/")[0] for f in mine).values())
+    if _optional_oracle(lay, files, dirs):
+        return Cardinality.MANY if many else Cardinality.OPTIONAL
+    return Cardinality.AT_LEAST_ONE if many else Cardinality.ONE
 
 
 def test_infer_rejects_a_missing_directory(tmp_path):
@@ -202,3 +225,332 @@ def test_file_and_directory_conflicts_are_rejected():
         infer(["a", "a/b"])
     with pytest.raises(ValueError, match="file and as a directory"):
         infer(["a/b", "a"])
+
+
+# -- cardinality --------------------------------------------------------------
+
+
+def test_cardinality_per_directory():
+    paths = [f"runs/run_{r}/model.pt" for r in (1, 2, 3)]
+    paths += ["runs/run_2/notes.txt"]
+    paths += [f"runs/run_{r}/ckpt/step_{s}.pt" for r in (1, 2) for s in (10, 20)]
+    paths += [f"runs/run_{r}/log_{d}.txt" for r in (1, 2, 3) for d in (1, 2)]
+    lays = {lay.expr.pattern: lay for lay in infer(paths).layouts}
+    model = lays["runs/run_{run:d}/model.pt"]
+    assert model.cardinality is Cardinality.ONE and not model.optional
+    notes = lays["runs/run_{run:d}/notes.txt"]
+    assert notes.cardinality is Cardinality.OPTIONAL and notes.optional
+    logs = lays["runs/run_{run:d}/log_{log:d}.txt"]
+    assert logs.cardinality is Cardinality.AT_LEAST_ONE and not logs.optional
+    steps = lays["runs/run_{run:d}/ckpt/step_{step:02d}.pt"]
+    assert steps.cardinality is Cardinality.MANY and steps.optional
+    assert Cardinality.MANY.value == "0..*" and "1..*" in repr(logs)
+    # renaming keeps the flags
+    assert model.rename(run="r").cardinality is Cardinality.ONE
+    assert logs.rename(run="r").cardinality is Cardinality.AT_LEAST_ONE
+
+
+# -- variable depth -----------------------------------------------------------
+
+
+def _package():
+    """A nested package: src/pkg with sub-packages three levels down, plus records."""
+    paths = ["README.md", "pyproject.toml", "tests/test_core.py", "tests/test_io.py"]
+
+    def grow(at, depth):
+        for m in ("__init__", "core", "io", "util"):
+            paths.append(f"{at}/{m}.py")
+            paths.append(f"{at}/__pycache__/{m}.cpython-314.pyc")
+        if depth < 3:
+            for sub in ("plugins", "formats"):
+                grow(f"{at}/{sub}", depth + 1)
+
+    grow("src/pkg", 0)
+    paths.append("src/pkg/data/schema.json")
+    return paths
+
+
+def test_nested_package_infers_subpath_layouts(tmp_path):
+    paths = _package()
+    for p in paths:
+        (tmp_path / p).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / p).touch()
+    schema = infer(tmp_path)
+    _check_schema(paths, schema)
+    lays = {lay.expr.pattern: lay for lay in schema.layouts}
+    py = lays["src/pkg/{rel...}/{stem}.py"]
+    pyc = lays["src/pkg/{rel...}/__pycache__/{stem}.pyc"]
+    modules = [p for p in paths if p.startswith("src/") and p.endswith(".py")]
+    assert py.count == pyc.count == len(modules) == 60
+    assert isinstance(py.expr.parts[2], Splice)
+    assert "." in py.fields["rel"].sample  # depth 0: the package itself
+    assert py.match("src/pkg/plugins/formats/core.py") == {
+        "rel": "plugins/formats",
+        "stem": "core",
+    }
+    renamed = py.rename(rel="sub", stem="module")
+    assert renamed.expr.pattern == "src/pkg/{sub...}/{module}.py"
+    assert renamed.match("src/pkg/core.py") == {"sub": ".", "module": "core"}
+    # glob through the layouts finds every observed module and cache file
+    found = {m.path for m in py.under(tmp_path).glob()}
+    assert {str(tmp_path / p) for p in modules} <= found
+    found = {m.path for m in pyc.under(tmp_path).glob()}
+    assert {str(tmp_path / p) for p in paths if p.endswith(".pyc")} <= found
+    # records stay records
+    assert {"README.md", "pyproject.toml", "src/pkg/data/schema.json"} <= set(lays)
+    assert all(p.startswith("src/pkg/") for p in lays if "{rel...}" in p)
+    # data/ and every __pycache__/ hold no module: some directory has none
+    assert py.cardinality is Cardinality.MANY
+
+
+GIACOMETTI = """
+Cargo.lock Cargo.toml Justfile LICENSE README.md TODO.md crates/giacometti/Cargo.toml
+crates/giacometti/src/backends.rs crates/giacometti/src/backends/git.rs
+crates/giacometti/src/backends/git/github_api.rs
+crates/giacometti/src/backends/git/gitoxide.rs
+crates/giacometti/src/backends/git/release.rs crates/giacometti/src/backends/git/shell.rs
+crates/giacometti/src/backends/git/types.rs crates/giacometti/src/backends/types.rs
+crates/giacometti/src/backends/uv.rs crates/giacometti/src/backends/uv/rust_crate.rs
+crates/giacometti/src/backends/uv/shell.rs crates/giacometti/src/backends/uv/types.rs
+crates/giacometti/src/git.rs crates/giacometti/src/git/add.rs
+crates/giacometti/src/git/commit.rs crates/giacometti/src/git/push.rs
+crates/giacometti/src/git/release.rs crates/giacometti/src/git/reset.rs
+crates/giacometti/src/git/rev_parse.rs crates/giacometti/src/git/tag.rs
+crates/giacometti/src/lib.rs crates/giacometti/src/main.rs crates/giacometti/src/policy.rs
+crates/giacometti/src/release.rs crates/giacometti/src/tests.rs
+crates/giacometti/src/tests/git.rs crates/giacometti/src/tests/git/rev_parse.rs
+crates/giacometti/src/tests/mock.rs crates/giacometti/src/tests/mock/git.rs
+docs/JOURNAL.md docs/journal/2025-01-25-outlook-doc-6.md
+docs/journal/2025-01-25-uv-backends-4.md
+""".split()
+
+
+def test_code_repository_keeps_its_records():
+    schema = infer(GIACOMETTI)
+    _check_schema(GIACOMETTI, schema)
+    # the recursive module tree folds; every other file stays a literal record
+    pats = sorted(lay.expr.pattern for lay in schema.layouts)
+    records = [p for p in GIACOMETTI if not p.endswith(".rs")]
+    assert pats == sorted(["crates/giacometti/src/{rel...}/{stem}.rs", *records])
+    assert schema.layouts[0].count == len(GIACOMETTI) - len(records)
+
+
+def test_repository_root_is_not_a_recursion_root():
+    # This repository's shape: a script among records at the root, and .py
+    # files in several literal directories at three depths.
+    paths = ["README.md", "pyproject.toml", "LICENSE", "uv.lock", "demo.py"]
+    paths += [f"src/wend/{m}.py" for m in ("__init__", "_expr", "_match", "infer")]
+    paths += ["src/wend/py.typed", "bench/bench.py"]
+    paths += [f"{d}/{m}.py" for d in ("tests", "examples") for m in ("a", "b", "c")]
+    paths += [f"docs/journal/scripts/{m}.py" for m in ("x", "y", "z")]
+    paths += ["docs/SEMANTICS.md", "docs/journal/entry.md"]
+    schema = infer(paths)
+    _check_schema(paths, schema)
+    pats = {lay.expr.pattern for lay in schema.layouts}
+    assert not any("{rel" in p for p in pats), pats
+    assert {"README.md", "demo.py", "bench/bench.py", "src/wend/{stem}.py"} <= pats
+
+
+def test_deep_literal_trees_stay_literal():
+    # the same tail at three depths, but through literal directories only
+    paths = [f"a/{d}{i}.txt" for d in ("", "b/", "b/c/") for i in ("x", "y", "z")]
+    pats = sorted(lay.expr.pattern for lay in infer(paths).layouts)
+    assert pats == ["a/b/c/{stem}.txt", "a/b/{stem}.txt", "a/{stem}.txt"]
+    # a tail without literal text ({name}) never folds
+    paths = [f"r/{d}{n}" for d in ("", "x/", "y/", "x/q/", "y/q/") for n in "abc"]
+    assert not any(
+        isinstance(part, Splice)
+        for lay in infer(paths).layouts
+        for part in lay.expr.parts
+    )
+
+
+def test_parent_components_stay_out_of_subpaths():
+    tree = [f"src/{d}{m}.py" for d in ("", "a/", "b/", "a/c/", "b/c/") for m in "xyz"]
+    paths = [*tree, "src/../q/x.py", "src/a/../x.py", "src/a/../y.py"]
+    schema = infer(paths)
+    _check_schema(paths, schema)
+    pats = {lay.expr.pattern for lay in schema.layouts}
+    assert "src/{rel...}/{stem}.py" in pats and "src/../q/x.py" in pats
+
+
+def test_recursion_needs_three_depths_and_a_root():
+    two = [f"src/{d}{m}.py" for d in ("", "a/", "b/") for m in ("x", "y", "z")]
+    assert all("{rel" not in lay.expr.pattern for lay in infer(two).layouts)
+    three = two + [f"src/{d}/c/{m}.py" for d in "ab" for m in ("x", "y", "z")]
+    assert [lay.expr.pattern for lay in infer(three).layouts] == [
+        "src/{rel...}/{stem}.py"
+    ]
+    # without modules directly in src/, two depths remain below it
+    rootless = [p for p in three if p.count("/") > 1]
+    assert all("{rel" not in lay.expr.pattern for lay in infer(rootless).layouts)
+
+
+# -- opaque families -----------------------------------------------------------
+
+
+def _terminfo(letters, seed=0):
+    """Letter directories, each with its own name families and one-off names."""
+    rnd = random.Random(seed)
+    paths = []
+    for letter in letters:
+        for k in range(rnd.randint(0, 3)):
+            stem = letter + "".join(rnd.choices("aeiouxz", k=rnd.randint(1, 3)))
+            stem += "-" * (k % 2)
+            for n in rnd.sample(range(1, 500), rnd.randint(2, 6)):
+                paths.append(f"terminfo/{letter}/{stem}{n}")
+        for _ in range(rnd.randint(1, 4)):
+            name = letter + "".join(rnd.choices("bcdfghklmnpqrstvwy+", k=5))
+            paths.append(f"terminfo/{letter}/{name}")
+    return sorted(set(paths))
+
+
+def test_terminfo_letter_directories_collapse():
+    paths = _terminfo("abcdefghijklmnopqrstuvwxyz")
+    schema = infer(paths)
+    _check_schema(paths, schema)
+    assert [lay.expr.pattern for lay in schema.layouts] == [
+        "terminfo/{terminfo}/{name}"
+    ]
+    # digit directories merge by skeleton, then join the letters' opaque map
+    paths += _terminfo("0123456789", seed=1)
+    schema = infer(paths)
+    _check_schema(paths, schema)
+    assert len(schema.layouts) <= 2
+    # a handful of letter directories is a record, not a family
+    assert len(infer(_terminfo("abc")).layouts) > 1
+
+
+@settings(max_examples=40, deadline=None)
+@given(st.integers(8, 20), st.integers(0, 10**6))
+def test_opaque_families_collapse_to_one_layout(k, seed):
+    paths = _terminfo("abcdefghijklmnopqrstuvwxyz"[:k], seed)
+    schema = infer(paths)
+    _check_schema(paths, schema)
+    assert [lay.expr.pattern for lay in schema.layouts] == [
+        "terminfo/{terminfo}/{name}"
+    ]
+
+
+# -- naming -------------------------------------------------------------------
+
+
+def test_dates_name_fields():
+    paths = [
+        f"logs/{y}-{m:02d}-{d:02d}.log"
+        for y in (2024, 2025)
+        for m in (1, 7)
+        for d in (3, 9)
+    ]
+    [lay] = infer(paths).layouts
+    assert lay.expr.pattern == "logs/{year:04d}-{month:02d}-{day:02d}.log"
+    paths = [
+        f"photos/{y}/{y}{m:02d}{d:02d}_IMG.jpg"
+        for y in (2023, 2024)
+        for m in (2, 3)
+        for d in (4, 5)
+    ]
+    [lay] = infer(paths).layouts
+    assert lay.expr.pattern == "photos/{year:04d}/{date:08d}_IMG.jpg"
+    paths = [
+        f"snap/2026-10-17T{h:02d}-{m:02d}-{s:02d}.json"
+        for h in (1, 9)
+        for m in (5, 7)
+        for s in (0, 30)
+    ]
+    [lay] = infer(paths).layouts
+    assert lay.expr.pattern == (
+        "snap/2026-10-17T{hour:02d}-{minute:02d}-{second:02d}.json"
+    )
+
+
+def test_uuid_and_hex_tokens_are_string_fields():
+    uuids = [
+        "3f2a1b4c-1234-4def-9abc-def012345678",
+        "00ff00aa-0000-4000-8000-0123456789ab",
+        "a0a0a0a0-1111-4222-8333-444455556666",
+    ]
+    paths = [f"part-{i:05d}-{u}-c000.snappy.parquet" for i, u in enumerate(uuids)]
+    [lay] = infer(paths).layouts
+    assert lay.expr.pattern == "part-{part:05d}-{uuid}-c000.snappy.parquet"
+    assert lay.fields["uuid"].type is str and lay.fields["uuid"].distinct == 3
+    digests = [
+        "3b18e512dba79e4c8300dd08aeb37f8e728b8dad",
+        "0123456789abcdef0123456789abcdef01234567",
+        "fedcba9876543210fedcba9876543210fedcba98",
+    ]
+    [lay] = infer([f"cache/{d}.json" for d in digests]).layouts
+    assert lay.expr.pattern == "cache/{hex}.json"
+
+
+def test_tokens():
+    assert _tokens("chunk_0001-of-0010.parquet") == (
+        ("chunk_", "-of-", ".parquet"),
+        ("d", "d"),
+        ["0001", "0010"],
+    )
+    # one hex token; the text after it stays literal
+    assert _tokens("x1-0a1b2c3d4e-v2.bin") == (
+        ("x", "-", "-v2.bin"),
+        ("d", "x"),
+        ["1", "0a1b2c3d4e"],
+    )
+    # all digits, all letters, two tokens, or inside a word: not hex
+    assert _tokens("20240101")[1] == ("d",)
+    assert _tokens("deadbeefcafe")[1] == ()
+    assert "x" not in _tokens("0a1b2c3d-0a1b2c3d4")[1]
+    assert "x" not in _tokens("g0a1b2c3d4")[1]
+
+
+# -- properties on generated nested trees ------------------------------------
+
+ident = st.text(alphabet="abcdefgh_", min_size=1, max_size=5)
+
+
+@st.composite
+def nested_packages(draw):
+    """src/pkg with modules at every level and regular sub-package names."""
+    depth = draw(st.integers(2, 4))
+    subs = [
+        draw(st.lists(ident, min_size=2, max_size=3, unique=True)) for _ in range(depth)
+    ]
+    paths = []
+
+    def grow(at, level):
+        mods = draw(st.lists(ident, min_size=3, max_size=5, unique=True))
+        cache = draw(st.booleans())
+        for m in mods:
+            paths.append(f"{at}/{m}.py")
+            if cache:
+                paths.append(f"{at}/__pycache__/{m}.pyc")
+        if level < depth:
+            for s in subs[level]:
+                grow(f"{at}/{s}", level + 1)
+
+    grow("src/pkg", 0)
+    extra = ["README.md", "src/pkg/py.typed", "docs/x.md", "src/pkg/data/a.json"]
+    return sorted(set(paths + draw(st.lists(st.sampled_from(extra), unique=True))))
+
+
+@settings(
+    max_examples=40,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large],
+)
+@given(nested_packages())
+def test_nested_trees_fold_into_subpath_layouts(paths):
+    schema = infer(paths)
+    _check_schema(paths, schema)
+    modules = [p for p in paths if p.endswith(".py")]
+    [py] = [lay for lay in schema.layouts if lay.expr.pattern.endswith(".py")]
+    assert any(isinstance(part, Splice) for part in py.expr.parts)
+    assert py.count == len(modules)
+    # glob through every layout finds its observed files again
+    with tempfile.TemporaryDirectory() as tmp:
+        for p in paths:
+            Path(tmp, p).parent.mkdir(parents=True, exist_ok=True)
+            Path(tmp, p).touch()
+        for lay in schema.layouts:
+            found = {m.path for m in lay.under(tmp).glob()}
+            mine = [p for p in paths if lay.match(p) is not None]
+            assert {os.path.join(tmp, p) for p in mine} <= found

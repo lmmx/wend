@@ -42,3 +42,17 @@ with tempfile.TemporaryDirectory() as tmp:
     # Query the tree through the layout, with typed bindings.
     late = [m["part"] for m in shards.under(tmp).glob(split="valid") if m["part"] >= 3]
     print("valid parts >= 3:", late)
+
+    # Cardinality per directory: one model.pt per run, notes.txt in some.
+    for lay in schema.layouts:
+        print(f"{lay.cardinality.value:>5}  {lay.expr.pattern}")
+
+# A nested package folds into a SubPath layout: modules at any depth.
+package = ["pyproject.toml"] + [
+    f"src/pkg/{sub}{mod}.py"
+    for sub in ("", "io/", "io/formats/", "io/codecs/", "cli/", "cli/commands/")
+    for mod in ("__init__", "base", "util")
+]
+modules = infer(package).layouts[0]
+print("\n" + modules.expr.pattern, modules.count, "modules")
+print(modules.match("src/pkg/io/formats/base.py"))

@@ -39,7 +39,7 @@ import keyword
 import os
 import re
 from collections import Counter, defaultdict
-from collections.abc import Iterator, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
@@ -319,6 +319,12 @@ class Tree:
         if not os.path.isdir(root):
             return Report(root, [Problem("missing", root, None, "the root")], {})
         ignored = self._ignored(root)
+
+        def looked_at(path: str) -> bool:
+            return not _under_any(path, ignored) and (
+                self.hidden or not _is_hidden(path, root)
+            )
+
         for name, entry in self.entries.items():
             e = self._unconditioned(entry)
             # A symlink is judged by its target here, though never followed.
@@ -326,9 +332,7 @@ class Tree:
             found = [
                 m
                 for m in e.glob()
-                if os.path.isdir(m.path) == want_dir
-                and not _under_any(m.path, ignored)
-                and (self.hidden or not _is_hidden(m.path, root))
+                if os.path.isdir(m.path) == want_dir and looked_at(m.path)
             ]
             matches[name] = found
             for m in found:
@@ -340,7 +344,7 @@ class Tree:
             e = self._unconditioned(entry)
             problems += [
                 p
-                for p in self._count(name, entry, e, matches[name])
+                for p in self._count(name, entry, e, matches[name], looked_at)
                 if p.path not in occupied
             ]
         problems += strays
@@ -362,16 +366,23 @@ class Tree:
         return out
 
     def _count(
-        self, name: str, entry: Entry, e: PathExpr, found: list[Any]
+        self,
+        name: str,
+        entry: Entry,
+        e: PathExpr,
+        found: list[Any],
+        looked_at: Callable[[str], bool],
     ) -> list[Problem]:
         lo = 0 if entry.optional else 1
         hi = None if entry.many else 1
         parent = e.parent
+        # Hidden and ignored directories are not looked at, so they hold no
+        # matches and are owed none.
         if parent.param_names:
-            dirs = [m.path for m in parent.glob(kind="dir")]
+            dirs = [m.path for m in parent.glob(kind="dir") if looked_at(m.path)]
         else:
             p = parent.render()
-            dirs = [p] if os.path.isdir(p) else []
+            dirs = [p] if os.path.isdir(p) and looked_at(p) else []
         counts = Counter(os.path.dirname(m.path) or "." for m in found)
         # The lower bound asks for a match at or below each parent directory:
         # the same as directly in it when the entry has a fixed depth, and the

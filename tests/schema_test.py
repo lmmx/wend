@@ -7,7 +7,18 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from wend import Absolute, Dir, Exists, File, P, Param, PathOperationError, SubPath, T
+from wend import (
+    Absolute,
+    Dir,
+    Exists,
+    File,
+    P,
+    Param,
+    PathOperationError,
+    Segment,
+    SubPath,
+    T,
+)
 from wend.infer import Cardinality as InferredCardinality
 from wend.infer import infer
 from wend.schema import Cardinality, Entry, Tree, from_inferred
@@ -213,6 +224,26 @@ def test_open_directories_ignore_patterns_and_hidden_names(tmp_path):
         hidden = False
 
     assert Quiet(tmp_path).validate().ok
+
+
+def test_hidden_and_ignored_directories_are_owed_no_matches(tmp_path):
+    _tree(tmp_path, ["a/x.js", "b/x.js", ".cfg/conf.yml", "vendor/lib.js"])
+
+    class Js(Tree):
+        js = File(T(t"{Segment('dir')}/x.js"))
+        ignore = ("vendor",)
+        hidden = False
+
+    # .cfg and vendor match the entry's parent, but are not looked at
+    assert Js(tmp_path).validate().ok
+    assert from_inferred(infer(tmp_path))(tmp_path).validate().ok
+
+    class Seen(Js):
+        hidden = True
+
+    assert _rel(Seen(tmp_path).validate().of("missing"), tmp_path) == [
+        ("missing", ".cfg/x.js", "js")
+    ]
 
 
 def test_symlinks_count_by_target_and_are_not_followed(tmp_path):

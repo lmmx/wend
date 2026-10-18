@@ -12,7 +12,7 @@ both are listed here.
 | 0.1.x | replacement |
 |---|---|
 | `LiteralExpr`, `ParamExpr`, `TemplateExpr`, `JoinExpr`, `ParentExpr`, `WithNameExpr`, `WithSuffixExpr` | one `PathExpr` type; inspect it with `.pattern`, `.params`, `.is_static`, `.is_absolute()` |
-| `RelativePath(base, relative)` | `relative = expr.relative_to(base)`; rebase with `expr.rebase(base, new_base)` or `expr.bind(root=new_root_expr)` |
+| `RelativePath(base, relative)` | `expr.base` and `expr.base_rel` for a path built by a join; `expr.rebase(new_base)`, `expr.rebase(base, new_base)`, `expr.relative_to(base)`, or `expr.bind(root=new_root_expr)` |
 | `isinstance(e, JoinExpr)` and similar structural checks | `e.pattern`, `e.parts` |
 
 ## Behaviour changes

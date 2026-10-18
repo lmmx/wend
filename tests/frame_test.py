@@ -1,5 +1,3 @@
-from pathlib import PurePosixPath
-
 import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
@@ -33,9 +31,11 @@ def test_validation_reports_row():
 
 def test_unsupported_formatting_is_refused():
     with pytest.raises(NotImplementedError):
-        to_polars(T(t"x{idx:x}"), pl.Schema({"idx": pl.Int64}))
+        to_polars(T(t"x{idx:.3f}"), pl.Schema({"idx": pl.Int64}))
     with pytest.raises(NotImplementedError):
-        to_polars(T(t"x{idx!r}"))
+        to_polars(T(t"x{idx:c}"), pl.Schema({"idx": pl.Int64}))
+    with pytest.raises(NotImplementedError):
+        to_polars(T(t"x{idx!r}"))  # a string, whose repr Polars cannot reproduce
 
 
 def test_integer_columns_at_segment_positions_render_like_render():
@@ -85,7 +85,14 @@ def test_polars_equals_interpreter(rows):
 
 hostile = st.one_of(
     name,
-    st.sampled_from(["", ".", "..", "a/b", "../x", "/abs", "a//b", "x\x00", "a/./b"]),
+    st.sampled_from(
+        ["", ".", "..", "a/b", "../x", "/abs", "a//b", "x\x00", "a/./b", "./a", "b/"]
+    ),
+)
+roots = st.one_of(
+    st.sampled_from(["/m", "rel", ".", "/", "//n", "a/b", "a/", "", "/x/./y"]),
+    st.sampled_from(["./a", "a//b", "///x", "//", "///", "/a/./b/", "./", "a/."]),
+    st.lists(st.sampled_from(["/", ".", "a", "é", " "]), max_size=6).map("".join),
 )
 
 
@@ -93,7 +100,7 @@ hostile = st.one_of(
 @given(
     st.lists(
         st.tuples(
-            st.sampled_from(["/m", "rel", ".", "/", "//n", "a/b", "a/", "", "/x/./y"]),
+            roots,
             hostile,
             st.one_of(
                 st.lists(name, max_size=2).map(lambda xs: "/".join(xs) or "."), hostile
@@ -115,17 +122,11 @@ def test_polars_never_disagrees_with_render(rows):
             rendered.append(None)
     try:
         got = resolve_frame(e, df).to_list()
-    except InvalidBindingError:
-        # Allowed when some row is invalid for render, or when a path column is
-        # not canonical (a documented restriction of the Polars backend).
-        canonical = all(
-            str(PurePosixPath(r["root"])) == r["root"] for r in df.iter_rows(named=True)
-        ) and all(
-            str(PurePosixPath(r["sub"])) == r["sub"]
-            for r in df.iter_rows(named=True)
-            if "\x00" not in r["sub"]
-        )
-        assert None in rendered or not canonical
+    except InvalidBindingError as err:
+        # Only for a row that render rejects: non-canonical path columns such
+        # as "a/" or "/x/./y" are normalised exactly as render normalises them.
+        row = int(str(err).split(":")[0].removeprefix("Row "))
+        assert rendered[row] is None, f"{err}, but render gave {rendered[row]!r}"
         return
     assert None not in rendered, "resolve_frame accepted a row that render rejects"
     assert got == rendered

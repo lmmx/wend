@@ -490,10 +490,17 @@ schema = infer(path, fs=fs)
   are identical.
   - `compiled.many(rows)` and `compiled.columns(idx=range(n), ...)` render in bulk.
 - **`wend.frame.resolve_frame(expr, df)`:** validates every row of a Polars DataFrame and
-  renders natively.
-  - Supported: string columns, integer `d`/`0Nd`/`Nd` specs, and `<N`/`>N` padding.
-  - Anything Polars can't reproduce exactly raises `NotImplementedError`.
-  - Path columns must already be canonical.
+  renders natively, with the same result or error as `render` row by row.
+  - Path columns are normalised exactly as `render` normalises them (`a/`, `./a`, `a//b`,
+    `/a/./b`; `//x` keeps its two-slash root). Columns that are already canonical skip
+    the work.
+  - Supported: String, integer and Boolean columns; integer specs in bases `d`, `b`, `o`,
+    `x`, `X` with any fill, alignment, sign, `#`, `0`, width and `,`/`_` grouping; string
+    specs with fill, `<`/`>`/`^`, width and precision; `!s`/`!r`/`!a` on integers and
+    Booleans, `!s` on strings; and `parent`, `with_name`, `with_stem`, `with_suffix` and
+    joins applied to unbound paths. The `wend.frame` docstring has the exact list.
+  - Anything Polars can't reproduce exactly raises `NotImplementedError` (floats, `!r` on
+    strings, `relative_to` on unbound paths...): use `compile().many(rows)` for those.
 
 Measured with `bench/bench.py`: one 4-vCPU container and one expression shape, so compare
 rows rather than absolute numbers.
@@ -502,7 +509,7 @@ rows rather than absolute numbers.
 |---|---|---|
 | single resolve, compiled (validated) | ~2 µs to `str`, ~3 µs to `Path` | eager pathlib joins ~3.5–4.5 µs; `os.path.join` ~1.8 µs; unvalidated f-string ~0.9 µs |
 | batch, `compiled.many` | ~2 µs/row | unvalidated f-string comprehension ~0.8 µs/row |
-| batch, `resolve_frame` (validated) | ~0.3 µs/row | |
+| batch, `resolve_frame` (validated) | ~0.3 µs/row; ~0.6 µs/row if a path column needs normalising | |
 | match one path | ~10 µs | hand-written regex + `int()` ~1.5 µs (no round-trip check) |
 | glob, 10k files | ~6 µs/file | `Path.glob` + regex ~6 µs/file; `os.walk` + regex ~2 µs/file |
 
@@ -607,7 +614,9 @@ A path given without a kind (no trailing `/`, not a pair) matches layouts of eit
 - `match` and `glob` take a single-regex fast path when every segment parses
   unambiguously by construction. Otherwise they fall back to a general backtracking
   matcher, which is correct but slower.
-- Polars resolution rejects non-canonical path columns that `render` would normalise.
+- Polars resolution lowers only what Polars reproduces exactly: float columns, `!r` on
+  strings and `relative_to` on unbound paths raise `NotImplementedError`, and null values
+  are rejected even where `render` would format `None`.
 - Alternation expands to a union of plain expressions, so `n` binary `Alt`s make `2ⁿ`
   alternatives (capped at 4096); matching tries each.
 - By default `glob` raises `AmbiguousMatchError` if any path it finds parses more than one

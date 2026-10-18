@@ -2,14 +2,20 @@
 by side at identical framing, for the whole frame and every registry feature.
   row per feature: reference | X colour | Y colour | X clay | Y clay | X zebra | Y zebra
 The order X / Y is given by the caller (randomised and recorded outside the pages).
-Usage (from the logo root): pair_pages.py RENDERS_X TAG_X RENDERS_Y TAG_Y OUT_DIR"""
+With --focus F1,F2: page4-focus.png, those features at a larger scale (each tile 520 px tall), the
+same seven columns: small corrections (10-15 px) are hard to see at the standard tile size.
+Usage (from the logo root): pair_pages.py RENDERS_X TAG_X RENDERS_Y TAG_Y OUT_DIR [--focus F1,F2]"""
 import os, sys
 from PIL import Image, ImageDraw
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from evaluate import window, load_registry
 
-rx, tx, ry, ty, out = sys.argv[1:6]
+argv = sys.argv[1:]
+focus = []
+if "--focus" in argv:
+    i = argv.index("--focus"); focus = argv[i + 1].split(","); del argv[i:i + 2]
+rx, tx, ry, ty, out = argv[:5]
 os.makedirs(out, exist_ok=True)
 reg, lab, _ = load_registry()
 ref = Image.open("snakes/ref/reference.png").convert("RGB")
@@ -64,4 +70,12 @@ for p in range(0, len(feats), 6):
         rows.append((f["id"], t))
     last = feats[min(p + 5, len(feats) - 1)]["id"]
     page(rows, f"features {feats[p]['id']} .. {last}", f"{out}/page{p // 6 + 1}-{feats[p]['id']}-{last}.png")
+if focus:
+    rows = []
+    for f in [g for g in feats if g["id"] in focus]:
+        bx = window(f, 30)
+        t = [fit(ref.crop(bx), 520, 640)] + [fit(col[k].crop(bx), 520, 640) for k in "XY"]
+        t += [fit(Image.open(f"{src[k][0]}/{src[k][1]}-{m}-{f['id']}.png").convert("RGB"), 520, 640) for m in ("clay", "zebra") for k in "XY"]
+        rows.append((f["id"], t))
+    page(rows, "enlarged: " + ", ".join(focus), f"{out}/page4-focus.png")
 print("pair pages in", out)

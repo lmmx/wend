@@ -47,6 +47,11 @@ The starting point is what already exists:
 - **ACCEPT** when the candidate is closer to the reference at its target (by 1 or more) and introduces no defect of its own.
 - **REJECT** otherwise.
 - Paired verdicts count only beyond about one step: an untouched feature judged one step different is noise.
+- The pair pages carry `page4-focus.png`: the target, and the neighbours whose IoU changed, enlarged. Small corrections (10–15 px) are invisible at the standard tile size. Round 1's first L01 judge said "same" everywhere while the collar had moved 13 px down.
+- After the judges, write `WS/auto/sev.json`: `{feature: severity}`.
+  - For each feature, take the severity the judge gave the version that becomes the incumbent: the candidate's column when it is accepted, the incumbent's column otherwise.
+  - Where several judges cover a feature, use the judge of the candidate that changed it.
+  - `discrepancy.py` adds 1.5 × this visual severity to the score, so lobes that look wrong but measure well (thin, rope-like, creased) keep coming back as targets.
 
 ## On every invocation
 

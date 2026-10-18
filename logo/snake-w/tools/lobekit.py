@@ -41,8 +41,8 @@ REG, LAB, NEGLAB = load_registry()
 FEATS = REG["features"]; FIDS = [f["id"] for f in FEATS]
 NAMES = ["tx", "ty", "tz", "rot", "stretch", "fat", "width", "bulge_p", "bulge_n", "tip_a", "tip_b"]
 SCALE = np.array([10, 10, 10, 8, 0.1, 0.08, 0.08, 0.1, 0.1, 0.1, 0.1])     # one search unit
-LO = np.array([-30, -30, -30, -25, -0.3, -0.2, -0.2, -0.3, -0.3, -0.3, -0.3])
-HI = np.array([30, 30, 30, 25, 0.3, 0.25, 0.25, 0.3, 0.3, 0.3, 0.3])
+LO = np.array([-30, -30, -30, -25, -0.3, -0.2, -0.2, -0.3, -0.3, -0.2, -0.2])
+HI = np.array([30, 30, 30, 25, 0.3, 0.25, 0.25, 0.3, 0.3, 0.2, 0.2])
 
 
 def to_screen(P):
@@ -191,7 +191,7 @@ def make_handle(spec, att, K, neighbours, ramp=28.0):
     pr = measure.regionprops(K.astype(int))[0]
     th = pr.orientation
     axis = np.sin(th) * SCR_X + np.cos(th) * SCR_Y
-    return dict(fid=att["fid"], strand=att["strand"], a=float(a), b=float(b), ra=ra, rb=rb, sc=att["sc"],
+    return dict(v=2, fid=att["fid"], strand=att["strand"], a=float(a), b=float(b), ra=ra, rb=rb, sc=att["sc"],
                 anchor=X[0].tolist(), axis=axis.tolist(), p={n: 0.0 for n in NAMES})
 
 
@@ -218,8 +218,12 @@ def apply(spec, handles):
             Ws = bump(greville(S.knots(st["s0"], st["s1"], st["sec"]["seg"]), len(ql)), h)
             st["sec"]["ql"] = np.clip(ql * (1 + Ws * p["width"]), 0.5, 1.7).tolist()
         mid, half = 0.5 * (h["a"] + h["b"]), 0.5 * (h["b"] - h["a"])
+        # end rounding: version 1 handles (round 1) used a support of +-max(0.4 half, 10) stations, a
+        # narrow radial dent that the zebra shows as a notch (r1-L04); version 2 spreads it over at
+        # least the radius (+-max(half, 24) stations)
+        tw = max(0.4 * half, 10.0) if h.get("v", 1) == 1 else max(half, 24.0)
         d = [(mid, 90.0, half + 0.5 * (h["ra"] + h["rb"]), 70.0, p["bulge_p"]), (mid, -90.0, half + 0.5 * (h["ra"] + h["rb"]), 70.0, p["bulge_n"]),
-             (h["a"], 0.0, max(0.4 * half, 10.0), 180.0, p["tip_a"]), (h["b"], 0.0, max(0.4 * half, 10.0), 180.0, p["tip_b"])]
+             (h["a"], 0.0, tw, 180.0, p["tip_a"]), (h["b"], 0.0, tw, 180.0, p["tip_b"])]
         for s_, psi_, ss, sp_, amp in d:
             if amp:
                 st.setdefault("disp", []).append(dict(s=float(s_), psi=psi_, sig_s=float(ss), sig_psi=sp_, a=float(amp)))

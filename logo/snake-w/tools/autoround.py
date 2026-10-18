@@ -87,7 +87,8 @@ def propose(A, S):
     inc = S["incumbent"]; R = f"auto/{A.round}"
     os.makedirs(f"{R}/renders", exist_ok=True)
     from discrepancy import rank, table
-    rows = rank(f"{inc['renders']}/{inc['tag']}-colour.png", S["tried"])
+    sev = json.load(open("auto/sev.json")) if os.path.exists("auto/sev.json") else None
+    rows = rank(f"{inc['renders']}/{inc['tag']}-colour.png", S["tried"], sev)
     json.dump(rows, open(f"{R}/rank.json", "w"), indent=1)
     open(f"{R}/rank.md", "w").write(f"Incumbent {inc['tag']}\n\n" + table(rows) + "\n")
     chosen = []
@@ -124,7 +125,8 @@ def propose(A, S):
         xy = [inc["tag"], tag]; random.shuffle(xy)
         mapping[tag] = {"X": xy[0], "Y": xy[1]}
         src = {inc["tag"]: inc["renders"], tag: f"{R}/renders"}
-        run([PY, "tools/pair_pages.py", src[xy[0]], xy[0], src[xy[1]], xy[1], f"{R}/pair-{tag}"], f"{R}/{t}.log")
+        foc = [t] + sorted(f for f in guards(t) if abs(next(x for x in rc if x["id"] == f)["iou"] - next(x for x in rows if x["id"] == f)["iou"]) >= 0.02)
+        run([PY, "tools/pair_pages.py", src[xy[0]], xy[0], src[xy[1]], xy[1], f"{R}/pair-{tag}", "--focus", ",".join(foc[:3])], f"{R}/{t}.log")
         rt = next(x for x in rc if x["id"] == t); rb = next(x for x in rows if x["id"] == t)
         summary["targets"][t] = dict(tag=tag, describe=r["fit"]["describe"], attribution=r["fit"]["attribution"], handle=r["fit"]["handle"],
                                      target_before=dict(iou=rb["iou"], arc=rb["arc"], what=rb["what"]), target_after=dict(iou=rt["iou"], arc=rt["arc"], what=rt["what"]),

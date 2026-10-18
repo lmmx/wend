@@ -3,11 +3,14 @@
 The analogue of JSON schema inference (genson, polars-genson) for directory
 trees. Observed paths form a tree, which is generalised bottom-up:
 
-- Names are tokenised into digit runs and the text between them, giving a
-  *skeleton* (``chunk_#-of-#.parquet``). Siblings with the same skeleton merge;
-  each digit run that varies becomes an ``int`` field whose format spec
-  (``04d``, ``d``) is chosen so that every observed value round-trips, and runs
-  that never vary stay literal. Names whose runs need different specs are
+- Names are tokenised into ASCII digit runs and the text between them, giving
+  a *skeleton* (``chunk_#-of-#.parquet``). A name holding exactly one UUID, or
+  one hex token of eight or more digits mixing letters and digits, keeps that
+  token as one string token, and the text after it stays literal
+  (``part-#-<uuid>-c000.snappy.parquet``). Siblings with the same skeleton
+  merge; each digit run that varies becomes an ``int`` field whose format spec
+  (``04d``, ``d``) is chosen so that every observed value round-trips, and
+  runs that never vary stay literal. Names whose runs need different specs are
   split, so a stray ``epoch_7`` among ``epoch_001``... is reported on its own.
 - Sibling directories whose contents are structurally similar (Jaccard
   similarity of their children's skeletons) collapse into one segment field,
@@ -18,33 +21,86 @@ trees. Observed paths form a tree, which is generalised bottom-up:
   values always equal an earlier field's becomes the same parameter
   (``n01440764/n01440764_10026.JPEG``).
 
+Opaque families. Directories that hold only files, but whose names share no
+skeleton (terminfo's ``a/att4410``, ``b/bvt100``...), are compared by the
+extensions of their files instead. Like genson-core's map threshold, this
+coarser comparison needs many siblings: only a group of at least
+``min_opaque`` (8) such directories, joining clusters that did not merge by
+skeleton, collapses into a map, so a code repository's handful of top-level
+directories stays a record. Inside such an *opaque* map, a name family seen
+in only one of its directories is treated like a one-off name, and a ``{name}``
+map takes in the files left over: their names carry no shared structure.
+
+Variable depth. After flattening, a tail ``T`` (one segment, possibly after
+literal directory segments such as ``__pycache__``, with some literal text)
+that recurs below a prefix ``A`` becomes the layout ``A/{rel...}/T``. Writing
+*holders* for the directories that hold an instance of ``T`` directly, the
+recursion criterion is:
+
+1. ``T`` occurs directly in ``A`` (depth 0);
+2. ``T`` occurs at ``min_depths`` (3) distinct depths below ``A`` counting
+   depth 0, each depth other than 0 with at least two observed paths;
+3. it branches: at some depth below ``A`` there are two or more holders, so
+   ``T`` recurs in sibling directories rather than along one chain;
+4. the root looks like what it recurses into: the extensions of the files
+   directly in the depth-0 holders and in the deeper holders are alike
+   (weighted Jaccard of their frequencies at least ``similarity``).
+
+The layouts it replaces are those extending ``A`` whose every path ends in an
+instance of ``T``. Candidates are taken largest first, so the outermost
+recursion root wins, and a fold below a field segment (``site-packages/{pkg}``)
+takes in the folds of literal directories beside it that its field matches.
+A chain of literal directories fails the third condition
+(``a/{stem}.txt``, ``a/b/{stem}.txt``, ``a/b/c/{stem}.txt``); a repository
+root whose few scripts sit among records (``README.md``, ``pyproject.toml``)
+fails the fourth, so its packages fold below it, if at all; and a tail
+without literal text (``{name}``) is never a candidate.
+
 Every observed path matches at least one inferred layout, and each layout's
 ``count`` and field statistics come from the paths it was inferred from, so
-the counts partition the observed paths. ``optional`` is a property of the
-pattern: some observed directory matching a prefix of it contains none of
-the paths it matches. Statistics record the values seen without constraining
-new ones.
+the counts partition the observed paths. ``optional`` and ``cardinality`` are
+properties of the pattern: a layout is optional when some observed directory
+matching a proper prefix of it contains none of the paths it matches, and
+*many* when some directory holds more than one of them directly (every such
+directory matches the pattern's parent prefix). Statistics record the values
+seen without constraining new ones.
+
+Field names follow the text before a run (``epoch_{epoch:03d}``), dates
+(``{year:04d}-{month:02d}-{day:02d}``, ``{date:08d}``, a bare four-digit
+``{year:04d}`` directory, and times after a date) and token kinds
+(``{uuid}``, ``{hex}``); a directory field is named after its parent.
 """
 
 from __future__ import annotations
 
-import itertools
+import enum
 import os
+import posixpath
 import re
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass, field, replace
 from pathlib import PurePosixPath
 from typing import Any
 
-from ._expr import REL, Field, P, PathExpr, Seg, _norm
+from ._expr import REL, Field, P, PathExpr, Seg, Splice, _norm, _pieces_pattern
 from ._match import Match, _match_seg, _seg_fast, seg_plan
-from ._params import Kind, Param
-from .errors import WendError
+from ._params import Kind, Param, SubPath
+from .errors import AmbiguousMatchError, WendError
 
 
 _RUN = re.compile(r"[0-9]+")  # ASCII only: int() would accept other digits
 _WORD = re.compile(r"[A-Za-z]+")
+_HEX = re.compile(
+    r"(?<![0-9A-Za-z])(?:"
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+    r"|[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}"
+    r"|[0-9a-f]{8,}|[0-9A-F]{8,}"
+    r")(?![0-9A-Za-z])"
+)
+_HEXISH = re.compile(r"[0-9a-fA-F]{8}")  # a cheap test before looking for _HEX
+_DATE_SEPS = frozenset("-_.")
+_TIME_SEPS = frozenset("-_.:")
 
 
 @dataclass(frozen=True)
@@ -52,6 +108,39 @@ class _Config:
     min_dirs: int = 2
     min_files: int = 3
     similarity: float = 0.5
+    min_opaque: int = 8
+    min_depths: int = 3
+
+
+def _tokens(name: str) -> tuple[tuple[str, ...], tuple[str, ...], list[str]]:
+    """(literal pieces, token kinds, token values) of a name.
+
+    Tokens are maximal ASCII digit runs (kind "d") and, when the name holds
+    exactly one, a UUID ("u") or a hex token of eight or more digits with
+    both letters and digits ("x"). The text after a hex token stays literal,
+    so the string field it becomes is the last field of its segment.
+    """
+    hexes = (
+        [
+            m
+            for m in _HEX.finditer(name)
+            if "-" in m[0] or (any(c.isdigit() for c in m[0]) and not m[0].isdigit())
+        ]
+        if _HEXISH.search(name)
+        else ()
+    )
+    if len(hexes) == 1:
+        m = hexes[0]
+        head = name[: m.start()]
+        runs = _RUN.findall(head)
+        kind = "u" if "-" in m[0] else "x"
+        return (
+            (*_RUN.split(head), name[m.end() :]),
+            ("d",) * len(runs) + (kind,),
+            [*runs, m[0]],
+        )
+    runs = _RUN.findall(name)
+    return tuple(_RUN.split(name)), ("d",) * len(runs), runs
 
 
 def _int_spec(values: list[str]) -> str | None:
@@ -84,8 +173,13 @@ def _partition(rules: list[_Rule]) -> list[list[_Rule]]:
     """
     if len(rules) == 1 or not rules[0].runs:
         return [rules]
-    n = len(rules[0].runs)
-    varying = [i for i in range(n) if len({v for r in rules for v in r.runs[i]}) > 1]
+    kinds = rules[0].shape[2]
+    n = len(kinds)
+    varying = [
+        i
+        for i in range(n)
+        if kinds[i] == "d" and len({v for r in rules for v in r.runs[i]}) > 1
+    ]
 
     def vector(r: _Rule) -> tuple[str | None, ...]:
         return tuple(_int_spec(r.runs[i]) if i in varying else None for i in range(n))
@@ -111,9 +205,10 @@ def _partition(rules: list[_Rule]) -> list[list[_Rule]]:
 class _Rule:
     """A generalised entry: a name pattern, a kind, and (for dirs) contents.
 
-    ``shape`` is ("num", literal pieces) for names containing digit runs (the
-    runs' observed values are in ``runs``), ("lit", name) for other names, or
-    ("str", suffix) for a name generalised into a string field.
+    ``shape`` is ("num", literal pieces, token kinds) for names containing
+    tokens (their observed values are in ``runs``), ("lit", name) for other
+    names, or ("str", suffix) for a name generalised into a string field.
+    ``opaque`` marks a directory map formed from an opaque family.
     """
 
     kind: str
@@ -124,6 +219,7 @@ class _Rule:
         default_factory=list
     )  # observed full paths, parallel to names
     children: list[_Rule] = field(default_factory=list)
+    opaque: bool = False
 
     def skeleton(self) -> tuple[Any, ...]:
         return (self.kind, self.shape)
@@ -138,8 +234,10 @@ class _Rule:
         return self.shape[0] == "num" and all(len(set(v)) == 1 for v in self.runs)
 
 
-def _merge(rules: list[_Rule], shape: tuple[Any, ...], cfg: _Config) -> _Rule:
-    out = _Rule(rules[0].kind, shape)
+def _merge(
+    rules: list[_Rule], shape: tuple[Any, ...], cfg: _Config, opaque: bool = False
+) -> _Rule:
+    out = _Rule(rules[0].kind, shape, opaque=opaque)
     if shape[0] == "num":
         out.runs = [
             [v for r in rules for v in r.runs[i]] for i in range(len(rules[0].runs))
@@ -147,7 +245,7 @@ def _merge(rules: list[_Rule], shape: tuple[Any, ...], cfg: _Config) -> _Rule:
     out.names = [n for r in rules for n in r.names]
     out.paths = [p for r in rules for p in r.paths]
     if out.kind == "dir":
-        out.children = _unify([c for r in rules for c in r.children], cfg)
+        out.children = _unify([c for r in rules for c in r.children], cfg, opaque)
     return out
 
 
@@ -155,8 +253,13 @@ def _jaccard(a: set[Any], b: set[Any]) -> float:
     return len(a & b) / len(a | b) if (a or b) else 1.0
 
 
+def _suffix(name: str) -> str:
+    """``PurePosixPath(name).suffix`` for a single name, without the object."""
+    return posixpath.splitext(name)[1]
+
+
 def _coarse(r: _Rule) -> str:
-    return PurePosixPath(r.names[0]).suffix
+    return _suffix(r.names[0])
 
 
 def _similar(a: _Rule, b: _Rule) -> float:
@@ -177,18 +280,114 @@ def _similar(a: _Rule, b: _Rule) -> float:
     return fine
 
 
-def _unify(rules: list[_Rule], cfg: _Config) -> list[_Rule]:
+def _profile(dirs: Iterable[_Rule]) -> dict[str, float] | None:
+    """Extension frequencies of the files in directories holding only files."""
+    counts: Counter[str] = Counter()
+    for d in dirs:
+        if not d.children or any(c.kind != "file" for c in d.children):
+            return None
+        for c in d.children:
+            counts[_coarse(c)] += c.count
+    total = sum(counts.values())
+    return {k: v / total for k, v in counts.items()}
+
+
+def _overlap(a: dict[str, float], b: dict[str, float]) -> float:
+    """Weighted Jaccard similarity of two extension profiles."""
+    keys = a.keys() | b.keys()
+    lo = sum(min(a.get(k, 0.0), b.get(k, 0.0)) for k in keys)
+    hi = sum(max(a.get(k, 0.0), b.get(k, 0.0)) for k in keys)
+    return lo / hi
+
+
+def _opaque_families(
+    clusters: list[list[_Rule]], dir_map: _Rule | None, cfg: _Config
+) -> set[int]:
+    """Clusters that join an opaque map: file-only directories alike in extensions.
+
+    Clusters (of directories already alike by skeleton) group by their files'
+    extensions; a group of two or more clusters holding ``min_opaque``
+    directories in all joins the map. An opaque map already at this position
+    takes in every file-only cluster alike in extensions.
+    """
+    profiles = [_profile(cl) for cl in clusters]
+    groups: list[tuple[dict[str, float], list[int]]] = []  # (leader's profile, members)
+    for i in sorted(
+        range(len(clusters)), key=lambda i: (-len(clusters[i]), clusters[i][0].names[0])
+    ):
+        prof = profiles[i]
+        if prof is None:
+            continue
+        for lead, members in groups:
+            if _overlap(prof, lead) >= cfg.similarity:
+                members.append(i)
+                break
+        else:
+            groups.append((prof, [i]))
+    out: set[int] = set()
+    for _, members in groups:
+        if (
+            len(members) > 1
+            and sum(len(clusters[i]) for i in members) >= cfg.min_opaque
+        ):
+            out.update(members)
+    if dir_map is not None and dir_map.opaque:
+        here = _profile([dir_map])
+        if here is not None:
+            out.update(
+                i
+                for i, prof in enumerate(profiles)
+                if prof is not None and _overlap(prof, here) >= cfg.similarity
+            )
+    return out
+
+
+def _opaque_dirs(dirs: list[_Rule], cfg: _Config) -> bool:
+    """Same-skeleton directories (``0``...``9``) whose files share no structure.
+
+    At least ``min_opaque`` directories holding only files, some of them
+    unlike the others by skeleton: their name only says they are a family.
+    """
+    if len(dirs) < cfg.min_opaque or dirs[0].kind != "dir" or _profile(dirs) is None:
+        return False
+    lead = min(dirs, key=lambda d: (-len(d.children), d.names[0]))
+    return any(_similar(d, lead) < cfg.similarity for d in dirs)
+
+
+def _local_family(r: _Rule) -> bool:
+    """A name family of files seen in one directory only."""
+    return (
+        r.kind == "file"
+        and r.shape[0] == "num"
+        and len({p.rpartition("/")[0] for p in r.paths}) == 1
+    )
+
+
+def _unify(rules: list[_Rule], cfg: _Config, opaque: bool = False) -> list[_Rule]:
     out: list[_Rule] = []
     lone: list[_Rule] = []
     # 1. Rules with the same skeleton merge (digit runs pool their values),
-    #    in groups whose runs share a format spec.
+    #    in groups whose runs share a format spec. In an opaque map, a family
+    #    from one directory only counts as a one-off name.
     by_skel: dict[tuple[Any, ...], list[_Rule]] = defaultdict(list)
     for r in rules:
         by_skel[r.skeleton()].append(r)
     for (_kind, shape), ms in by_skel.items():
         for group in _partition(ms):
-            merged = _merge(group, shape, cfg) if len(group) > 1 else group[0]
-            (lone if merged.literal_like() else out).append(merged)
+            merged = (
+                _merge(
+                    group,
+                    shape,
+                    cfg,
+                    any(r.opaque for r in group) or _opaque_dirs(group, cfg),
+                )
+                if len(group) > 1
+                else group[0]
+            )
+            if merged.literal_like() or (opaque and _local_family(merged)):
+                lone.append(merged)
+            else:
+                out.append(merged)
     # 2. Directories with similar contents collapse into one segment field.
     #    A map already at this position (from merged parents) absorbs similar
     #    directories, and every qualifying cluster joins the same map, since
@@ -207,35 +406,84 @@ def _unify(rules: list[_Rule], cfg: _Config) -> list[_Rule]:
                 break
         else:
             clusters.append([d])
-    into_map: list[_Rule] = [] if dir_map is None else [dir_map]
-    for cl in clusters:
-        if cl[0].children and (
+    joins = [
+        bool(cl[0].children)
+        and (
             len(cl) >= cfg.min_dirs
             or (dir_map is not None and _similar(cl[0], dir_map) >= cfg.similarity)
-        ):
-            into_map.extend(cl)
-        else:
-            out.extend(cl)
+        )
+        for cl in clusters
+    ]
+    # Opaque families: file-only directories whose names share no skeleton.
+    map_opaque = dir_map is not None and dir_map.opaque
+    if len(clusters) > 1 or map_opaque:
+        coarse = _opaque_families(clusters, dir_map, cfg)
+        for i in coarse:
+            joins[i] = True
+        map_opaque = map_opaque or bool(coarse)
+    into_map: list[_Rule] = [] if dir_map is None else [dir_map]
+    for cl, joined in zip(clusters, joins, strict=True):
+        (into_map if joined else out).extend(cl)
+    here = _profile(into_map) if map_opaque else None
+    if here is not None:
+        # An opaque map takes in the opaque families of directories beside it
+        # that are alike in extensions (terminfo's digits beside its letters).
+        for r in [r for r in out if r.kind == "dir" and r.opaque]:
+            prof = _profile([r])
+            if prof is not None and _overlap(prof, here) >= cfg.similarity:
+                out.remove(r)
+                into_map.append(r)
     if len(into_map) > 1 or (into_map and dir_map is None):
-        out.append(_merge(into_map, ("str", ""), cfg))
+        out.append(_merge(into_map, ("str", ""), cfg, map_opaque))
     elif into_map:
         out.append(into_map[0])
     # 3. Files sharing an extension collapse into {stem}.ext, joining an
-    #    existing {stem}.ext map at this position whatever their number.
+    #    existing {stem}.ext map at this position whatever their number. In an
+    #    opaque map, a {name} map takes in the files left over.
     file_maps = {r.shape[1]: r for r in out if r.kind == "file" and r.shape[0] == "str"}
     by_suffix: dict[str, list[_Rule]] = defaultdict(list)
+    rest: list[_Rule] = []
     for f in (r for r in lone if r.kind == "file"):
-        by_suffix[PurePosixPath(f.names[0]).suffix].append(f)
+        if f.literal_like():
+            by_suffix[_coarse(f)].append(f)
+            continue
+        # A family taken in by an opaque map: by its extension if it has one.
+        suffixes = {_suffix(n) for n in f.names}
+        (by_suffix[suffixes.pop()] if len(suffixes) == 1 else rest).append(f)
     for suffix, fs in by_suffix.items():
         existing = file_maps.get(suffix)
         if existing is not None:
             out.remove(existing)
-            out.append(_merge([existing, *fs], ("str", suffix), cfg))
-        elif len(fs) >= cfg.min_files:
-            out.append(_merge(fs, ("str", suffix), cfg))
+            file_maps[suffix] = merged = _merge([existing, *fs], ("str", suffix), cfg)
+            out.append(merged)
+        elif len({n for f in fs for n in f.names}) >= cfg.min_files:
+            file_maps[suffix] = merged = _merge(fs, ("str", suffix), cfg)
+            out.append(merged)
         else:
-            out.extend(fs)
+            rest.extend(fs)
+    anything = file_maps.get("") if opaque else None
+    if anything is not None and rest:
+        out.remove(anything)
+        out.append(_merge([anything, *rest], ("str", ""), cfg))
+    else:
+        out.extend(rest)
     return sorted(out, key=lambda r: (r.kind, repr(r.shape), r.names[0]))
+
+
+class Cardinality(enum.Enum):
+    """How many of a layout's paths a directory matching its parent holds.
+
+    Defined on the pattern, over the observed directories: the lower bound is
+    zero when the layout is `optional` (some directory matching a proper
+    prefix of the pattern contains none of its paths), and the upper bound is
+    more than one when some directory holds two or more of its paths
+    directly. Values are UML multiplicities.
+    """
+
+    ONE = "1"
+    OPTIONAL = "0..1"
+    AT_LEAST_ONE = "1..*"
+    MANY = "0..*"
 
 
 @dataclass
@@ -258,13 +506,27 @@ class FieldStats:
         )
 
 
+def _stats(name: str, typ: type, values: list[Any]) -> FieldStats:
+    return FieldStats(
+        name,
+        typ,
+        len(values),
+        len(set(values)),
+        min(values) if typ is int else None,
+        max(values) if typ is int else None,
+        tuple(sorted(set(values), key=str)[:5]),
+    )
+
+
 @dataclass
 class Layout:
     """One inferred path pattern, relative to the inferred root.
 
     ``count`` and ``fields`` describe the observed paths the layout was
     inferred from. ``optional`` is true when some observed directory matching
-    a prefix of ``expr`` contains none of the observed paths ``expr`` matches.
+    a proper prefix of ``expr`` contains none of the observed paths ``expr``
+    matches; ``many`` is true when some observed directory holds more than
+    one of them directly. ``cardinality`` combines the two.
     """
 
     expr: PathExpr
@@ -272,10 +534,19 @@ class Layout:
     count: int
     fields: dict[str, FieldStats]
     optional: bool
+    many: bool = False
+
+    @property
+    def cardinality(self) -> Cardinality:
+        if self.many:
+            return Cardinality.MANY if self.optional else Cardinality.AT_LEAST_ONE
+        return Cardinality.OPTIONAL if self.optional else Cardinality.ONE
 
     def __repr__(self) -> str:
-        opt = ", optional" if self.optional else ""
-        return f"Layout({self.expr.pattern!r}, {self.kind}, {self.count} paths{opt})"
+        return (
+            f"Layout({self.expr.pattern!r}, {self.kind}, {self.count} paths, "
+            f"{self.cardinality.value})"
+        )
 
     def match(self, path: Any) -> Match | None:
         return self.expr.match(path)
@@ -294,7 +565,9 @@ class Layout:
             names.get(k, k): replace(v, name=names.get(k, k))
             for k, v in self.fields.items()
         }
-        return Layout(self.expr.bind(env), self.kind, self.count, fields, self.optional)
+        return Layout(
+            self.expr.bind(env), self.kind, self.count, fields, self.optional, self.many
+        )
 
 
 @dataclass
@@ -307,8 +580,10 @@ class Schema:
     def __repr__(self) -> str:
         lines = [f"Schema({self.total} paths, {len(self.layouts)} layouts)"]
         for lay in self.layouts:
-            opt = "  (optional)" if lay.optional else ""
-            lines.append(f"  {lay.count:>6}  {lay.kind:<4} {lay.expr.pattern}{opt}")
+            card = lay.cardinality.value
+            lines.append(
+                f"  {lay.count:>6}  {lay.kind:<4} {card:<4}  {lay.expr.pattern}"
+            )
         return "\n".join(lines)
 
     def match(self, path: Any) -> list[tuple[Layout, Match]]:
@@ -339,10 +614,67 @@ def _unique(base: str, used: set[str]) -> str:
     return name
 
 
+def _token_names(
+    pieces: tuple[str, ...], kinds: tuple[str, ...], runs: list[list[str]]
+) -> list[str]:
+    """Base names for a name's tokens: the word before a run, dates, token kinds."""
+    names = []
+    for i, k in enumerate(kinds):
+        if k != "d":
+            names.append("uuid" if k == "u" else "hex")
+            continue
+        words = _WORD.findall(pieces[i])
+        names.append(_ident(words[-1]) if words else "")
+
+    def num(i: int, lo: int, hi: int, widths: tuple[int, ...]) -> bool:
+        return (
+            i < len(kinds)
+            and kinds[i] == "d"
+            and all(len(v) in widths and lo <= int(v) <= hi for v in runs[i])
+        )
+
+    def sep(i: int, allowed: frozenset[str]) -> bool:
+        return len(pieces[i]) == 1 and pieces[i] in allowed
+
+    i = 0
+    while i < len(kinds):
+        if (
+            num(i, 1900, 2100, (4,))
+            and sep(i + 1, _DATE_SEPS)
+            and num(i + 1, 1, 12, (1, 2))
+        ):
+            names[i], names[i + 1] = "year", "month"
+            j = i + 2
+            if pieces[j] == pieces[i + 1] and num(j, 1, 31, (1, 2)):
+                names[j] = "day"
+                j += 1
+                if (
+                    num(j, 0, 23, (2,))
+                    and pieces[j] in ("T", "_", "-", ".", " ")
+                    and sep(j + 1, _TIME_SEPS)
+                    and num(j + 1, 0, 59, (2,))
+                ):
+                    names[j], names[j + 1] = "hour", "minute"
+                    j += 2
+                    if pieces[j] == pieces[j - 1] and num(j, 0, 60, (2,)):
+                        names[j] = "second"
+                        j += 1
+            i = j
+            continue
+        if not names[i] and num(i, 1900, 2100, (4,)):
+            names[i] = "year"
+        elif num(i, 19000101, 21001231, (8,)) and all(
+            1 <= int(v[4:6]) <= 12 and 1 <= int(v[6:]) <= 31 for v in runs[i]
+        ):
+            names[i] = "date"
+        i += 1
+    return names
+
+
 def _segment(
     r: _Rule, parent: str, used: set[str], stats: list[tuple[str, type, list[Any]]]
 ) -> Seg:
-    kind, arg = r.shape
+    kind, arg = r.shape[0], r.shape[1]
     if kind == "lit":
         return Seg((r.names[0],))
     if kind == "str":
@@ -355,17 +687,19 @@ def _segment(
             (name, str, [n[: len(n) - len(arg)] if arg else n for n in r.names])
         )
         return Seg(_norm([Field(Param(name, type=str)), arg]))
+    kinds = r.shape[2]
+    base = _token_names(arg, kinds, r.runs)
     pieces: list[Any] = []
-    for lit, vals in itertools.zip_longest(arg, r.runs):
+    for i, lit in enumerate(arg):
         pieces.append(lit)
-        if vals is None:
-            continue
+        if i == len(kinds):
+            break
+        vals = r.runs[i]
         if len(set(vals)) == 1:
             pieces.append(vals[0])
             continue
-        words = _WORD.findall(lit)
-        name = _unique(_ident(words[-1]) if words else "n", used)
-        spec = _int_spec(vals)
+        name = _unique(base[i], used)
+        spec = _int_spec(vals) if kinds[i] == "d" else None
         if spec is None:
             pieces.append(Field(Param(name, type=str)))
             stats.append((name, str, list(vals)))
@@ -389,13 +723,17 @@ def _seen(expr: PathExpr, paths: list[str], names: list[str]) -> dict[str, list[
     return seen
 
 
+# A layout with the observed paths it was inferred from.
+type _Item = tuple[Layout, list[str]]
+
+
 def _flatten(
     rules: list[_Rule],
     prefix: tuple[Seg, ...],
     parent: str,
     used: set[str],
     stats: list[tuple[str, type, list[Any]]],
-    out: list[Layout],
+    out: list[_Item],
 ) -> None:
     for r in rules:
         my_used = set(used)
@@ -422,22 +760,267 @@ def _flatten(
                 expr = expr.bind({b: params[a] for b, a in same.items()})
                 my_stats = [st for st in my_stats if st[0] not in same]
                 seen = _seen(expr, r.paths, [n for n, _, _ in my_stats])
-            fields = {
-                n: FieldStats(
-                    n,
-                    t,
-                    len(seen[n]),
-                    len(set(seen[n])),
-                    min(seen[n]) if t is int else None,
-                    max(seen[n]) if t is int else None,
-                    tuple(sorted(set(seen[n]), key=str)[:5]),
-                )
-                for n, t, _ in my_stats
-            }
-            out.append(Layout(expr, r.kind, len(r.paths), fields, False))
+            fields = {n: _stats(n, t, seen[n]) for n, t, _ in my_stats}
+            out.append((Layout(expr, r.kind, len(r.paths), fields, False), r.paths))
         else:
             label = r.names[0] if r.literal_like() else parent
             _flatten(r.children, path, label, my_used, my_stats, out)
+
+
+def _shape_key(segs: tuple[Seg, ...]) -> tuple[str, ...]:
+    """Segment patterns with parameters numbered by first appearance."""
+    index: dict[str, int] = {}
+    out = []
+    for seg in segs:
+        text = []
+        for p in seg.pieces:
+            if isinstance(p, str):
+                text.append(p.replace("{", "{{").replace("}", "}}"))
+                continue
+            src = p.source
+            assert isinstance(src, Param)
+            k = index.setdefault(src.name, len(index))
+            tname = getattr(src.type, "__name__", None)
+            text.append(
+                f"{{{k}!{p.conversion}:{''.join(map(str, p.spec))}|{p.role}|{tname}}}"
+            )
+        out.append("".join(text))
+    return tuple(out)
+
+
+def _fold_subpaths(
+    items: list[_Item], tree: dict[str, Any], cfg: _Config
+) -> list[_Item]:
+    """Replace the layouts of a recursive tail with one ``A/{rel...}/T`` layout.
+
+    See the module docstring for the criterion. Each candidate (A, T) comes
+    from a layout of at least two paths that ends in T below A; the layouts
+    it replaces extend A and end, path by path, in an instance of T.
+    """
+    # Flattened layouts hold segments only.
+    segs = [tuple(p for p in lay.expr.parts if isinstance(p, Seg)) for lay, _ in items]
+    pats = [tuple(_pieces_pattern(s.pieces) for s in ss) for ss in segs]
+    cands: dict[tuple[Any, ...], tuple[tuple[Seg, ...], tuple[Seg, ...]]] = {}
+    for idx, (lay, _) in enumerate(items):
+        parts = segs[idx]
+        n = len(parts)
+        if lay.count < 2:
+            continue
+        for t in range(1, n):
+            if t > 1 and parts[n - t].literal is None:
+                break  # only literal directories may precede the tail's last segment
+            tail = parts[n - t :]
+            if t == 1 and not any(isinstance(p, str) for p in tail[0].pieces):
+                continue  # a tail without literal text says nothing
+            tk = (lay.kind, _shape_key(tail))
+            for a in range(n - t):
+                cands.setdefault((pats[idx][:a], tk), (parts[:a], tail))
+    if not cands:
+        return items
+    tails: dict[Any, tuple[tuple[Seg, ...], PathExpr]] = {}
+    for (_, tk), (_, tail) in cands.items():
+        if tk not in tails:
+            tails[tk] = tail, PathExpr(REL, tail)
+    keys: dict[tuple[int, int], tuple[str, ...]] = {}
+    last = [paths[0].rpartition("/")[2] for _, paths in items]
+
+    def ends_in(tk: Any, idx: int) -> bool:
+        """Every path of layout ``idx`` ends in an instance of tail ``tk``."""
+        tail, expr = tails[tk]
+        t = len(tail)
+        if (idx, t) not in keys:
+            keys[idx, t] = _shape_key(segs[idx][-t:])
+        if keys[idx, t] == tk[1]:
+            return True
+        # Literal text first: the end of the last name, then the rest.
+        end = tail[-1].pieces[-1]
+        return (
+            (not isinstance(end, str) or last[idx].endswith(end))
+            and _plausible(tail, items[idx][1][0])
+            and all(_matches(expr, "/".join(p.split("/")[-t:])) for p in items[idx][1])
+        )
+
+    ends: dict[Any, list[int]] = {}
+
+    def ending(tk: Any) -> list[int]:
+        """The layouts whose paths all end in tail ``tk``."""
+        if tk not in ends:
+            t = len(tails[tk][0])
+            ends[tk] = [
+                idx
+                for idx, (lay, _) in enumerate(items)
+                if lay.kind == tk[0] and len(segs[idx]) >= t and ends_in(tk, idx)
+            ]
+        return ends[tk]
+
+    held: dict[tuple[int, int], set[str]] = {}
+
+    def holders_of(idx: int, t: int) -> set[str]:
+        """Directories holding the tail in layout ``idx``'s paths."""
+        if (idx, t) not in held:
+            held[idx, t] = {
+                p.rsplit("/", t)[0] if p.count("/") >= t else "" for p in items[idx][1]
+            }
+        return held[idx, t]
+
+    profiles: dict[str, Counter[str]] = {}
+
+    def files_in(d: str) -> Counter[str]:
+        """Extensions of the files directly in observed directory ``d``."""
+        if d not in profiles:
+            node = tree
+            for name in d.split("/") if d else ():
+                node = node[name]
+            profiles[d] = Counter(
+                _suffix(name) for name, sub in node.items() if sub is None
+            )
+        return profiles[d]
+
+    def evaluate(akey: Any, tk: Any, a: int, taken: set[int]) -> list[int] | None:
+        t = len(tails[tk][0])
+        absorbed: list[int] = []
+        depths: Counter[int] = Counter()
+        holders: dict[int, set[str]] = defaultdict(set)  # directories holding T
+        for idx in ending(tk):
+            if idx in taken or len(segs[idx]) < a + t or pats[idx][:a] != akey:
+                continue
+            d = len(segs[idx]) - a - t
+            if any(s.literal == ".." for s in segs[idx][a : a + d]):
+                continue  # a SubPath never binds "..": keep such paths literal
+            absorbed.append(idx)
+            depths[d] += items[idx][0].count
+            holders[d] |= holders_of(idx, t)
+        supported = {d for d, c in depths.items() if c >= 2} | {0}
+        if not depths[0] or len(supported) < cfg.min_depths:
+            return None
+        # Branching: T recurs in sibling directories, not along one chain.
+        if not any(len(ds) > 1 for d, ds in holders.items() if d):
+            return None
+        # The root of the recursion looks like the directories it recurses
+        # into: their files' extensions are alike.
+        top: Counter[str] = Counter()
+        below: Counter[str] = Counter()
+        for d, ds in holders.items():
+            for h in ds:
+                (below if d else top).update(files_in(h))
+        if not top or not below:
+            return None
+        n_top, n_below = sum(top.values()), sum(below.values())
+        share = _overlap(
+            {k: v / n_top for k, v in top.items()},
+            {k: v / n_below for k, v in below.items()},
+        )
+        return absorbed if share >= cfg.similarity else None
+
+    ranked = []
+    for (akey, tk), (A, _) in cands.items():
+        absorbed = evaluate(akey, tk, len(A), set())
+        if absorbed is not None:
+            size = sum(items[i][0].count for i in absorbed)
+            ranked.append((-size, len(A), akey, tk))
+    ranked.sort()
+    taken: set[int] = set()
+    # Accepted folds: [prefix A, tail T, tail key, absorbed layouts].
+    accepted: list[tuple[tuple[Seg, ...], tuple[Seg, ...], Any, list[int]]] = []
+    for _, a, akey, tk in ranked:
+        absorbed = evaluate(akey, tk, a, taken)
+        if absorbed is None:
+            continue
+        taken.update(absorbed)
+        A, tail = cands[(akey, tk)]
+        accepted.append((A, tail, tk, absorbed))
+    # As a map absorbs similar siblings, a fold below a field segment
+    # (site-packages/{pkg}/{rel...}/T) takes in the folds of the literal
+    # directories beside it with the same tail, when its field matches them.
+    hosts: list[tuple[tuple[Seg, ...], tuple[Seg, ...], Any, list[int]]] = []
+    for fold in sorted(
+        accepted, key=lambda f: bool(f[0]) and f[0][-1].literal is not None
+    ):
+        A, _, tk, absorbed = fold
+        for h in hosts:
+            if not (
+                h[2] == tk
+                and len(h[0]) == len(A)
+                and h[0][:-1] == A[:-1]
+                and h[0][-1].literal is None
+            ):
+                continue
+            head = PathExpr(REL, h[0])
+            if all(
+                _matches(head, "/".join(p.split("/")[: len(A)]))
+                for i in absorbed
+                for p in items[i][1]
+            ):
+                h[3].extend(absorbed)
+                break
+        else:
+            hosts.append(fold)
+    folded = [
+        _folded(A, tail, tk[0], [items[i] for i in absorbed])
+        for A, tail, tk, absorbed in hosts
+    ]
+    return [it for i, it in enumerate(items) if i not in taken] + folded
+
+
+def _plausible(tail: tuple[Seg, ...], path: str) -> bool:
+    """A quick test on literal text before matching ``path``'s end against ``tail``."""
+    names = path.split("/")
+    if len(names) < len(tail):
+        return False
+    for part, name in zip(reversed(tail), reversed(names), strict=False):
+        pieces = part.pieces
+        if isinstance(pieces[0], str) and not name.startswith(pieces[0]):
+            return False
+        if isinstance(pieces[-1], str) and not name.endswith(pieces[-1]):
+            return False
+    return True
+
+
+def _matches(expr: PathExpr, path: str) -> bool:
+    try:
+        return expr.match(path) is not None
+    except AmbiguousMatchError:
+        return False
+
+
+def _folded(
+    prefix: tuple[Seg, ...], tail: tuple[Seg, ...], kind: str, members: list[_Item]
+) -> _Item:
+    used = {n for s in prefix for n in s.param_names}
+    rel = _unique("rel", used)
+    end = PathExpr(REL, tail)
+    renames = {}
+    for p in end.params.values():
+        new = _unique(p.name, used)
+        if new != p.name:
+            renames[p.name] = Param(new, p.kind, p.type, p.choices)
+    if renames:
+        end = end.bind(renames)
+    expr = PathExpr(REL, (*prefix, Splice(SubPath(rel)), *end.parts))
+    paths = [p for _, ps in members for p in ps]
+    params = expr.params
+    seen: dict[str, list[Any]] = {n: [] for n in params}
+    # The prefix and the tail have fixed lengths and no parameter in common,
+    # so each is matched on its own (with its fast plan) and the splice takes
+    # what lies between; rendering verifies the whole, as `match` would.
+    head, a, t = PathExpr(REL, prefix), len(prefix), len(end.parts)
+    render = expr._compiled.render
+    for path in paths:
+        names = path.split("/")
+        env: dict[str, Any] = {rel: "/".join(names[a : len(names) - t]) or "."}
+        for part, sub in ((head, names[:a]), (end, names[len(names) - t :])):
+            m = part.match("/".join(sub)) if sub else {}
+            if m is None:  # pragma: no cover - would be an inference bug
+                raise AssertionError(f"{path!r} does not match {expr.pattern!r}")
+            env.update(m)
+        if render(env) != path:  # pragma: no cover - would be an inference bug
+            raise AssertionError(f"{path!r} does not match {expr.pattern!r}")
+        for k, v in env.items():
+            seen[k].append(v)
+    fields = {
+        n: _stats(n, int if p.type is int else str, seen[n]) for n, p in params.items()
+    }
+    return Layout(expr, kind, len(paths), fields, False), paths
 
 
 def _step(
@@ -460,34 +1043,53 @@ def _step(
                 yield name, found
 
 
+def _below(
+    node: dict[str, Any], at: tuple[str, ...]
+) -> Iterator[tuple[tuple[str, ...], dict[str, Any]]]:
+    """``node`` and every directory below it, with their relative parts."""
+    yield at, node
+    for name, sub in node.items():
+        if sub is not None:
+            yield from _below(sub, (*at, name))
+
+
 # Directories reached by a prefix: (path parts, bindings, subtree).
 type _Frontier = list[tuple[tuple[str, ...], dict[str, Any], dict[str, Any]]]
 
 
-def _mark_optional(layouts: list[Layout], tree: dict[str, Any]) -> None:
-    """Flag each layout that some directory matching a prefix of it lacks.
+def _mark_cardinality(layouts: list[Layout], tree: dict[str, Any]) -> None:
+    """Set each layout's ``optional`` and ``many`` flags from its pattern.
 
     Each pattern is walked down the observed tree with the segment matcher
-    that `match` uses, so the flag holds for every directory a prefix
-    matches, including directories inferred under a different layout.
-    Layouts share the directories reached by their common prefixes.
+    that `match` uses (a ``SubPath`` reaches a directory and every directory
+    below it), so the flags hold for every directory a prefix matches,
+    including directories inferred under a different layout. Layouts share
+    the directories reached by their common prefixes.
     """
-    frontiers: dict[tuple[Seg, ...], _Frontier] = {(): [((), {}, tree)]}
+    frontiers: dict[tuple[Any, ...], _Frontier] = {(): [((), {}, tree)]}
 
     def verified(expr: PathExpr, path: tuple[str, ...], env: dict[str, Any]) -> bool:
         # The segment matcher proposes candidates (``{n:d}`` accepts "00");
         # rendering decides, as in `match`.
         try:
-            return expr._compiled.render(env) == "/".join(path)
+            return expr._compiled.render(env) == ("/".join(path) or ".")
         except WendError, ValueError:
             return False
 
-    def frontier(prefix: tuple[Seg, ...]) -> _Frontier:
+    def frontier(prefix: tuple[Any, ...]) -> _Frontier:
         if prefix not in frontiers:
             expr = PathExpr(REL, prefix)
+            last = prefix[-1]
             out: _Frontier = []
             for at, env, node in frontier(prefix[:-1]):
-                for name, found in _step(prefix[-1], node, env):
+                if isinstance(last, Splice):
+                    name = last.param.name
+                    for rel, sub in _below(node, ()):
+                        found = {**env, name: "/".join(rel) or "."}
+                        if verified(expr, (*at, *rel), found):
+                            out.append(((*at, *rel), found, sub))
+                    continue
+                for name, found in _step(last, node, env):
                     sub = node[name]
                     if sub is not None and verified(expr, (*at, name), found):
                         out.append(((*at, name), found, sub))
@@ -495,22 +1097,25 @@ def _mark_optional(layouts: list[Layout], tree: dict[str, Any]) -> None:
         return frontiers[prefix]
 
     for lay in layouts:
-        parts = tuple(p for p in lay.expr.parts if isinstance(p, Seg))
-        assert len(parts) == len(lay.expr.parts)  # inferred layouts have no SubPath
-        n = len(parts)
+        parts = lay.expr.parts
+        last = parts[-1]
+        assert isinstance(last, Seg)  # inferred layouts end in a segment
         want_file = lay.kind == "file"
         hits: set[tuple[str, ...]] = set()
         for at, env, node in frontier(parts[:-1]):
-            for name, found in _step(parts[-1], node, env):
+            for name, found in _step(last, node, env):
                 sub = node[name]
                 if (sub is None) != want_file or (sub and not want_file):
                     continue
                 if verified(lay.expr, (*at, name), found):
                     hits.add((*at, name))
+        holders = {h[:i] for h in hits for i in range(len(h))}
         lay.optional = any(
-            {at for at, _, _ in frontier(parts[:j])} - {h[:j] for h in hits}
-            for j in range(1, n)
+            at not in holders
+            for j in range(1, len(parts))
+            for at, _, _ in frontier(parts[:j])
         )
+        lay.many = any(c > 1 for c in Counter(h[:-1] for h in hits).values())
 
 
 def _observe(source: Any, include_hidden: bool) -> list[tuple[str, bool]]:
@@ -574,8 +1179,8 @@ def infer(
         rules = []
         for name, sub in children.items():
             full = f"{at}/{name}" if at else name
-            runs = _RUN.findall(name)
-            shape = ("num", tuple(_RUN.split(name))) if runs else ("lit", name)
+            pieces, kinds, runs = _tokens(name)
+            shape = ("num", pieces, kinds) if kinds else ("lit", name)
             r = _Rule(
                 "file" if sub is None else "dir",
                 shape,
@@ -588,8 +1193,9 @@ def infer(
             rules.append(r)
         return _unify(rules, cfg)
 
-    layouts: list[Layout] = []
-    _flatten(build(tree, ""), (), "", set(), [], layouts)
-    _mark_optional(layouts, tree)
+    items: list[_Item] = []
+    _flatten(build(tree, ""), (), "", set(), [], items)
+    layouts = [lay for lay, _ in _fold_subpaths(items, tree, cfg)]
+    _mark_cardinality(layouts, tree)
     layouts.sort(key=lambda lay: (-lay.count, lay.expr.pattern))
     return Schema(layouts, len(observed))

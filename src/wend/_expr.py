@@ -266,6 +266,7 @@ def _to_text(x: Any) -> Text:
     if isinstance(x, str):
         if has_marker(x):
             raise _fstring_error()
+        _check_literal(x)
         return Text(_norm([x]))
     if isinstance(x, Param):
         return Text((Field(x),))
@@ -273,6 +274,7 @@ def _to_text(x: Any) -> Text:
         pieces: list[Piece] = []
         for item in x:
             if isinstance(item, str):
+                _check_literal(item)
                 pieces.append(item)
             else:
                 pieces.extend(_interp_pieces(item))
@@ -282,10 +284,12 @@ def _to_text(x: Any) -> Text:
 
 def _text_as_segment(t: Text) -> Seg:
     for p in t.pieces:
-        if isinstance(p, str) and ("/" in p or "\x00" in p):
+        if isinstance(p, str) and "/" in p:
             raise PathOperationError(
                 f"Invalid name {t.pattern!r}: contains a separator"
             )
+        if isinstance(p, str):
+            _check_literal(p)
     lit = t.literal
     if lit is not None and lit in ("", "."):
         raise PathOperationError(f"Invalid name {lit!r}")
@@ -1095,6 +1099,12 @@ def _rederive(e: Any, old: PathExpr, new: PathExpr, memo: dict[int, Any]) -> Any
     return out
 
 
+def _check_literal(s: str) -> None:
+    """Literal text is never NUL: no path can contain it (§1)."""
+    if "\x00" in s:
+        raise PathOperationError(f"{s!r} contains NUL, which no path can")
+
+
 def _fstring_error() -> TypeError:
     return TypeError(
         "A Param was formatted into a plain string (an f-string or str.format); "
@@ -1127,6 +1137,7 @@ def _literal_expr(s: str) -> PathExpr:
     if hit is None:
         if has_marker(s):
             raise _fstring_error()
+        _check_literal(s)
         p = PurePosixPath(s)
         anchor = p.anchor
         names = p.parts[1:] if anchor else p.parts
@@ -1323,6 +1334,10 @@ def _build_template(t: Template) -> PathExpr:
     anchor = ""
     for idx, item in enumerate(t):
         if isinstance(item, str):
+            if "\x00" in item:
+                if has_marker(item):
+                    raise _fstring_error()
+                _check_literal(item)
             if idx == 0 and item.startswith("/"):
                 anchor = (
                     "//"

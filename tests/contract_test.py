@@ -159,6 +159,7 @@ def template(t: Template, env: dict, at_head: bool) -> PurePosixPath:
     anchor = ""
     for i, item in enumerate(t):
         if isinstance(item, str):
+            literal(item)
             if i == 0 and item.startswith("/"):
                 anchor = (
                     "//"
@@ -326,12 +327,19 @@ def is_empty(term, at_head: bool) -> bool:
     return static_len(term, at_head) == 0
 
 
+def literal(text: str) -> str:
+    """§1: literal text containing NUL is an operation error."""
+    if "\x00" in text:
+        raise OpError("literal text contains NUL")
+    return text
+
+
 def evaluate(term, env: dict, at_head: bool = True):
     term = _plain(term)
     kind = term[0]
     try:
         if kind == "lit":
-            return PurePosixPath(term[1])
+            return PurePosixPath(literal(term[1]))
         if kind == "param":
             return operand(term[1], env, at_head)
         if kind == "tpl":
@@ -349,11 +357,11 @@ def evaluate(term, env: dict, at_head: bool = True):
             return a / evaluate(("lit", term[2]), env)
         if kind == "cousin":  # §9: from parent(a), ".." steps up, then join
             cur = evaluate(term[1], env, at_head).parent
-            for part in PurePosixPath(term[2]).parts:
+            for part in PurePosixPath(literal(term[2])).parts:
                 cur = cur.parent if part == ".." else cur / part
-            return cur / term[3] if term[3] else cur
+            return cur / literal(term[3]) if term[3] else cur
         if kind in ("with_suffix", "with_name", "with_stem"):
-            return getattr(evaluate(term[1], env, at_head), kind)(term[2])
+            return getattr(evaluate(term[1], env, at_head), kind)(literal(term[2]))
         if kind == "relative_to":
             return evaluate(term[1], env, at_head).relative_to(
                 evaluate(term[2], env, True)
@@ -456,6 +464,7 @@ class Slashy(_Formats):
 
 TEMPLATES = [
     t"chunk_{N:04d}.parquet",
+    t"z\x00{SEG}",
     t"{W}.csv",
     t"{W}_{N}",
     t"{N:d}",
@@ -488,12 +497,13 @@ LITERALS = [
     "a.",
     "e/./f",
     "//net",
+    "x\x00y",
 ]
-SUFFIXES = ["", ".json", ".tar.gz", ".", "json", "a/b"]
-NAMES = ["new.txt", "", ".", "a/b", "..", ".rc", "z"]
-STEMS = ["st", "", ".s"]
-SIBLINGS = ["schema.json", "a/b", "..", ".", ""]
-COUSINS = ["../out", "..", "../../x", "sub", "./y"]
+SUFFIXES = ["", ".json", ".tar.gz", ".", "json", "a/b", ".j\x00"]
+NAMES = ["new.txt", "", ".", "a/b", "..", ".rc", "z", "n\x00"]
+STEMS = ["st", "", ".s", "s\x00"]
+SIBLINGS = ["schema.json", "a/b", "..", ".", "", "s\x00"]
+COUSINS = ["../out", "..", "../../x", "sub", "./y", "../\x00x"]
 
 
 def build(term):

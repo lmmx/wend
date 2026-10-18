@@ -128,17 +128,49 @@ def glob(
     options change nothing there.
     """
     given = _make_env(mapping, kw)
-    options = [
+    options = _options(kind, follow_symlinks, recurse_symlinks, ambiguous, fs)
+    _check_option_keywords("glob", expr, given, options)
+    return _glob(
+        expr,
+        given,
+        kind,
+        follow_symlinks,
+        recurse_symlinks,
+        _ambiguity_handler(ambiguous),
+        fs,
+    )
+
+
+def _options(
+    kind: str | None,
+    follow_symlinks: bool,
+    recurse_symlinks: bool,
+    ambiguous: Any,
+    fs: FileSystem | None,
+) -> list[tuple[str, Any, Any]]:
+    """`glob`'s options, with their defaults, for `_check_option_keywords`."""
+    return [
         ("kind", kind, None),
         ("follow_symlinks", follow_symlinks, False),
         ("recurse_symlinks", recurse_symlinks, False),
         ("ambiguous", ambiguous, "raise"),
         ("fs", fs, None),
     ]
-    _check_option_keywords("glob", expr, given, options)
+
+
+def _glob(
+    expr: PathExpr,
+    given: dict[str, Any],
+    kind: str | None,
+    follow_symlinks: bool,
+    recurse_symlinks: bool,
+    on_ambiguous: Callable[[AmbiguousMatchError], object] | None,
+    fs: FileSystem | None,
+) -> Iterator[Match]:
+    """`glob`, once its bindings are gathered and its options checked against
+    them (a union checks them once, for every alternative)."""
     if kind not in (None, "file", "dir"):
         raise ValueError("kind must be None, 'file' or 'dir'")
-    on_ambiguous = _ambiguity_handler(ambiguous)
     e = expr.bind(given) if given else expr
     h = e.head
     if isinstance(h, _Rel):

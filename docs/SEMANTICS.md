@@ -557,8 +557,12 @@ produced them. As in §7, wend does not choose between readings: alternatives
 that overlap are disambiguated by declaring a field's `type` or `choices`.
 
 **Discovery.** `glob(u)` yields, in path order, every path some alternative's
-`glob` finds, with its reading. A path that two alternatives find is an
-ambiguity error.
+`glob` finds, with its reading. A path with several readings, because two
+alternatives find it or one finds it under two bindings, is ambiguous and is
+never yielded. As for an expression, `glob`'s `ambiguous=` option decides what
+happens to it. The default raises an ambiguity error listing every reading
+with its alternative. All of these errors are reported in path order, before
+the first path is yielded.
 
 **Queries.** A query is a source (an expression or a union) with filters.
 - `q - x` admits a path when `x` has no reading of it.
@@ -574,7 +578,9 @@ ambiguity error.
 Filters form a conjunction, so their order does not change which paths are
 admitted. wend evaluates pattern filters first, then callables, then
 predicates that touch the filesystem. `glob(q)` streams the source's results
-through the filters. `match(q, s)` applies them to the source's reading of `s`.
+through the filters. Its `ambiguous=` option also covers the ambiguity errors of
+`&`, each reported when the stream reaches its path. `match(q, s)` applies the
+filters to the source's reading of `s`.
 
 ## 12. Schemas
 

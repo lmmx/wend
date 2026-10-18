@@ -16,26 +16,30 @@ explicit, effectful fallback: the first alternative that exists.
 
 from __future__ import annotations
 
-import heapq
 import itertools
-from collections.abc import Iterator
+from collections import defaultdict
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from string.templatelib import Interpolation, Template
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from . import _expr
 from ._expr import PathExpr, _coerce, _from_template, _make_env
+from ._fs import _glob, _options
 from ._match import Match, _canonical
 from .errors import (
     AmbiguousMatchError,
     ConditionError,
     NoAlternativeError,
     PathOperationError,
+    _ambiguity_handler,
+    _check_option_keywords,
 )
 
 
 if TYPE_CHECKING:
+    from .fs import FileSystem
     from .query import Query
 
 
@@ -346,20 +350,40 @@ class PathUnion:
             raise AmbiguousMatchError(s, list(self.match_all(s)))
         return found[0]
 
-    def glob(self, mapping: Any = None, /, **kw: Any) -> Iterator[AltMatch]:
-        """Discover existing paths that any alternative matches, in path order
-        (see `wend.glob` for the options). A path two alternatives find is
-        ambiguous."""
-        streams = [
-            _tagged(a.glob(mapping, **kw), i, a)
-            for i, a in enumerate(self.alternatives)
+    def glob(
+        self,
+        mapping: Any = None,
+        /,
+        *,
+        kind: str | None = None,
+        follow_symlinks: bool = False,
+        recurse_symlinks: bool = False,
+        ambiguous: Literal["raise", "skip"]
+        | Callable[[AmbiguousMatchError], object] = "raise",
+        fs: FileSystem | None = None,
+        **kw: Any,
+    ) -> Iterator[AltMatch]:
+        """Discover existing paths that any alternative matches, in path order.
+
+        The options, and the rule for a parameter named like one, are those
+        of `wend.glob`. A path is ambiguous when two alternatives find it, or
+        when one finds it under two readings. ``ambiguous`` decides what
+        happens to it, as for `wend.glob`: it is never yielded, and its
+        error, reported in path order before the first match, lists every
+        reading as an `AltMatch`.
+        """
+        given = _make_env(mapping, kw)
+        options = _options(kind, follow_symlinks, recurse_symlinks, ambiguous, fs)
+        _check_option_keywords("glob", self, given, options)
+        on_ambiguous = _ambiguity_handler(ambiguous)
+        # Each alternative reports its own ambiguous paths here, so that they
+        # are merged with the paths two alternatives find, in path order.
+        reports: list[list[AmbiguousMatchError]] = [[] for _ in self.alternatives]
+        walks = [
+            _glob(a, given, kind, follow_symlinks, recurse_symlinks, r.append, fs)
+            for a, r in zip(self.alternatives, reports, strict=True)
         ]
-        merged = heapq.merge(*streams, key=lambda m: m.path)
-        for path, group in itertools.groupby(merged, key=lambda m: m.path):
-            found = list(group)
-            if len(found) > 1:
-                raise AmbiguousMatchError(path, list(found))
-            yield found[0]
+        return _merged(self.alternatives, walks, reports, on_ambiguous)
 
     # -- queries ----------------------------------------------------------------
 
@@ -379,9 +403,34 @@ class PathUnion:
         return Query(self).where(*predicates)
 
 
-def _tagged(found: Iterator[Match], i: int, a: PathExpr) -> Iterator[AltMatch]:
-    for m in found:
-        yield AltMatch(m.path, dict(m.bindings), i, a)
+def _merged(
+    alternatives: tuple[PathExpr, ...],
+    walks: list[Iterator[Match]],
+    reports: list[list[AmbiguousMatchError]],
+    on_ambiguous: Callable[[AmbiguousMatchError], object] | None,
+) -> Iterator[AltMatch]:
+    """The union's matches from its alternatives' walks: each path's readings
+    by every alternative, in order, and the paths with more than one
+    reported as ambiguous (in path order, before the first match)."""
+    readings: dict[str, list[AltMatch]] = defaultdict(list)
+    for i, (a, walk, report) in enumerate(
+        zip(alternatives, walks, reports, strict=True)
+    ):
+        for m in walk:
+            readings[m.path].append(AltMatch(m.path, dict(m.bindings), i, a))
+        # The walk is done, so its report is complete: the paths it found
+        # ambiguous, which it did not yield.
+        for error in report:
+            readings[error.path] += [
+                AltMatch(error.path, dict(c), i, a) for c in error.candidates
+            ]
+    for path in sorted(p for p, found in readings.items() if len(found) > 1):
+        error = AmbiguousMatchError(path, readings.pop(path))
+        if on_ambiguous is None:
+            raise error
+        on_ambiguous(error)
+    for path in sorted(readings):
+        yield readings[path][0]
 
 
 def _alternatives_operand(x: Any) -> tuple[Any, ...]:

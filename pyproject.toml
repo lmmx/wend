@@ -5,6 +5,7 @@ requires = ["uv_build>=0.9.26,<0.10.0"]
 [dependency-groups]
 test = [
     "attrs>=25.1",
+    "fsspec>=2024.2",
     "hypothesis>=6.140",
     "polars>=1.30",
     "pydantic>=2.11",
@@ -37,6 +38,9 @@ requires-python = ">=3.14"
 dependencies = []
 
 [project.optional-dependencies]
+fsspec = [
+    "fsspec>=2024.2",
+]
 polars = [
     "polars>=1.30",
 ]

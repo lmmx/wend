@@ -18,12 +18,14 @@ inferred from an existing directory tree.
 ```sh
 uv pip install wend          # or: uv pip install "wend[polars]" for vectorised resolution
 uv pip install "wend[pydantic]"  # path fields for Pydantic models
+uv pip install "wend[fsspec]"  # discovery and inference on object stores
 ```
 
 ## Requirements
 
 - Python 3.14+ (t-strings, PEP 750)
 - Optional: Polars for `wend.frame`, Pydantic for `wend.pydantic`
+- Optional: fsspec (and its S3, GCS or Azure backend) for `wend.fs.FsspecFS`
 
 ## About
 
@@ -436,8 +438,8 @@ build.backward("site/guide/install.html")  # PosixPath('src/guide/install.md')
 # build.map(paths, ambiguous=...) takes the same modes as glob
 ```
 
-Options are keyword-only: `kind=`, `follow_symlinks=`, `recurse_symlinks=` and
-`ambiguous=` for `glob`, `ambiguous=` for `Lens.map`, and `cls=` for `resolve`. Bindings can
+Options are keyword-only: `kind=`, `follow_symlinks=`, `recurse_symlinks=`, `ambiguous=`
+and `fs=` for `glob`, `ambiguous=` for `Lens.map`, and `cls=` for `resolve`. Bindings can
 be keywords too, so:
 - a parameter that shares an option's name is bound through the positional mapping, which
   accepts any name: `layout.glob({"kind": "raw"}, kind="file")`;
@@ -445,6 +447,40 @@ be keywords too, so:
   either, so it raises `TypeError`;
 - `render`, `bind` and `compile()` take no options, and a `Lens` takes its path
   positionally, so these accept every parameter name as a keyword.
+
+### Object stores and other filesystems
+
+`glob` and `infer` read a tree through `wend.fs.FileSystem`, a small protocol: list a
+directory, say what a path is, walk a tree. The local disk (`LocalFS`) is the default.
+`FsspecFS` adapts an [fsspec](https://filesystem-spec.readthedocs.io) filesystem, so the
+same expressions run on S3, GCS, Azure or memory, with the same results as on an
+identical local tree:
+
+```py
+from wend.fs import url_to_fs
+from wend.infer import infer
+
+# fs is an FsspecFS around s3fs's S3FileSystem; path is 'bucket/datasets'
+fs, path = url_to_fs("s3://bucket/datasets")
+for m in shard.glob(root=path, split="train", fs=fs):  # one listing, of .../data/train
+    print(m["idx"], m.path)  # 7 bucket/datasets/data/train/chunk_0007-of-0100.parquet
+schema = infer(path, fs=fs)
+```
+
+- **Paths are the filesystem's own.** fsspec strips the protocol (`bucket/datasets`;
+  `/x` on the memory filesystem), and that path is bound like any root. A URL cannot be a
+  head, since pathlib reads `s3://bucket` as `s3:/bucket`; `glob` refuses one and points
+  to `url_to_fs`.
+- **One listing per walk.** By default (`listing="flat"`) a walk lists everything below the
+  expression's literal prefix with a single `find` and matches the keys in memory, where a
+  directory-by-directory walk makes a request per directory. `FsspecFS(fs,
+  listing="tree")` lists directory by directory: use it for filesystems with real
+  directories (SFTP, HDFS), or for a prefix holding many keys that the expression never
+  reaches.
+- **Store semantics.** Stores have no symlinks, so the symlink options change nothing. A
+  directory is a key prefix or an explicit marker (a key ending in `/`). An empty
+  directory therefore exists only as a marker, and a key that is also a prefix of other
+  keys is a directory.
 
 ### Compilation and batch resolution
 
@@ -563,6 +599,7 @@ A path given without a kind (no trailing `/`, not a pair) matches layouts of eit
 - lineage, invalidation and a content-addressed cache;
 - layout inference;
 - defaults, settings objects, counters, anchors and Pydantic fields.
+- a partitioned dataset in an object store (fsspec's memory filesystem, no network).
 
 ### Limitations
 
@@ -584,6 +621,7 @@ A path given without a kind (no trailing `/`, not a pair) matches layouts of eit
 - Conditions are checked at runtime, at the moment `check` runs; type checkers see a
   plain `PathExpr`. [The conditions journal entry](docs/journal/2026-10-18-conditions-49.md)
   records what static checking could add.
+- An expression's head is never a URL: bind the path that `wend.fs.url_to_fs` gives.
 - The Rust backend sketched in the blog series is not implemented; see the journal for
   what the measurements say a native backend would need to beat.
 

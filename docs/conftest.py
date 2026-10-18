@@ -89,6 +89,7 @@ class MarkdownExamples(pytest.Item):
                     out: list[str] = []
                     runner = doctest.DocTestRunner(optionflags=FLAGS)
                     runner.run(test, out=out.append, clear_globs=False)
+                    globs.update(test.globs)  # DocTest copies globs; keep its names
                     if runner.failures:
                         raise ExampleError("".join(out))
         finally:

@@ -489,6 +489,10 @@ schema = infer(path, fs=fs)
   redundant are dropped. Any exception falls back to the reference interpreter, so errors
   are identical.
   - `compiled.many(rows)` and `compiled.columns(idx=range(n), ...)` render in bulk.
+- **`compile_many(exprs)`:** compiles several expressions into one function. Each
+  parameter is looked up, checked and formatted once, however many expressions use it.
+  Results and errors equal rendering each expression in turn. Pass a dict to get named
+  results: `compile_many({"src": src, "dst": dst}).render(rel="guide", stem="install")`.
 - **`wend.frame.resolve_frame(expr, df)`:** validates every row of a Polars DataFrame and
   renders natively, with the same result or error as `render` row by row.
   - Path columns are normalised exactly as `render` normalises them (`a/`, `./a`, `a//b`,
@@ -509,6 +513,7 @@ rows rather than absolute numbers.
 |---|---|---|
 | single resolve, compiled (validated) | ~2 µs to `str`, ~3 µs to `Path` | eager pathlib joins ~3.5–4.5 µs; `os.path.join` ~1.8 µs; unvalidated f-string ~0.9 µs |
 | batch, `compiled.many` | ~2 µs/row | unvalidated f-string comprehension ~0.8 µs/row |
+| a set of 3–6 expressions, `compile_many` | ~1.4–2.5 µs/set | one compiled call each: ~2.3–5 µs/set |
 | batch, `resolve_frame` (validated) | ~0.3 µs/row; ~0.6 µs/row if a path column needs normalising | |
 | match one path | ~10 µs | hand-written regex + `int()` ~1.5 µs (no round-trip check) |
 | glob, 10k files | ~6 µs/file | `Path.glob` + regex ~6 µs/file; `os.walk` + regex ~2 µs/file |

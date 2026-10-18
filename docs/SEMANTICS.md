@@ -28,9 +28,9 @@ Decisions this version adopts, provisional until ratification:
 - matching raises rather than choosing between readings (§7).
 
 `glob`'s symlink policy is a traversal policy documented on `glob`, outside this
-contract. This version adds connectivity (§9), conditions (§10) and unions
-and queries (§11). A later version is expected to extend the contract for
-Windows path flavours.
+contract. This version adds connectivity (§9), conditions (§10), unions
+and queries (§11), and schemas (§12). A later version is expected to extend
+the contract for Windows path flavours.
 
 ## 1. Terms
 
@@ -217,6 +217,7 @@ wend's obligations, for every expression `e` and environment `env`:
 | a join equals its `base` joined with its `base_rel` | **tested** |
 | a path rendered with `Under(b)` declared is contained in `b`, and every contained rendering is returned unchanged (§10) | **by construction** (each render checks the rendered strings) and **tested** (Hypothesis, random terms and bases, interpreted and compiled) |
 | a union's readings of a path are exactly its alternatives' verified readings, and `match` reports one, none, or ambiguity accordingly (§11) | **by construction** (readings are the alternatives' `match_all`) and **tested** (Hypothesis, random pairs of terms) |
+| an inferred schema, declared with `from_inferred` or written out with `source()`, validates the tree it was inferred from (§12) | **tested** (Hypothesis, random trees with and without empty directories; real trees in the journal) |
 | matching completeness | **tested** (Hypothesis round trips; exhaustive enumeration over small domains) |
 | compiled successes equal interpreted successes | **tested** |
 | Polars results equal `render` | **tested**, on the supported subset |
@@ -375,3 +376,64 @@ Filters form a conjunction, so their order does not change which paths are
 admitted. wend evaluates pattern filters first, then callables, then
 predicates that touch the filesystem. `glob(q)` streams the source's results
 through the filters. `match(q, s)` applies them to the source's reading of `s`.
+
+## 12. Schemas
+
+A **schema** (`wend.schema.Tree`) names the entries of a layout. An entry is a
+relative expression `e` (a fragment; a leading parameter is a segment, or a
+splice for `SubPath`), a kind (file or directory) and a cardinality `[lo, hi]`
+with `lo ∈ {0, 1}` and `hi ∈ {1, ∞}` (exactly one by default). An entry may be
+built from another (`data / "raw"`). The relation is kept: in a bound schema,
+the second's base is the first.
+
+**Binding.** A schema bound to a root `r` and bindings `env` gives, for each
+entry, `bind(r / e, env)`. It requires the entry's kind (§10), and also
+`Exists` when the entry is exactly one and literal. Binding is pure.
+
+**Validation** is an effect that observes the tree under `render(r)` as
+`infer` does:
+- real directories are descended;
+- symlinked directories are neither descended nor reported, though an entry
+  may match one;
+- a symlink counts as a file or a directory by its target;
+- names starting with `.` are skipped when the schema says `hidden = False`;
+- paths under `ignore` patterns and inside `open` directory entries are not
+  looked at.
+
+An entry's matches are the observed paths of its kind that `glob(r / e)`
+finds. For every directory `d` that matches `parent(r / e)` (the one directory,
+when the parent is literal):
+- some match must lie at or below `d` when `lo = 1`, otherwise it is a
+  *missing* problem. For a fixed-depth entry this means directly in `d`. A
+  recursive (`SubPath`) parent matches directories that may hold only
+  subdirectories, and this reading agrees with `infer`'s `optional`;
+- at most one match may lie directly in `d` when `hi = 1`, otherwise it is a
+  *too-many* problem.
+
+An observed path that no entry matches, and that is not a directory of a
+path some entry matches or names literally, is a stray. Only the topmost
+stray is reported.
+- A stray is *wrong-kind* if an entry of the other kind matches it.
+- Otherwise it is *misfiled* if its name matches some entry's last segment.
+- Otherwise it is *extra*, reported with the nearest directory entry above it.
+
+A missing path that a wrong-kind stray occupies is reported once, as
+wrong-kind. Paths that several entries match are listed as overlaps, which
+are not problems. Validation reports every problem, not the first.
+
+**Scaffolding** is an effect. It creates the directories of directory
+entries and the parent directories of file entries, missing ancestors first.
+With `files=True` it also creates an empty file for each required file entry,
+with `O_CREAT | O_EXCL`, so nothing is overwritten. An entry with unbound
+parameters is created once per combination of their declared `choices`, and
+skipped when one has none.
+
+**Inference round trip.** `from_inferred(s)` makes one entry per layout:
+- the same pattern and kind;
+- optional when the layout is;
+- any number of paths when the pattern has parameters.
+
+`hidden` is set as inference observed the tree. `Tree.source()` writes a schema
+as Python that rebuilds the same entries. An inferred schema's declaration
+validates the tree it was inferred from wherever each layout's paths have the
+layout's kind (#51 tracks the exception).

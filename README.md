@@ -305,6 +305,37 @@ rows rather than absolute numbers.
 | match one path | ~10 µs | hand-written regex + `int()` ~1.5 µs (no round-trip check) |
 | glob, 10k files | ~6 µs/file | `Path.glob` + regex ~6 µs/file; `os.walk` + regex ~2 µs/file |
 
+### Directory schemas
+
+Declare a project's layout once, then bind, validate and scaffold it (Future Paths
+[part 1](https://cog.spin.systems/future-paths-types)'s `MLProject`):
+
+```py
+from wend import Dir, File
+from wend.schema import Tree
+
+index = Param("index", type=int)
+
+
+class MLProject(Tree):
+    data = Dir("data")
+    raw = Dir(data / "raw")  # built from another entry: the relation is kept
+    models = Dir("models")
+    checkpoints = File(models / T(t"model-{index:03d}.pt"), many=True)
+    config = File("config.yaml")
+
+
+project = MLProject("/srv/project")
+project.config  # PathExpr('/srv/project/config.yaml', requires=(File, Exists))
+project.scaffold()  # creates the directories (an effect; nothing is overwritten)
+project.validate()  # Report: missing, extra, misfiled, wrong-kind, too-many, all at once
+```
+
+Cardinality is per directory: exactly one by default, `optional=True` for at most one,
+and `many=True` for any number. An inferred layout becomes a declaration with
+`from_inferred(infer(root))`. `.source()` writes it out as Python to review and keep.
+The rules are in [SEMANTICS.md §12](docs/SEMANTICS.md#12-schemas).
+
 ### Layout inference
 
 ```py
@@ -343,6 +374,7 @@ Layouts are ordinary expressions (`rename`, `match`, `under(root).glob()`, ...),
 - untrusted input;
 - pipeline pre- and postconditions;
 - log rotation and config fallbacks with unions;
+- a declared project schema, inferred, validated and scaffolded;
 - layout inference.
 
 ### Limitations

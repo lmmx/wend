@@ -9,11 +9,13 @@ returned bindings reproduces the canonical form of the input path.
 Several distinct verified bindings mean the path is ambiguous for this
 expression; `match` raises `AmbiguousMatchError` rather than guessing.
 
-Fast path: when every segment is deterministic by construction (integer
-``d`` fields followed by a literal that does not start with a digit, at most
-one string field and only as the segment's last field) and the head's extent
-is fixed, a single regex ``fullmatch`` per segment is the only possible parse.
-Such expressions skip the search; their result is still verified by rendering.
+Fast path: when every segment admits at most one parse by construction
+(integer fields in a base's digit class, ``choices`` fields, at most one free
+string field, each pinned by its neighbouring literals; docs/SEMANTICS.md §8)
+and the split of the path among the head, the segments and at most one
+``SubPath`` is forced, one regex ``fullmatch`` over the whole path is the only
+possible parse. Such expressions skip the search; their result is still
+verified by rendering. `glob` and inference use the same per-segment plans.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from __future__ import annotations
 import os
 import re
 from collections.abc import Iterator, Mapping
+from functools import lru_cache
 from typing import Any
 
 from . import _spec
@@ -190,10 +193,121 @@ def _match_seg(seg: Seg, text: str, env: dict[str, Any]) -> Iterator[dict[str, A
     yield from rec(0, 0, env)
 
 
-_INT_SPEC = re.compile(r"(?:0[0-9]+)?d?")
+# ---------------------------------------------------------------------------
+# Fast path: regex plans that admit at most one parse (docs/SEMANTICS.md §8)
+# ---------------------------------------------------------------------------
+
+# How a regex group becomes a value: as is, by int(), as a whole segment
+# (never "." or ".."), or as a SubPath (zero groups or text mean ".").
+_STR, _INT, _SEG, _SPLICE = range(4)
+
+# (name, param, kind, base, check): ``base`` is an int field's base; ``check``
+# says whether the value needs `_accept` (the parameter declares choices, or
+# a type the conversion does not already guarantee).
+type _Conv = tuple[str, Param, int, int, bool]
 
 
-def seg_plan(seg: Seg) -> tuple[re.Pattern[str], list[tuple[Param, str]]] | None:
+class SegPlan:
+    """A regex that parses one segment in at most one way, and its group conversions.
+
+    ``src`` never matches a ``/``, so it can be embedded in a whole-path regex.
+    ``bind(text, env)`` (generated on first use by `_seg_fast`) returns
+    ``env`` extended with the segment's bindings, or None.
+    """
+
+    __slots__ = ("bind", "conv", "may_be_empty", "src")
+
+    def __init__(self, src: str, conv: tuple[_Conv, ...], may_be_empty: bool) -> None:
+        self.src = src
+        self.conv = conv
+        self.may_be_empty = may_be_empty
+        self.bind: Any = None
+
+
+def _field_shape(f: Field, alone: bool) -> tuple[Any, ...] | None:
+    """("int", digits, base) | ("choice", strings) | ("str",) | ("seg",), or None."""
+    src = f.source
+    if not isinstance(src, Param) or f.conversion is not None or f.static_spec is None:
+        return None
+    if f.role == "segment":
+        return ("seg",) if alone and src.type in (None, str) else None
+    spec = f.static_spec
+    if src.type in (None, int):
+        digits = _spec.plain_int(spec, src.type)
+        if digits is not None:
+            return ("int", *digits)
+    if src.type in (None, str) and spec == "":
+        if src.choices is None:
+            return ("str",)
+        if all(type(c) is str for c in src.choices):
+            # A choice containing "/" can never render (a field has no separator).
+            vals = tuple(sorted(c for c in src.choices if "/" not in c))
+            return ("choice", vals) if vals else None
+    return None
+
+
+def _prefix_unique(choices: tuple[str, ...], lit: str) -> bool:
+    """No text starts with both ``c + lit`` and ``c2 + lit`` for distinct choices.
+
+    Two such choices are prefix-related, and ``c + lit`` and ``c2`` are then
+    prefixes of one text, so one is a prefix of the other. Only pairs where
+    ``c`` is a proper prefix of ``c2`` need checking; in sorted order the
+    strings that start with ``c`` follow it contiguously.
+    """
+    cs = sorted(choices)
+    for i, c in enumerate(cs):
+        j = i + 1
+        while j < len(cs) and cs[j].startswith(c):
+            rest = cs[j][len(c) :]
+            if rest.startswith(lit) or lit.startswith(rest):
+                return False
+            j += 1
+    return True
+
+
+def _forced_from_left(shape: tuple[Any, ...], nxt: Any) -> bool:
+    """Whether the field's end is forced by its start and the piece after it."""
+    if shape[0] == "int":
+        return isinstance(nxt, str) and nxt != "" and nxt[0] not in shape[1]
+    if shape[0] == "choice":
+        return _prefix_unique(shape[1], nxt if isinstance(nxt, str) else "")
+    return False
+
+
+def _forced_from_right(shape: tuple[Any, ...], prv: Any) -> bool:
+    """Whether the field's start is forced by its end and the piece before it."""
+    if shape[0] == "int":
+        return (
+            isinstance(prv, str)
+            and prv != ""
+            and prv[-1] not in shape[1]
+            and prv[-1] != "-"
+        )
+    if shape[0] == "choice":
+        return _prefix_unique(
+            tuple(c[::-1] for c in shape[1]),
+            prv[::-1] if isinstance(prv, str) else "",
+        )
+    return False
+
+
+def _has_pivot(pieces: tuple[Any, ...], shapes: list[Any], fields: list[int]) -> bool:
+    """Whether some field k (a free string field, if any) leaves every field
+    before it forced from the left and every field after it forced from the
+    right. A free field is forced from neither side, so there is at most one."""
+    free = [i for i in fields if shapes[i][0] in ("str", "seg")]
+    for k in free or fields:
+        if all(
+            _forced_from_left(shapes[i], pieces[i + 1])
+            if i < k
+            else i == k or _forced_from_right(shapes[i], pieces[i - 1])
+            for i in fields
+        ):
+            return True
+    return False
+
+
+def seg_plan(seg: Seg) -> SegPlan | None:
     """A regex plan if ``seg`` has at most one parse, else None (cached on the Seg)."""
     cached = seg.__dict__.get("_plan", _UNSET)
     if cached is not _UNSET:
@@ -203,131 +317,235 @@ def seg_plan(seg: Seg) -> tuple[re.Pattern[str], list[tuple[Param, str]]] | None
     return plan
 
 
-def _build_seg_plan(seg: Seg) -> tuple[re.Pattern[str], list[tuple[Param, str]]] | None:
+def _build_seg_plan(seg: Seg) -> SegPlan | None:
     pieces = seg.pieces
-    field_at = [i for i, p in enumerate(pieces) if isinstance(p, Field)]
-    if not field_at:
+    shapes: list[tuple[Any, ...] | None] = []
+    for p in pieces:
+        if isinstance(p, str):
+            if not p or "/" in p:
+                return None
+            shapes.append(None)
+        else:
+            shape = _field_shape(p, len(pieces) == 1)
+            if shape is None:
+                return None
+            shapes.append(shape)
+    fields = [i for i, s in enumerate(shapes) if s is not None]
+    if not fields or not _has_pivot(pieces, shapes, fields):
         return None
     rx: list[str] = []
-    conv: list[tuple[Param, str]] = []
-    for i, p in enumerate(pieces):
+    conv: list[_Conv] = []
+    for p, shape in zip(pieces, shapes, strict=True):
         if isinstance(p, str):
             rx.append(re.escape(p))
             continue
         src = p.source
-        if (
-            not isinstance(src, Param)
-            or p.conversion is not None
-            or p.static_spec is None
-        ):
-            return None
-        nxt = pieces[i + 1] if i + 1 < len(pieces) else None
-        if isinstance(nxt, Field):
-            return None  # adjacent fields
-        if p.role == "segment":
-            if len(pieces) != 1 or src.type not in (None, str):
-                return None
-            rx.append("(.+)")
-            conv.append((src, "seg"))
-            continue
-        spec = p.static_spec
-        if (
-            src.type in (None, int)
-            and _INT_SPEC.fullmatch(spec)
-            and (spec or src.type is int)
-        ):
-            if nxt is not None and nxt[0] in "0123456789":
-                return None
-            rx.append("(-?[0-9]+)")
-            conv.append((src, "int"))
-        elif src.type in (None, str) and spec == "" and i == field_at[-1]:
-            rx.append("(.*)")
-            conv.append((src, "str"))
-        else:
-            return None
-    return re.compile("".join(rx)), conv
-
-
-def _seg_fast(
-    plan: tuple[re.Pattern[str], list[tuple[Param, str]]],
-    text: str,
-    env: dict[str, Any],
-) -> dict[str, Any] | None:
-    rx, conv = plan
-    m = rx.fullmatch(text)
-    if m is None:
-        return None
-    out = dict(env)  # one copy per segment; callers may share env between branches
-    for (p, kind), g in zip(conv, m.groups(), strict=True):
+        assert isinstance(src, Param) and shape is not None
+        check = src.choices is not None
+        kind = shape[0]
         if kind == "int":
-            v: Any = int(g)
-        elif kind == "seg" and g in (".", ".."):
-            return None
+            rx.append(f"(-?[{shape[1]}]+)")
+            conv.append((src.name, src, _INT, shape[2], check))
+        elif kind == "choice":
+            alts = sorted(shape[1], key=lambda c: (-len(c), c))
+            rx.append("(" + "|".join(map(re.escape, alts)) + ")")
+            conv.append((src.name, src, _STR, 0, check))
+        elif kind == "str":
+            rx.append("([^/]*)")
+            conv.append((src.name, src, _STR, 0, check))
         else:
-            v = g
-        if not _accept(p, v):
-            return None
-        prev = out.get(p.name, _UNSET)
-        if prev is _UNSET:
-            out[p.name] = v
-        elif type(prev) is not type(v) or prev != v:
-            return None
+            rx.append("([^/]+)")
+            conv.append((src.name, src, _SEG, 0, check))
+    may_be_empty = all(s is not None and s[0] != "int" for s in shapes)
+    return SegPlan("".join(rx), tuple(conv), may_be_empty)
+
+
+# The plans' hot loops are generated Python, like `_compile`'s renderers: one
+# function per plan, with the groups' conversions and checks inlined. Sources
+# depend only on the plan's shape, so their code objects are shared.
+
+
+@lru_cache(maxsize=512)
+def _code(name: str, args: str, body: tuple[str, ...]) -> Any:
+    src = f"def {name}({args}):\n" + "".join(f"    {ln}\n" for ln in body)
+    return compile(src, f"<wend match {name}>", "exec")
+
+
+def _define(name: str, args: str, body: list[str], ns: dict[str, Any]) -> Any:
+    exec(_code(name, args, tuple(body)), ns)  # noqa: S102
+    return ns[name]
+
+
+def _conversions(
+    conv: tuple[_Conv, ...], ns: dict[str, Any], first: dict[str, str]
+) -> list[str]:
+    """Statements turning groups ``g0, g1, ...`` into values ``v0, v1, ...``.
+
+    Each statement returns None where the full search rejects the value. A
+    name seen before (``first`` maps names to the variable holding their first
+    value) must have the same type and value; new names are added to ``first``.
+    """
+    out: list[str] = []
+    ints = [f"v{i} = int(g{i}, {c[3]})" for i, c in enumerate(conv) if c[2] == _INT]
+    if ints:  # int() refuses decimal strings beyond its digit limit
+        out += [
+            "try:",
+            *(f"    {s}" for s in ints),
+            "except ValueError:",
+            "    return None",
+        ]
+    for i, (name, p, kind, _, check) in enumerate(conv):
+        g, v = f"g{i}", f"v{i}"
+        if kind == _STR:
+            out.append(f"{v} = {g}")
+        elif kind == _SEG:
+            out += [f"if {g} == '.' or {g} == '..':", "    return None", f"{v} = {g}"]
+        elif kind == _SPLICE:
+            out += [
+                f"{v} = {g} or '.'",
+                f"if '..' in {v}.split('/'):",
+                "    return None",
+            ]
+        if check:
+            ns[f"_p{i}"] = p
+            out += [f"if not _accept(_p{i}, {v}):", "    return None"]
+        w = first.setdefault(name, v)
+        if w != v:
+            out += [f"if type({v}) is not type({w}) or {v} != {w}:", "    return None"]
     return out
 
 
-def _expr_plan(expr: PathExpr) -> list[Any] | None:
+def _unpack(n: int) -> list[str]:
+    return [", ".join(f"g{i}" for i in range(n)) + ", = m.groups()"] if n else []
+
+
+def _seg_binder(fullmatch: Any, conv: tuple[_Conv, ...]) -> Any:
+    ns: dict[str, Any] = {"_rx": fullmatch, "_accept": _accept, "_U": _UNSET}
+    first: dict[str, str] = {}
+    body = ["m = _rx(text)", "if m is None:", "    return None", *_unpack(len(conv))]
+    body += _conversions(conv, ns, first)
+    for name, v in first.items():
+        body += [
+            f"p = env.get({name!r}, _U)",
+            f"if p is not _U and (type(p) is not type({v}) or p != {v}):",
+            "    return None",
+        ]
+    # A new dict: callers may share env between branches.
+    body.append(
+        "return {**env, " + ", ".join(f"{k!r}: {v}" for k, v in first.items()) + "}"
+    )
+    return _define("_bind", "text, env", body, ns)
+
+
+def _seg_fast(plan: SegPlan, text: str, env: dict[str, Any]) -> dict[str, Any] | None:
+    bind = plan.bind
+    if bind is None:
+        bind = plan.bind = _seg_binder(re.compile(plan.src).fullmatch, plan.conv)
+    return bind(text, env)
+
+
+def _expr_plan(expr: PathExpr) -> Any:
+    """``f(canonical_path) -> verified bindings | None`` when ``expr`` admits at
+    most one parse of any path, else None (cached on the expression)."""
     cached = expr.__dict__.get("_match_plan", _UNSET)
     if cached is not _UNSET:
         return cached
-    plan: list[Any] | None = []
-    if isinstance(expr.head, Deferred) or any(
-        isinstance(p, Splice) for p in expr.parts
-    ):
-        plan = None
-    else:
-        for part in expr.parts:
-            assert isinstance(part, Seg)
-            if part.literal is not None:
-                plan.append(part.literal)
-            else:
-                sp = seg_plan(part)
-                if sp is None:
-                    plan = None
-                    break
-                plan.append(sp)
+    plan = _build_expr_plan(expr)
     expr.__dict__["_match_plan"] = plan
     return plan
 
 
-def _fast_candidate(
-    expr: PathExpr, plan: list[Any], anchor: str, names: list[str]
-) -> dict[str, Any] | None:
+def _build_expr_plan(expr: PathExpr) -> Any:
     h = expr.head
-    n = len(plan)
-    env: dict[str, Any] | None = {}
-    if isinstance(h, _Rel) or isinstance(h, Root):
-        if anchor != ("" if isinstance(h, _Rel) else h.anchor) or len(names) != n:
-            return None
-        rest = names
-    else:
-        assert isinstance(h, HeadParam)
-        k = len(names) - n
-        if k < 0 or (h.param.kind is Kind.ABSOLUTE and not anchor):
-            return None
-        value = _join_head(anchor, names[:k])
-        if not _accept(h.param, value):
-            return None
-        env = {h.param.name: value}
-        rest = names[k:]
-    for step, name in zip(plan, rest, strict=True):
-        if isinstance(step, str):
-            if step != name:
+    if isinstance(h, Deferred):
+        return None
+    conv: list[_Conv] = []
+    pre: list[str] | None = None  # the segments before the Splice, if any
+    items: list[str] = []
+    for part in expr.parts:
+        if isinstance(part, Splice):
+            if pre is not None or isinstance(h, HeadParam):
+                return None  # two variable extents: the split is not forced
+            pre, items = items, []
+            p = part.param
+            check = p.type is not None or p.choices is not None
+            conv.append((p.name, p, _SPLICE, 0, check))
+            continue
+        lit = part.literal
+        if lit is not None:
+            if "/" in lit:
                 return None
+            items.append(re.escape(lit))
+            continue
+        sp = seg_plan(part)
+        if sp is None:
+            return None
+        # Segments of a canonical path are never empty; saying so keeps the
+        # split at separators unique even for a segment regex that allows "".
+        items.append("(?=[^/])" + sp.src if sp.may_be_empty else sp.src)
+        conv.extend(sp.conv)
+    tail = "/".join(items)
+    ns: dict[str, Any] = {
+        "_accept": _accept,
+        "_render": expr._compiled._fn,
+        "_errors": (WendError, ValueError),
+    }
+    first: dict[str, str] = {}
+    body: list[str] = []
+    if isinstance(h, HeadParam):
+        # The tail's segments hold no "/", so the head ends at the separator
+        # before the last len(items) segments: one rsplit finds it.
+        k = len(items)
+        if k:
+            ns["_rx"] = re.compile(tail, re.DOTALL).fullmatch
+            body += [
+                f"parts = s.rsplit('/', {k})",
+                f"if len(parts) > {k}:",
+                "    h = parts[0]",
+                "    m = _rx(s, len(h) + 1)",
+                "    if h == '' or h == '/':",
+                "        h += '/'",  # the path's anchor
+                "else:",
+                "    m = _rx(s)",
+                "    h = '.'",
+                "if m is None:",
+                "    return None",
+            ]
         else:
-            env = _seg_fast(step, name, env)  # type: ignore[arg-type]
-            if env is None:
-                return None
-    return env
+            body.append("h = s")
+        p = h.param
+        if p.kind is Kind.ABSOLUTE:
+            body += ["if h[0] != '/':", "    return None"]
+        if p.type is not None or p.choices is not None:
+            ns["_ph"] = p
+            body += ["if not _accept(_ph, h):", "    return None"]
+        first[p.name] = "h"
+    else:
+        anchor = re.escape(h.anchor) if isinstance(h, Root) else ""
+        if pre is None:
+            src = anchor + tail if items else anchor or r"\."
+        elif pre and items:
+            src = f"{anchor}{'/'.join(pre)}/(?:(.+)/)?{tail}"
+        elif pre:
+            src = f"{anchor}{'/'.join(pre)}(?:/(.+))?"
+        elif items:
+            src = f"{anchor}(?:(.+)/)?{tail}"
+        else:
+            src = f"{anchor}(.*)"
+        ns["_rx"] = re.compile(src, re.DOTALL).fullmatch
+        body += ["m = _rx(s)", "if m is None:", "    return None"]
+    body += _unpack(len(conv))
+    body += _conversions(tuple(conv), ns, first)
+    body += [
+        "env = {" + ", ".join(f"{k!r}: {v}" for k, v in first.items()) + "}",
+        "try:",  # verify by rendering, as the full search does
+        "    if _render(env) == s:",
+        "        return env",
+        "except _errors:",
+        "    pass",
+        "return None",
+    ]
+    return _define("_match", "s", body, ns)
 
 
 def _match_parts(
@@ -416,19 +634,17 @@ def match_all(
     expr: PathExpr, path: Any, *, limit: int = 1000, fast: bool = True
 ) -> list[dict[str, Any]]:
     """All distinct verified bindings under which ``expr`` resolves to ``path``."""
-    s = _canonical(path)
+    return _match_all(expr, _canonical(path), limit, fast)
+
+
+def _match_all(expr: PathExpr, s: str, limit: int, fast: bool) -> list[dict[str, Any]]:
+    plan = _expr_plan(expr) if fast else None
+    if plan is not None:
+        env = plan(s)
+        return [] if env is None else [env]
     anchor, names = split_canonical(s)
     out: list[dict[str, Any]] = []
     render = expr._compiled.render
-    plan = _expr_plan(expr) if fast else None
-    if plan is not None:
-        env = _fast_candidate(expr, plan, anchor, names)
-        if env is None:
-            return []
-        try:
-            return [env] if render(env) == s else []
-        except WendError, ValueError:
-            return []
     for env in _candidates(expr, anchor, names):
         if any(env == o and all(type(env[k]) is type(o[k]) for k in env) for o in out):
             continue
@@ -444,9 +660,10 @@ def match_all(
 
 
 def match(expr: PathExpr, path: Any) -> Match | None:
-    found = match_all(expr, path, limit=2)
+    s = _canonical(path)
+    found = _match_all(expr, s, 2, True)
     if not found:
         return None
     if len(found) > 1:
-        raise AmbiguousMatchError(_canonical(path), match_all(expr, path))
-    return Match(_canonical(path), found[0])
+        raise AmbiguousMatchError(s, _match_all(expr, s, 1000, True))
+    return Match(s, found[0])

@@ -28,6 +28,14 @@ class OpError(Exception):
 EMPTY = PurePosixPath(".")
 
 
+def _value(p: Param, env: dict):
+    """§3.1: the value bound to ``p``'s name, or ``p``'s default when the name
+    is unbound."""
+    if p.name not in env and p.has_default:
+        return p.default
+    return env[p.name]
+
+
 def _checked(p: Param, v):
     if p.type is not None and not isinstance(v, p.type):
         raise Invalid(f"{p.name}: type")
@@ -70,11 +78,11 @@ def operand(p: Param, env: dict, at_head: bool) -> PurePosixPath:
     if kind is Kind.AUTO:
         kind = Kind.PATH if at_head else Kind.SEGMENT
     if kind is Kind.SEGMENT:
-        s = _segment_string(p, env[p.name])
+        s = _segment_string(p, _value(p, env))
         if "/" in s or s in ("", ".", ".."):
             raise Invalid(f"{p.name}: not a segment")
         return PurePosixPath(s)
-    s = _path_string(p, env[p.name])
+    s = _path_string(p, _value(p, env))
     q = PurePosixPath(s)
     if kind is Kind.PATH:
         return q
@@ -113,7 +121,7 @@ def _spec_text(spec: str, env: dict) -> tuple[str, bool]:
         marker = format(p, "")
         if marker in spec:
             static = False
-            spec = spec.replace(marker, format(_checked(p, env[p.name]), ""))
+            spec = spec.replace(marker, format(_checked(p, _value(p, env)), ""))
     return spec, static
 
 
@@ -134,7 +142,7 @@ def _field(x: Interpolation, env: dict) -> str:
     v = x.value
     if isinstance(v, Param):
         declared = v.type
-        v = _checked(v, env[v.name])
+        v = _checked(v, _value(v, env))
     else:
         declared = type(v)
     spec, static = _spec_text(x.format_spec, env)
@@ -421,6 +429,7 @@ from wend import (  # noqa: E402
     MissingBindingError,
     P,
     PathOperationError,
+    Segment,
     SubPath,
     T,
     WendError,
@@ -435,7 +444,17 @@ W = Param("w", type=str)
 WID = Param("wid", type=int)
 ANY = AnyPath("any")
 ABS = Absolute("abs")
-SPEC_PARAMS.extend([ROOT, SEG, SUB, N, W, WID, ANY, ABS])
+# Parameters with defaults (§3.1), left unbound by some environments. An AUTO
+# default that is a valid path but not a segment is valid only at the head.
+DROOT = Param("droot", default="/d/r")
+DSEG = Segment("dseg", default="dv.x")
+DSUB = SubPath("dsub", default="s/t")
+DABS = Absolute("dabs", default="//dn/a")
+DN = Param("dn", type=int, default=7)
+DW = Param("dw", type=int, default=3)
+DS = Param("ds", default="q.r")
+SPEC_PARAMS.extend([ROOT, SEG, SUB, N, W, WID, ANY, ABS, DW, DN])
+DEFAULTED = {p.name: p for p in (DROOT, DSEG, DSUB, DABS, DN, DW, DS)}
 
 
 class _Formats(int):
@@ -481,6 +500,12 @@ TEMPLATES = [
     t"{W:>{WID}}",
     t"v{N:#{WID}x}",
     t"{N:{WID}}.bin",
+    t"d{DN:03d}",
+    t"c{N:0{DW}d}",
+    t"{DS}.{DN}",
+    t"{DS}",
+    t"{DSEG}/{W}_{DN:{DW}}",
+    t"{DROOT}/x",
 ]
 CONV_SPECS = [(None, ""), ("r", ""), (None, ">6"), (None, ".2"), ("s", "^5"), ("a", "")]
 AFFIXES = [("", ""), ("bk_", ""), ("", ".bak"), ("x", "y")]
@@ -536,15 +561,16 @@ def build(term):
     raise AssertionError(kind)
 
 
+OPERANDS = [ROOT, SEG, SUB, ANY, ABS, DROOT, DSEG, DSUB, DABS, DS]
 leaves = st.one_of(
     st.tuples(st.just("lit"), st.sampled_from(LITERALS)),
-    st.tuples(st.just("param"), st.sampled_from([ROOT, SEG, SUB, ANY, ABS])),
+    st.tuples(st.just("param"), st.sampled_from(OPERANDS)),
     st.tuples(st.just("tpl"), st.sampled_from(TEMPLATES)),
 )
 terms = st.recursive(
     leaves,
     lambda kids: st.one_of(
-        st.tuples(st.just("joinp"), kids, st.sampled_from([ROOT, SEG, SUB, ANY, ABS])),
+        st.tuples(st.just("joinp"), kids, st.sampled_from(OPERANDS)),
         st.tuples(
             st.just("tfield"),
             st.sampled_from(["name", "stem", "suffix"]),
@@ -623,7 +649,17 @@ envs = st.fixed_dictionaries(
         "abs": st.one_of(
             st.sampled_from(["/abs", "/a/b/", "//net/x", "rel", "/"]), hostile
         ),
-    }
+    },
+    # Parameters with defaults: absent from an environment, they take them.
+    optional={
+        "droot": st.one_of(st.sampled_from(["/o", "rel", "a/b"]), name, hostile),
+        "dseg": st.one_of(name, hostile),
+        "dsub": st.one_of(st.sampled_from(["a/b", ".", "c"]), hostile),
+        "dabs": st.one_of(st.sampled_from(["/z", "rel"]), hostile),
+        "dn": st.one_of(st.integers(-5, 1000), st.just("7"), st.just(True)),
+        "dw": st.one_of(st.integers(-2, 9), st.just(True)),
+        "ds": st.one_of(name, hostile),
+    },
 )
 
 
@@ -737,6 +773,79 @@ def test_bindings_cannot_escape_a_literal_base(term, env):
             out,
         )
         assert ".." not in out.parts, (expr, env, out)
+
+
+def _explicit(env: dict) -> dict:
+    """``env`` with every default it leaves unbound bound explicitly."""
+    return {**{n: p.default for n, p in DEFAULTED.items()}, **env}
+
+
+@SETTINGS
+@given(terms, envs)
+def test_a_default_renders_as_if_it_were_bound(term, env):
+    """§3.1: rendering with a parameter's default equals rendering with the
+    default bound explicitly, in the interpreter and the compiled renderer
+    (with name and `Param` keys), and only parameters without a default are
+    required."""
+    try:
+        expr = build(term)
+    except PathOperationError, TypeError, ValueError:
+        return
+    assert expr.required_params() == expr.param_names - DEFAULTED.keys()
+    assert expr.defaults == {
+        n: DEFAULTED[n].default for n in expr.param_names & DEFAULTED.keys()
+    }
+    want = wend_outcome(lambda: expr.render(_explicit(env)))
+    by_param = {expr.params.get(k, k): v for k, v in env.items()}
+    event(f"defaults used: {bool(expr.defaults.keys() - env.keys())}")
+    for got in (
+        wend_outcome(lambda: expr.render(env)),
+        wend_outcome(lambda: expr.compile().render(env)),
+        wend_outcome(lambda: expr.compile().render(by_param)),
+    ):
+        assert got[0] == want[0], (expr, env, got, want)
+        if got[0] == "ok":
+            assert got[1] == want[1], (expr, env, got, want)
+
+
+@SETTINGS
+@given(terms, envs)
+def test_bind_leaves_defaulted_parameters_free(term, env):
+    """§3.1: `bind` does not apply defaults. Binding everything an
+    environment gives leaves the defaulted parameters it omits free, with
+    their declarations, and rendering the result applies them as `render`
+    would have."""
+    try:
+        expr = build(term)
+    except PathOperationError, TypeError, ValueError:
+        return
+    bound = wend_outcome(lambda: expr.bind(env))
+    if bound[0] != "ok":
+        return
+    b = bound[1]
+    assert b.param_names <= DEFAULTED.keys() - env.keys(), (expr, b)
+    for n, p in b.params.items():
+        assert p == DEFAULTED[n]
+    direct = wend_outcome(lambda: expr.render(env))
+    staged = wend_outcome(lambda: b.render())
+    if direct[0] == staged[0] == "ok":
+        assert direct[1] == staged[1], (expr, env)
+
+
+@SETTINGS
+@given(terms, envs)
+def test_matching_reads_defaulted_parameters_from_the_path(term, env):
+    """§7: a default plays no part in matching. Every reading of a rendering
+    binds every parameter, defaulted or not, to what the path holds."""
+    try:
+        expr = build(term)
+        s = expr.render(env)
+        readings = expr.match_all(s)
+    except PathOperationError, TypeError, ValueError, WendError:
+        return
+    for r in readings:
+        assert r.keys() == expr.param_names, (expr, s, r)
+        assert expr.render(r) == s
 
 
 @pytest.mark.parametrize(

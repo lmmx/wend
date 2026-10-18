@@ -13,6 +13,7 @@ integer columns with ``d``/``0Nd``/``Nd`` specs, and string padding with
 
 from __future__ import annotations
 
+import os
 from typing import Any
 
 
@@ -254,8 +255,10 @@ def to_polars(expr: X.PathExpr, schema: pl.Schema | None = None) -> pl.Expr:
 def resolve_frame(expr: X.PathExpr, df: pl.DataFrame | pl.LazyFrame) -> pl.Series:
     """Validate every row of ``df`` and render ``expr`` for each, as a String Series.
 
-    Declared ``Under`` conditions are checked on every row, as `render` checks
-    them (docs/SEMANTICS.md §10).
+    A parameter with no column takes its default on every row, as `render`
+    does for a missing binding (docs/SEMANTICS.md §3.1); a str, int or path
+    default can be lowered. Declared ``Under`` conditions are checked on every
+    row, as `render` checks them (§10).
     """
     out = _resolve_frame(expr, df)
     conds = expr.conditions
@@ -276,12 +279,36 @@ def resolve_frame(expr: X.PathExpr, df: pl.DataFrame | pl.LazyFrame) -> pl.Serie
     return out
 
 
+def _with_defaults(
+    expr: X.PathExpr, lazy: pl.LazyFrame, missing: frozenset[str]
+) -> pl.LazyFrame:
+    """``lazy`` with a constant column for each missing parameter's default
+    (§3.1). A null in a column is a value, not a missing binding."""
+    params = expr.params
+    unbound = {n for n in missing if not params[n].has_default}
+    if unbound:
+        raise X.MissingBindingError(unbound)
+    cols = []
+    for n in sorted(missing):
+        d = params[n].default
+        if isinstance(d, os.PathLike):
+            d = os.fspath(d)
+        if type(d) not in (str, int):
+            raise NotImplementedError(
+                f"The default of {n!r} ({d!r}) cannot be lowered to Polars;"
+                " add a column for it"
+            )
+        cols.append(pl.lit(d, dtype=pl.String if type(d) is str else pl.Int64).alias(n))
+    return lazy.with_columns(cols)
+
+
 def _resolve_frame(expr: X.PathExpr, df: pl.DataFrame | pl.LazyFrame) -> pl.Series:
     lazy = df.lazy()
     schema = lazy.collect_schema()
     missing = expr.param_names - set(schema.names())
     if missing:
-        raise X.MissingBindingError(set(missing))
+        lazy = _with_defaults(expr, lazy, missing)
+        schema = lazy.collect_schema()
     low = _Lowering(schema)
     out = low.expr(expr)
     if low.checks:

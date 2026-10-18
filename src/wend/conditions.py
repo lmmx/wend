@@ -95,6 +95,14 @@ class Condition:
         kind = "file" if self.name == "File" else "dir"
         return Entry(path, kind, optional=optional, many=many, open=open)
 
+    def __get_pydantic_core_schema__(self, source: Any, handler: Any) -> Any:
+        """Pydantic's hook: ``Annotated[Path, File, Exists]`` checks each
+        condition when a model is validated (see `wend.pydantic`, which needs
+        ``wend[pydantic]``)."""
+        from .pydantic import condition_schema
+
+        return condition_schema(self, source, handler)
+
 
 Exists = Condition("Exists")
 """Something exists at the path (symlinks are followed)."""
@@ -496,29 +504,23 @@ class Step:
         return frozenset().union(*(e.param_names for e in self.paths.values()))
 
     def _realise(
-        self, mapping: Mapping[Any, Any] | None, kw: dict[str, Any], after: bool
+        self, mapping: Any, kw: dict[str, Any], after: bool
     ) -> dict[str, Path]:
         from ._expr import _make_env
 
         env = _make_env(mapping, kw)
         return {k: realise(e, env, after=after) for k, e in self.paths.items()}
 
-    def check(
-        self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any
-    ) -> dict[str, Path]:
+    def check(self, mapping: Any = None, /, **kw: Any) -> dict[str, Path]:
         """Render every path and check its preconditions, in declaration order."""
         return self._realise(mapping, kw, after=False)
 
-    def confirm(
-        self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any
-    ) -> dict[str, Path]:
+    def confirm(self, mapping: Any = None, /, **kw: Any) -> dict[str, Path]:
         """Render every path and check its postconditions, in declaration order."""
         return self._realise(mapping, kw, after=True)
 
     @contextmanager
-    def __call__(
-        self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any
-    ) -> Iterator[dict[str, Path]]:
+    def __call__(self, mapping: Any = None, /, **kw: Any) -> Iterator[dict[str, Path]]:
         paths = self.check(mapping, **kw)
         yield paths
         self.confirm(mapping, **kw)

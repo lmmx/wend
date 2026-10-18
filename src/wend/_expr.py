@@ -39,7 +39,7 @@ from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, overload
 
 from . import _spec
-from ._params import MARKER_RE, Kind, Param, has_marker, lookup_marker
+from ._params import MARKER_RE, NO_DEFAULT, Kind, Param, has_marker, lookup_marker
 from .errors import (
     InvalidBindingError,
     MissingBindingError,
@@ -247,14 +247,16 @@ class Text(_Cached):
     def __radd__(self, other: Any) -> Text:
         return Text(_norm(_to_text(other).pieces + self.pieces))
 
-    def render(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> str:
+    def render(self, mapping: Any = None, /, **kw: Any) -> str:
         env = _make_env(mapping, kw)
         if any(_is_symbolic(v) for v in env.values()):
             return self.bind(env).render()
-        _check_missing(self.param_names, env)
+        missing = self.param_names - env.keys()
+        if missing:
+            env = _with_defaults(self._params(), env, missing)
         return _render_pieces(self.pieces, env)
 
-    def bind(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> Text:
+    def bind(self, mapping: Any = None, /, **kw: Any) -> Text:
         env = _make_env(mapping, kw)
         if not (self.param_names & env.keys()):
             return self
@@ -603,14 +605,14 @@ class PathExpr(_Cached):
         out.__dict__["tags"] = MappingProxyType({**self.tags, **tags})
         return out
 
-    def check(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> Path:
+    def check(self, mapping: Any = None, /, **kw: Any) -> Path:
         """Render, check every precondition against the filesystem now, and
         return the path. Raises a `ConditionError` for the first that fails."""
         from .conditions import realise
 
         return realise(self, _make_env(mapping, kw), after=False)
 
-    def confirm(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> Path:
+    def confirm(self, mapping: Any = None, /, **kw: Any) -> Path:
         """Render, check every postcondition against the filesystem now, and
         return the path. Raises a `ConditionError` for the first that fails."""
         from .conditions import realise
@@ -681,8 +683,18 @@ class PathExpr(_Cached):
         return True
 
     def required_params(self) -> set[str]:
-        """Names of all parameters needed to resolve this expression."""
-        return set(self.param_names)
+        """Names of the parameters rendering needs a binding for: every free
+        parameter without a default (§3.1)."""
+        return {n for n, p in self.params.items() if p.default is NO_DEFAULT}
+
+    @property
+    def defaults(self) -> dict[str, Any]:
+        """The defaults of the free parameters that declare one, by name.
+        Rendering uses them for names it is not given; ``e.bind(e.defaults)``
+        applies them explicitly (§3.1)."""
+        return {
+            n: p.default for n, p in self.params.items() if p.default is not NO_DEFAULT
+        }
 
     @property
     def is_static(self) -> bool:
@@ -928,11 +940,14 @@ class PathExpr(_Cached):
 
     # -- binding and resolution ---------------------------------------------
 
-    def bind(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> PathExpr:
+    def bind(self, mapping: Any = None, /, **kw: Any) -> PathExpr:
         """Substitute some parameters, folding whatever becomes static.
 
         Values may be concrete (str, PathLike, ints for fields...) or symbolic:
-        another PathExpr (rebasing), a Text, or a Param (renaming).
+        another PathExpr (rebasing), a Text, or a Param (renaming). Bindings
+        come from a mapping, an object's fields (see `wend.bindings`) and
+        keywords. Defaults are not applied: a parameter left unbound stays
+        free, with its default (§3.1).
         """
         env = _make_env(mapping, kw)
         if not (self.param_names & env.keys()):
@@ -995,12 +1010,20 @@ class PathExpr(_Cached):
             )
         return new / rel
 
-    def render(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> str:
-        """Resolve to a canonical path string (equal to ``str(self.resolve(...))``)."""
+    def render(self, mapping: Any = None, /, **kw: Any) -> str:
+        """Resolve to a canonical path string (equal to ``str(self.resolve(...))``).
+
+        Bindings come from a mapping (keyed by name or `Param`), an object's
+        fields (see `wend.bindings`) and keywords, which take precedence. A
+        parameter given no binding takes its default, if it declares one
+        (§3.1); otherwise it is a `MissingBindingError`.
+        """
         env = _make_env(mapping, kw)
         if any(_is_symbolic(v) for v in env.values()):
             return self.bind(env).render()
-        _check_missing(self.param_names, env)
+        missing = self.param_names - env.keys()
+        if missing:
+            env = _with_defaults(self.params.values(), env, missing)
         s = _render_expr(self, env)
         if self.conditions is not None:
             from .conditions import guard
@@ -1010,7 +1033,7 @@ class PathExpr(_Cached):
 
     def resolve(
         self,
-        mapping: Mapping[Any, Any] | None = None,
+        mapping: Any = None,
         /,
         *,
         cls: type = Path,
@@ -1035,7 +1058,7 @@ class PathExpr(_Cached):
 
         return match_all(self, path, limit=limit, fast=fast)
 
-    def glob(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> Any:
+    def glob(self, mapping: Any = None, /, **kw: Any) -> Any:
         """Discover existing paths matching this expression (see `wend.glob`)."""
         from ._fs import glob
 
@@ -1555,9 +1578,15 @@ def check_seg(s: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def _make_env(mapping: Mapping[Any, Any] | None, kw: dict[str, Any]) -> dict[str, Any]:
+def _make_env(mapping: Any, kw: dict[str, Any]) -> dict[str, Any]:
+    """The bindings given as ``mapping`` (a mapping keyed by name or `Param`,
+    or an object whose fields bind by name) and keywords, by name."""
     env: dict[str, Any] = {}
-    if mapping:
+    if mapping is not None:
+        if type(mapping) is not dict and not isinstance(mapping, Mapping):
+            from ._bindings import object_bindings
+
+            mapping = object_bindings(mapping)
         for k, v in mapping.items():
             env[k.name if isinstance(k, Param) else k] = v
     env.update(kw)
@@ -1571,10 +1600,18 @@ def _is_symbolic(v: Any) -> bool:
     return isinstance(v, _SYMBOLIC)
 
 
-def _check_missing(names: frozenset[str], env: Mapping[str, Any]) -> None:
-    missing = names - env.keys()
-    if missing:
-        raise MissingBindingError(set(missing))
+def _with_defaults(
+    params: Any, env: dict[str, Any], missing: frozenset[str]
+) -> dict[str, Any]:
+    """``env`` with each ``missing`` name bound to its parameter's default
+    (§3.1). Raises `MissingBindingError` for those without one."""
+    filled = dict(env)
+    for p in params:
+        if p.name in missing and p.default is not NO_DEFAULT:
+            filled[p.name] = p.default
+    if len(filled) - len(env) != len(missing):
+        raise MissingBindingError(set(missing - filled.keys()))
+    return filled
 
 
 def _combine(base: str, segs: list[str]) -> str:

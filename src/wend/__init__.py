@@ -9,6 +9,7 @@ files on disk, and compiled for fast batch resolution.
 
 from __future__ import annotations
 
+from ._bindings import bindings
 from ._expr import P, PathExpr, T, Text
 from ._fs import glob
 from ._lens import Lens, NoMatchError
@@ -46,6 +47,7 @@ from .errors import (
     WrongKindError,
 )
 from .query import Query
+from .templates import counter
 
 
 __all__ = [
@@ -92,5 +94,7 @@ __all__ = [
     "WendError",
     "Writable",
     "WrongKindError",
+    "bindings",
+    "counter",
     "glob",
 ]

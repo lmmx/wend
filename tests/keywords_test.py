@@ -6,6 +6,7 @@ from pathlib import Path, PurePosixPath
 import pytest
 
 from wend import Lens, P, Param, T, glob
+from wend.fs import LocalFS
 
 
 kind, name = Param("kind"), Param("name")
@@ -59,6 +60,7 @@ def test_a_keyword_naming_an_option_and_a_parameter_is_refused(tree):
         ("follow_symlinks", True),
         ("recurse_symlinks", True),
         ("ambiguous", "skip"),
+        ("fs", LocalFS()),
     ],
 )
 def test_every_glob_option_follows_one_rule(tree, option, value):

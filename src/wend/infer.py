@@ -98,6 +98,7 @@ from ._expr import REL, Field, P, PathExpr, Seg, Splice, _norm, _pieces_pattern
 from ._match import Match, _match_seg, _seg_fast, seg_plan
 from ._params import Kind, Param, SubPath
 from .errors import AmbiguousMatchError, WendError
+from .fs import FileSystem
 
 
 _RUN = re.compile(r"[0-9]+")  # ASCII only: int() would accept other digits
@@ -1192,13 +1193,17 @@ def _mark_cardinality(
         lay.many = any(c > 1 for c in Counter(h[:-1] for h in hits).values())
 
 
-def _observe(source: Any, include_hidden: bool) -> list[tuple[str, bool]]:
+def _observe(
+    source: Any, include_hidden: bool, fs: FileSystem | None = None
+) -> list[tuple[str, bool]]:
     if isinstance(source, (str, os.PathLike)):
-        if not os.path.isdir(source):
-            raise NotADirectoryError(f"{os.fspath(source)!r} is not a directory")
         root = os.fspath(source)
+        if fs is not None:
+            fs = fs.subtree(root)  # one view for the walk: one listing on a store
+        if not (os.path.isdir(root) if fs is None else fs.kind(root) == "dir"):
+            raise NotADirectoryError(f"{root!r} is not a directory")
         found: list[tuple[str, bool]] = []
-        for dp, dns, fns in os.walk(root):
+        for dp, dns, fns in os.walk(root) if fs is None else fs.walk(root):
             if not include_hidden:
                 dns[:] = [d for d in dns if not d.startswith(".")]
                 fns = [f for f in fns if not f.startswith(".")]
@@ -1209,6 +1214,8 @@ def _observe(source: Any, include_hidden: bool) -> list[tuple[str, bool]]:
             if not dns and not fns and rel != ".":
                 found.append((rel, True))
         return found
+    if fs is not None:
+        raise TypeError("infer(source, fs=...) takes a directory path, not paths")
     out = []
     for p in source:
         s = os.fspath(p)
@@ -1223,6 +1230,7 @@ def infer(
     min_files: int = 3,
     similarity: float = 0.5,
     include_hidden: bool = False,
+    fs: FileSystem | None = None,
 ) -> Schema:
     """Infer layouts from a directory (walked) or an iterable of relative paths.
 
@@ -1233,12 +1241,16 @@ def infer(
     siblings it takes to generalise a name into a field; ``similarity`` is
     the Jaccard threshold on directory contents. Hidden entries are skipped
     unless ``include_hidden``.
+
+    With ``fs`` (a `wend.fs.FileSystem`), ``source`` is a directory in that
+    filesystem, such as the path `wend.fs.url_to_fs` gives for a bucket.
+    An object store has empty directories only as explicit markers.
     """
     cfg = _Config(min_dirs, min_files, similarity)
     tree: dict[str, Any] = {}
     listed: set[str] = set()  # observed directories
     files = 0
-    for path, is_dir in _observe(source, include_hidden):
+    for path, is_dir in _observe(source, include_hidden, fs):
         parts = [x for x in PurePosixPath(path).parts if x != "/"]
         if not parts:
             continue  # the root itself

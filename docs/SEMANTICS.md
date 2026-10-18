@@ -270,8 +270,9 @@ wend's obligations, for every expression `e` and environment `env`:
 - **Soundness:** every returned binding renders to the path.
 - **Completeness:** every binding that renders to the path appears in the
   result (up to `limit`), with the *limits* below. Field values are parsed
-  as the parameter's declared `type`, or as the types its format spec
-  implies:
+  as the parameter's declared `type` (each member in order, for a tuple or
+  union of types such as `int | None`, as `isinstance` reads them), or as
+  the types its format spec implies:
   - a presentation type implies one: `s` → `str`; `b`, `c`, `d`, `n`, `o`,
     `x`, `X` → `int`; `e`, `E`, `f`, `F`, `g`, `G`, `%` → `float`;
   - without one, the first of `str`, `int` and `float` that formats under

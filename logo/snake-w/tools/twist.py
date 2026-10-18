@@ -4,7 +4,10 @@ each end). The spine is the midpoint of the twist partners, C(s) = (Y(s) + B(L -
 control point turns about the axis through C(s_i) along the spine's tangent at s_i, where s_i is
 the control point's Greville station. Elliptical section fields are unchanged (their frame is
 view-based). The result is a starting point for tools/regionfit.py, not a candidate by itself.
-Usage (from the logo root): twist.py spec.json out.json s0 s1 dtheta_deg [ramp]"""
+With --helix K and --radius KR (both default 1), each control point's offset from the spine is
+also scaled by 1 + w(s) (K - 1) and each radius control by 1 + w(s) (KR - 1): a change of
+proportions (helix radius against tube radius) over the same window.
+Usage (from the logo root): twist.py spec.json out.json s0 s1 dtheta_deg [ramp] [--helix K] [--radius KR]"""
 import copy, json, os, sys
 import numpy as np
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -22,8 +25,14 @@ def rodrigues(v, k, a):
 
 
 def main():
-    src, out, s0, s1, deg = sys.argv[1], sys.argv[2], float(sys.argv[3]), float(sys.argv[4]), float(sys.argv[5])
-    ramp = float(sys.argv[6]) if len(sys.argv) > 6 else 50.0
+    argv = sys.argv[1:]
+    def opt(name, default):
+        if name in argv:
+            i = argv.index(name); v = float(argv[i + 1]); del argv[i:i + 2]; return v
+        return default
+    K, KR = opt("--helix", 1.0), opt("--radius", 1.0)
+    src, out, s0, s1, deg = argv[0], argv[1], float(argv[2]), float(argv[3]), float(argv[4])
+    ramp = float(argv[5]) if len(argv) > 5 else 50.0
     spec = json.load(open(src)); L = spec["L"]
     Y, B = spec["yellow"], spec["blue"]
     def spine(s):
@@ -44,11 +53,18 @@ def main():
                 continue
             C = spine(sh)[0]
             T = spine(sh + 2.0)[0] - spine(sh - 2.0)[0]; T /= np.linalg.norm(T)
-            c[i] = C + rodrigues(c[i] - C, T, np.radians(deg) * wi)
+            c[i] = C + (1 + wi * (K - 1)) * rodrigues(c[i] - C, T, np.radians(deg) * wi)
             moved += 1
         res[name]["ctrl"] = c.tolist()
+        if KR != 1.0:
+            tr = S.knots(st["s0"], st["s1"], st.get("rseg", st["nseg"]))
+            rc = np.asarray(st["rctrl"], float)
+            for i in range(len(rc)):
+                g = tr[i + 1:i + 4].mean(); sh = g if name == "yellow" else L - g
+                rc[i] *= 1 + w(sh) * (KR - 1)
+            res[name]["rctrl"] = rc.tolist()
         print(f"{name}: {moved} control points turned")
-    res.setdefault("twist", []).append(dict(s0=s0, s1=s1, deg=deg, ramp=ramp))
+    res.setdefault("twist", []).append(dict(s0=s0, s1=s1, deg=deg, ramp=ramp, helix=K, radius=KR))
     json.dump(res, open(out, "w"))
 
 

@@ -18,6 +18,10 @@ Per feature F (a reference lobe or head of colour c, mask R):
   cover       fractions of R that the candidate shows as colour c, the other colour, background
   merged      other reference features of colour c that the match also covers (> 15% of them):
               the candidate shows two reference lobes as one
+  tilt        orientation of the match's principal axis minus R's (degrees, + = turned
+              anticlockwise on screen), from image moments
+  elong       elongation (major / minor axis) of the match and of R: a rope-like lobe is longer
+              and thinner than a cushion-like one
   seg         validity of the candidate-side split, which the reference self-test cannot vouch
               for on a different image: "merged" (the match also covers > 15% of another
               reference lobe of the same colour), "split" (R falls across two or more candidate
@@ -78,7 +82,7 @@ def severity(m):
        IoU      >= .85 0, .75 1, .65 2, .5 3, .35 4, else 5
        p95 dist <= 6 0, 10 1, 16 2, 24 3, 35 4, else 5
        centroid <= 4 0, 8 1, 14 2, 20 3, 30 4, else 5
-       merged / missing: at least 4"""
+       merged: at least 4; missing: 5"""
     if m.get("missing"):
         return 5
     s_iou = next(i for i, t in enumerate([.85, .75, .65, .5, .35, -1]) if m["iou"] >= t)
@@ -149,6 +153,10 @@ def evaluate(colour_path, clay_path=None, folds_path=None, reg_dir="audit"):
             # R's own inner boundary sits at -1 in an sdf: report relative to that
             side[nm] = float(phiK[by[sel], bx[sel]].mean() + 1) if sel.any() else None
         m["side"] = side
+        pR, pK = measure.regionprops(R.astype(int))[0], measure.regionprops(K.astype(int))[0]
+        dth = np.degrees(pK.orientation - pR.orientation)
+        m["tilt"] = float((dth + 90) % 180 - 90)
+        m["elong"] = {"cand": float(pK.major_axis_length / max(pK.minor_axis_length, 1)), "ref": float(pR.major_axis_length / max(pR.minor_axis_length, 1))}
         merged = []
         for j, g in enumerate(feats):
             if j == i or g["colour"] != c:
@@ -199,14 +207,14 @@ def evaluate(colour_path, clay_path=None, folds_path=None, reg_dir="audit"):
 
 
 def table(m):
-    rows = ["| ID | sev | IoU | dx, dy | area | p95 dist | sides E/N/W/S (+ short, - over) | merged | seg flags | crease | fold px² |",
-            "|---|---|---|---|---|---|---|---|---|---|---|"]
+    rows = ["| ID | sev | IoU | dx, dy | area | p95 dist | sides E/N/W/S (+ short, - over) | merged | seg flags | crease | fold px² | tilt ° | elong cand / ref |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for fid, x in m["features"].items():
         if x.get("missing"):
             rows.append(f"| {fid} | 5 | missing | | | | | | | |"); continue
         sd = " / ".join("-" if x["side"][k] is None else f"{x['side'][k]:+.0f}" for k in "ENWS")
         rows.append(f"| {fid} | {x['severity']} | {x['iou']:.2f} | {x['dx']:+.0f}, {x['dy']:+.0f} | {x['area']:.2f} | {x['sdist']['p95']:.0f} | {sd} | "
-                    f"{','.join(x['merged'])} | {','.join(x.get('seg', []))} | {'' if x.get('crease') is None else f'{x['crease']:.1f}'} | {'' if x.get('fold_vis') is None else f'{x['fold_vis']:.0f}'} |")
+                    f"{','.join(x['merged'])} | {','.join(x.get('seg', []))} | {'' if x.get('crease') is None else f'{x['crease']:.1f}'} | {'' if x.get('fold_vis') is None else f'{x['fold_vis']:.0f}'} | {x.get('tilt', 0):+.0f} | {x['elong']['cand']:.2f} / {x['elong']['ref']:.2f} |")
     g = m["global"]
     rows.append("")
     rows.append(f"Global: silhouette IoU {g['silhouette_iou']:.3f}, boundary distance mean {g['silhouette_dist']['mean']:.1f} / p95 {g['silhouette_dist']['p95']:.1f} / max {g['silhouette_dist']['max']:.0f} px; "

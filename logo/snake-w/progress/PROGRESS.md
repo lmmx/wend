@@ -259,7 +259,7 @@ Mesh check, right-valley window:
 
 **Still different from the reference:** its blue lobe is a narrow teardrop between the two yellows, ours a broader bead. That is lobe-shape correspondence, not a surface defect.
 
-**The committed baseline is unchanged.** e3 was a candidate (`snakes/spline-rv-e3.json`, rendered with `still-spline.html?params=w-final.params.json&spec=spline-rv-e3.json`). **The audit of section 5 rejects e3 and e2b:** L14, the right valley's rising yellow lobe, falls from IoU 0.76 to 0.41 in both (the leg-order change made it), which the crop-by-crop review above missed. e1 is the accepted best.
+**The committed baseline is unchanged.** e3 was a candidate (`snakes/spline-rv-e3.json`, rendered with `still-spline.html?params=w-final.params.json&spec=spline-rv-e3.json`). **The audit of section 5 rejects e3 and e2b:** L14, the right valley's rising yellow lobe, falls from IoU 0.76 to 0.40 (e2b) and 0.41 (e3) (the leg-order change made it), which the crop-by-crop review above missed. e1 is the accepted best.
 
 ## 5. The audit loop (supersedes the per-region narrative above)
 
@@ -291,3 +291,12 @@ The judging is now separate from the fitting and covers every feature: `audit/RE
 - **Diagnosis** (`tools/who.py`): the reference's L04 and L05 sit side by side on the floor. In e1 the twist partners at the valley bottom are front and back, a twist-phase difference that neither local fits nor a depth flip reach.
 - **Next test:** `tools/twist.py` turns the left-valley pair about the local spine. +45° / +90° raise the blue shown inside L05's reference mask from 62% to 69% / 73%. Refining fits from those starts are running.
 - **Judge calibration:** one paired judge preferred e1 by one step on L12 and L13, features the fit did not touch. So paired verdicts count only beyond about one step.
+
+### Iteration 2: coarse moves
+
+- **Twist phase, left valley** (`tools/twist.py`, chosen by a raster screen `tools/screen.py` of 16 windows × angles): turning only the valley bottom (stations 420–500) by 60° makes L05 a round ball on the floor.
+  - **Measured:** L05 severity 4 → 2, IoU 0.56 → 0.71.
+  - **Confirmed blind:** the paired judge finds it closer at L05, with every other feature the same.
+  - **lvt60 is the accepted best** (`snakes/spline-lvt60.json`).
+- **Proportions** (parametric body, helix radius against tube radius): R = a = 40 (touching strands) gains 0.03–0.04 IoU on most arm and arch lobes and leaves the valleys unchanged. Heavier beads are worse.
+- **Twist phase, right valley:** −30° fixes L14 in the screen, but the refit and the real render collapse L12 and L14. **Rejected.** L13's error is its shape (too broad), not its phase.

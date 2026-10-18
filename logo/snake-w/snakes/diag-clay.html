@@ -53,7 +53,19 @@ renderer.toneMapping = THREE.NoToneMapping;
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 // hide everything that is not the model (painted shadows)
 if ((q.get("hide") || "shadow") === "shadow")
-  for (const o of scene.children) if (o !== group) o.visible = false;
+  for (const o of scene.children) if (o !== group && !q.get("yaw")) o.visible = false;
+// yaw / pitch / pivot (as still-spline.html): turn the model about a pivot in reference pixels
+if (q.get("yaw")) {
+  const [px, py] = (q.get("pivot") || "724,543").split(",").map(Number);
+  const el = (params.cam.elev * Math.PI) / 180;
+  const P = new THREE.Vector3(px, -py / Math.cos(el), 0);
+  const pivot = new THREE.Group();
+  scene.remove(group); pivot.add(group); group.position.copy(P).multiplyScalar(-1);
+  pivot.position.copy(P); pivot.rotation.y = (Number(q.get("yaw")) * Math.PI) / 180;
+  if (q.get("pitch")) pivot.rotation.x = (Number(q.get("pitch")) * Math.PI) / 180;
+  scene.add(pivot);
+  if ((q.get("hide") || "shadow") === "shadow") for (const o of scene.children) if (o !== pivot) o.visible = false;
+}
 const meshes = [];
 group.traverse((o) => { if (o.isMesh) meshes.push(o); });
 

@@ -9,6 +9,9 @@
 // r, head (0), s, and mate / mateS / mateW for the press. The mate is the partner at the same
 // shared station (spec.mate = "station", the default: the twist partner, as centrelines() pairs
 // them), or the closest partner point within spec.mate_window station px (spec.mate = "closest").
+// With st.sec = { seg, ql, qd, psi } (cubic B-spline control values over the same [s0, s1]),
+// also sec = [ql, qd, psi] per sample: elliptical sections (geometry.js strandSurface,
+// tools/jaxsurface.py ellipse()).
 
 const P = 3;
 
@@ -51,6 +54,17 @@ export function evalStrand(st, u) {
   return { X, r };
 }
 
+// the section controls at u: [ql, qd, psi]
+function evalSec(st, u) {
+  const ts = st.sec._t || (st.sec._t = knots(st.s0, st.s1, st.sec.seg)), b = basisAt(ts, u);
+  const out = [0, 0, 0];
+  for (let k = 0; k <= P; k++) {
+    const j = b.i - P + k;
+    out[0] += b.N[k] * st.sec.ql[j]; out[1] += b.N[k] * st.sec.qd[j]; out[2] += b.N[k] * st.sec.psi[j];
+  }
+  return out;
+}
+
 // even arc-length samples: a dense fixed grid in u, its chord length, then interpolation
 export function arcSample(st, step = 0.5, densePerSpan = 24) {
   const nd = st.nseg * densePerSpan + 1, ud = [], cum = [0];
@@ -60,7 +74,7 @@ export function arcSample(st, step = 0.5, densePerSpan = 24) {
     if (prev) cum.push(cum.at(-1) + Math.hypot(X[0] - prev[0], X[1] - prev[1], X[2] - prev[2]));
     ud.push(u); prev = X;
   }
-  const n = Math.round(cum.at(-1) / step) + 1, us = [], pts = [], r = [];
+  const n = Math.round(cum.at(-1) / step) + 1, us = [], pts = [], r = [], sec = [];
   let j = 0;
   for (let k = 0; k < n; k++) {
     const a = (k * cum.at(-1)) / (n - 1);
@@ -68,8 +82,9 @@ export function arcSample(st, step = 0.5, densePerSpan = 24) {
     const f = Math.min(1, Math.max(0, (a - cum[j]) / (cum[j + 1] - cum[j] || 1)));
     const u = ud[j] + (ud[j + 1] - ud[j]) * f, e = evalStrand(st, u);
     us.push(u); pts.push(e.X); r.push(e.r);
+    if (st.sec) sec.push(evalSec(st, u));
   }
-  return { u: us, pts, r };
+  return { u: us, pts, r, sec: st.sec ? sec : null };
 }
 
 const smoothstep = (e0, e1, x) => { const t = Math.min(1, Math.max(0, (x - e0) / (e1 - e0))); return t * t * (3 - 2 * t); };
@@ -82,6 +97,7 @@ export function strandsFromSpec(spec) {
   for (const [name, other] of [["yellow", "blue"], ["blue", "yellow"]]) {
     const A = out[name], B = out[other], so = spec[other];
     const st = { pts: A.pts, r: A.r, s: A.u, head: A.u.map(() => 0), mate: [], mateS: [], mateW: [] };
+    if (A.sec) st.sec = A.sec;
     for (let i = 0; i < A.u.length; i++) {
       let m, ms;
       if (mode === "closest") {
@@ -103,6 +119,6 @@ export function strandsFromSpec(spec) {
     out[name] = st;
   }
   // drop the evaluation caches from the spec objects
-  for (const name of ["yellow", "blue"]) { delete spec[name]._t; delete spec[name]._tr; }
+  for (const name of ["yellow", "blue"]) { delete spec[name]._t; delete spec[name]._tr; if (spec[name].sec) delete spec[name].sec._t; }
   return out;
 }

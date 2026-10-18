@@ -230,7 +230,7 @@ function evenly(strand, step) {
   const d = [0];
   for (let i = 1; i < strand.pts.length; i++) d.push(d[i - 1] + norm(sub(strand.pts[i], strand.pts[i - 1])));
   const n = Math.max(8, Math.round(d.at(-1) / step));
-  const out = { pts: [], r: [], head: [], mate: strand.mate ? [] : null, press: strand.press ? [] : null };
+  const out = { pts: [], r: [], head: [], mate: strand.mate ? [] : null, press: strand.press ? [] : null, sec: strand.sec ? [] : null };
   let j = 0;
   for (let k = 0; k <= n; k++) {
     const t = (k * d.at(-1)) / n;
@@ -241,6 +241,7 @@ function evenly(strand, step) {
     out.r.push(lerp(strand.r)); out.head.push(lerp(strand.head));
     if (out.mate) out.mate.push(add(strand.mate[j], mul(sub(strand.mate[j + 1], strand.mate[j]), f)));
     if (out.press) out.press.push(lerp(strand.press));
+    if (out.sec) out.sec.push([0, 1, 2].map((k) => strand.sec[j][k] + (strand.sec[j + 1][k] - strand.sec[j][k]) * f));
   }
   return out;
 }
@@ -284,7 +285,7 @@ const spow = (x, e) => Math.sign(x) * Math.abs(x) ** e;
 // a per-vertex "head" weight, ring count and radial count; the mesh is closed with a pole
 // vertex at each end.
 export function strandSurface(strand, opts) {
-  const { step = 3, radial = 64, head, smooth = 0, fold = null, press = null } = opts;
+  const { step = 3, radial = 64, head, smooth = 0, fold = null, press = null, view = [0, 0, 1] } = opts;
   const S = evenly(strand, step);
   // a light smoothing of the centreline (Gaussian, `smooth` samples), so the rings follow
   // its shape and not its sampling
@@ -337,6 +338,26 @@ export function strandSurface(strand, opts) {
     const x = r * dot(K[i], dir), [x0, x1] = fold;
     return x <= x0 ? 1 : (x0 + (x1 - x0) * Math.tanh((x - x0) / (x1 - x0))) / x;
   };
+  // elliptical sections (`strand.sec` = [ql, qd, psi] per sample, from strandspline.js): the
+  // depth axis d is the view direction made perpendicular to the tangent, the lateral axis
+  // l = T x d lies in the screen plane, and the unit circle becomes the ellipse with semi-axes
+  // ql, qd about (l, d) turned by psi: ql sets the visible width, qd the thickness towards the
+  // camera. Where the tangent nearly points at the camera the section blends back to a circle.
+  // tools/jaxsurface.py ellipse() is the same map.
+  const ellipse = (i, dir) => {
+    if (!S.sec) return dir;
+    const t = T[i];
+    let d = sub(view, mul(t, dot(view, t)));
+    const dn = norm(d), lev = smoothstep(0.2, 0.45, dn);
+    if (lev <= 0) return dir;
+    d = mul(d, 1 / dn);
+    const l = cross(t, d), [ql0, qd0, psi0] = S.sec[i];
+    const ql = 1 + lev * (ql0 - 1), qd = 1 + lev * (qd0 - 1), psi = lev * psi0;
+    const c = Math.cos(psi), sn = Math.sin(psi);
+    const a1 = add(mul(l, c), mul(d, sn)), a2 = add(mul(l, -sn), mul(d, c));
+    const along = mul(t, dot(dir, t));
+    return add(along, add(mul(a1, dot(dir, a1) * ql), mul(a2, dot(dir, a2) * qd)));
+  };
   // cap profiles: index 0 is the snout (blunt, superelliptic), the far end is the tail
   const caps = [
     { at: 0, dir: mul(T[0], -1), len: head.snoutLen * S.r[0], q: head.snoutQ, rings: 14 },
@@ -361,7 +382,7 @@ export function strandSurface(strand, opts) {
     const hx = (1 + (head.wide - 1) * w) * spow(ca, qx), hy = (1 + (head.flat - 1) * w) * spow(sa, qx);
     const circ = add(mul(N[i], Math.cos(phi)), mul(B[i], Math.sin(phi)));
     const sq = add(mul(e1, hx), mul(e2, hy));
-    const dir = add(mul(circ, 1 - w), mul(sq, w));
+    const dir = ellipse(i, add(mul(circ, 1 - w), mul(sq, w)));
     const X = add(c, mul(dir, r * pinch(i, dir, r)));
     return pressed(i, c, X);
   };

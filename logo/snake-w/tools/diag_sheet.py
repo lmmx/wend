@@ -3,6 +3,7 @@ Usage: diag_sheet.py out.png "row label=prefix" ... [--modes clay,zebra,zebrav,c
 Each row is one render prefix (as written by diag_still.mjs); columns are modes (or, with
 --views a,b,c and a single --modes m, the columns are views). Optional --ref adds the
 reference crop as the first column."""
+import os
 import sys
 from PIL import Image, ImageDraw
 sys.path.insert(0, __file__.rsplit("/", 1)[0])
@@ -22,7 +23,7 @@ if opt["views"]:
     cols = [(modes[0], v) for v in opt["views"].split(",")]
 else:
     cols = [(m, opt["view"]) for m in modes]
-REF = "/tmp/claude-0/-home-user-wend/d6d27182-6abd-5a8a-a38b-3024b7dfe572/scratchpad/logo/snakes/ref/reference.png"
+REF = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "snakes", "ref", "reference.png")
 def label(t, s):
     d = ImageDraw.Draw(t); d.rectangle([0, 0, len(s) * 6 + 8, 14], fill=(255, 255, 255)); d.text((3, 1), s, fill=(0, 0, 0))
     return t

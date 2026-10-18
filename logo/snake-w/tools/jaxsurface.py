@@ -17,6 +17,14 @@ k_i = (t_i - t_{i-1}) / ((l_{i-1} + l_i) / 2), and
           pass through itself on the inside of a bend
   spread  the variance of the centreline's own sample spacing, relative to its mean (keeps a
           moving spline's samples from bunching; a regulariser on the parameterisation)
+
+Sections may be elliptical (`sec` = (n, 3): ql, qd, psi per sample, with `view` the unit vector
+towards the camera): the section's depth axis d is the view direction made perpendicular to the
+tangent, its lateral axis l = T x d lies in the screen plane, and the circle of radius r becomes
+the ellipse with semi-axes r ql and r qd about (l, d) turned by psi. So ql alone sets the visible
+width of the tube and qd its thickness towards the camera. Where the tangent nearly points at the
+camera (|d| small) the section blends back to a circle. The scene's tube (geometry.js
+strandSurface, `sec`) applies the same map to the same rings.
 """
 import jax
 import jax.numpy as jnp
@@ -42,16 +50,37 @@ def rmf(P):
     return T, N, Bn
 
 
-def rings(P, r, nphi=24):
+def smoothstep(e0, e1, x):
+    t = jnp.clip((x - e0) / (e1 - e0), 0.0, 1.0)
+    return t * t * (3 - 2 * t)
+
+
+def ellipse(T, dirs, sec, view):
+    """Map unit circle directions dirs (n, k, 3), perpendicular to T (n, 3), to the elliptical section."""
+    d = view[None] - T * (T @ view)[:, None]
+    dn = jnp.linalg.norm(d, axis=1)
+    lev = smoothstep(0.2, 0.45, dn)
+    d = d / jnp.maximum(dn, 1e-9)[:, None]
+    l = jnp.cross(T, d)
+    ql, qd, psi = 1 + lev * (sec[:, 0] - 1), 1 + lev * (sec[:, 1] - 1), lev * sec[:, 2]
+    c, s = jnp.cos(psi)[:, None], jnp.sin(psi)[:, None]
+    a1, a2 = c * l + s * d, -s * l + c * d
+    c1, c2 = jnp.einsum("nkj,nj->nk", dirs, a1), jnp.einsum("nkj,nj->nk", dirs, a2)
+    return (c1 * ql[:, None])[..., None] * a1[:, None] + (c2 * qd[:, None])[..., None] * a2[:, None]
+
+
+def rings(P, r, nphi=24, sec=None, view=None):
     T, N, Bn = rmf(P)
     phi = jnp.linspace(0, 2 * jnp.pi, nphi, endpoint=False)
     dirs = jnp.cos(phi)[None, :, None] * N[:, None] + jnp.sin(phi)[None, :, None] * Bn[:, None]
+    if sec is not None:
+        dirs = ellipse(T, dirs, sec, view)
     return P[:, None] + r[:, None, None] * dirs, T
 
 
-def fairness(P, r, nphi=24, fold_min=0.25):
+def fairness(P, r, nphi=24, fold_min=0.25, sec=None, view=None):
     """Fairness terms of the swept surface for centreline samples P (n, 3) and radii r (n,)."""
-    S, T = rings(P, r, nphi)                                       # (n, nphi, 3)
+    S, T = rings(P, r, nphi, sec, view)                                       # (n, nphi, 3)
     e = S[1:] - S[:-1]
     l = jnp.linalg.norm(e, axis=-1)
     t = e / l[..., None]

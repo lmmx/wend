@@ -55,21 +55,10 @@ Parity with the real render (`tools/jaxraster_check.py`, hard limit, the current
 - Most disagreements are 1–2 px lines along colour boundaries.
 - The larger patches come from the old pipeline's centreline smoothing, fold pinch and press, which the new representation should make unnecessary.
 
-## In progress
+## Subagents (both finished: see section 3)
 
 - **A geometry architect agent:** one C2 B-spline centreline and radius per strand, fitted to the current body with fairness regularisation, rendered through the real scene. The new `body` option of `createScene` lets another representation's strands replace the centreline model.
 - **A surface-diagnostics agent:** grey clay and zebra-stripe renders of the current mesh, and kinks, pinches and folds measured and attributed to each pipeline stage.
-
-## Next
-
-- Fix the representation.
-- A JAX fit of one region (the left valley or the central arch), with these terms:
-  - surface fairness;
-  - the soft image and outline terms;
-  - a contact band between the strands;
-  - L-BFGS-B, x64.
-- Before trusting a fit: directional derivatives against finite differences of real Three.js renders.
-- Deliver grey and colour renders beside the reference and the baseline.
 
 ## 2. Review fixes: arc length and colour bleed
 
@@ -124,16 +113,109 @@ The architect's and the diagnostics agent's measurements say what those problems
 3. **Kinks from the piecewise-linear spine offsets.** The strands jump up to 10 px between 0.5 px samples at ~30 stations; the tube's 12 px smoothing hides most of it. A C2 spline for the offsets alone cuts visible >2° creases from 346 to 106.
 4. **The press is visually inert.** It moves no visible vertex more than 0.5 px.
 
-## Next: the first JAX fit, on one region
+## 4. The right-valley dimple: the first JAX geometry fits
 
-Start from spline-hi and free only the control points covering one valley. Objective:
-- the soft image term against the reference, and the outline term;
-- surface fairness (arc-length invariant);
-- **contact**: twist-partner overlap held in a band (~5–25 px), and a hinge penalty max(0, r1 + r2 − d − allowance)² between different turns;
-- a fold barrier at r·κ ≈ 2 (not 1: that would be 35% of the shape);
-- the neck-join control points pinned.
+**Target:** remove the blue dimple at the bottom of the right valley without moving lobes, shrinking the blue lobe or disturbing the rest of the W. Every candidate is judged on real Three.js renders: right-valley crops in colour, clay and zebra (8 bars), the whole body, and a 3/4 view (yaw 35°).
 
-Then L-BFGS-B, x64. Before accepting:
-- check its predicted direction against finite differences of real renders;
-- render through Three.js and compare in colour, clay and zebra with the baseline;
-- accept only if it visibly looks better.
+### What the dimple is
+
+- **It is one blue hairpin.** The blue strand comes down at shared station 1051, curls at the valley bottom (stations 1079–1115), and goes back up at 1155.
+- **The curl:** about 18 px in radius around a 37–44 px tube, so r·κ reaches 2.0–2.2. Its inside faces the camera, so the fold through itself is visible: that is the notch (`tools/dimple.py`).
+- **The collision:** the two legs, 1051 and 1155, are only 19 px apart in 3D with radii 39 + 45. That is a 65 px overlap between non-adjacent parts of the same strand (`tools/contact_map.py`).
+- A C2 spline does not prevent this. It can be perfectly smooth and still pass through itself.
+
+### The fitter (`tools/regionfit.py`)
+
+Free: the control points of both strands whose support reaches a small window around the curl. The neck joins are pinned. Objective, all on the evaluated spline:
+- **Image:** soft-raster cross-entropy against the reference labels. The window is sized automatically to wherever the movable geometry projects.
+- **Self-collision:** non-adjacent sections of the same strand (≥ 90 px of station apart) must not overlap. The threshold is calibrated on the straight parts, where nothing that far apart ever overlaps.
+- **Soft contact** between the strands: an allowance of 12 px.
+- **Visible-fold barrier:** the swept surface's advance, weighted by how much it faces the camera. A weaker **global** fold barrier stops a fit from just turning a fold away.
+- **Fairness:** arc-length invariant, relative to the start.
+- **Trust region** on the evaluated centreline: screen and depth separately. A penalty on depth oscillation.
+- **Crossing order:** every clearly ordered over/under pair keeps its order.
+- **Solver:** L-BFGS-B, x64.
+
+Mesh-level validity is measured on the real tube (`tools/mesh_check.mjs`), as areas, not vertex counts, and split into:
+- **local folds:** surface lines running backwards;
+- **non-local self-penetration:** a ring vertex inside a section ≥ 90 px of station away.
+
+### Round 1 (rejected): no trust region
+
+`05-rejected-loop-full.png`, `05b-rejected-loop-crops.png`.
+- **The crop looked fixed:** a clean convex blue bead and concentric zebra rings.
+- **The whole body was destroyed:** a large new blue loop across the middle of the W. Control points moved up to 290 px, mostly in depth, outside the window the image term could see.
+- **Lesson:** the nearly frontal reference barely constrains depth. Since then every candidate is shown with its whole body, and the fits have a trust region, crossing order and an automatically sized image window.
+
+### Round 2: circular tubes with a trust region (depth 10 / 20 / 35 px; screen 12 px)
+
+`06-circular-trust-crops.png`, `07-circular-trust-full.png`.
+- **The W is intact** in the hero and the 3/4 view. There are no loops, and the colour layout moves towards the reference (agreement with the reference 0.885 → 0.918 in the window).
+- **The notch is shallower but still there.** Clay shows a crease ending in a pit; zebra a closed loop.
+- **The depth budget does not matter.** All three stall at about 30 px of remaining self-overlap: the collision is in the screen plane, so more depth buys nothing.
+
+### Round 3: elliptical cross-sections (e1)
+
+`08-elliptical-e1-crops.png`, `08b-curl-zoom-base-z20-e1.png` (clay and zebra: baseline | z20 | e1), `09-elliptical-e1-full.png`.
+
+**The new section field.** Each strand carries a C2 section field (cubic B-splines, knots every 24 px):
+- **ql:** the lateral semi-axis, which lies exactly in the screen plane;
+- **qd:** the depth semi-axis;
+- **ψ:** orientation, bounded and costed.
+
+How the terms use it:
+- ql alone sets the visible width.
+- A cost on any departure from round makes sections deform only where contact asks for it.
+- A soft area term, (ql·qd − 1)², is a preference, not a constraint: with ql ≤ 1.12, strong flattening cannot keep its area.
+- The fold pinch is off. The ellipse is the only deformation.
+
+**One section map everywhere.** The same map is used by:
+- JAX: `tools/jaxsurface.py ellipse()`;
+- the raster: screen half-width and front depth of each ellipse;
+- the contact terms: the ellipses' combined extent along each separation;
+- the scene: `geometry.js strandSurface`, `strandspline.js` sec;
+- the mesh check.
+
+Round sections reproduce the old mesh to 2.5e-13 px.
+
+**The result:**
+- **Visibly the best so far.** The surrounding curvature is smoother and the pit is smaller.
+- **The W is unchanged elsewhere.** Hero, 3/4 colour and clay are intact, and the depth moves are only 6 px.
+- **But the dimple is not gone.** A short crease still runs down into a pinch point, and zebra still shows a teardrop loop.
+
+Mesh check, right-valley window:
+
+| | baseline spline | circular z20 | elliptical e1 |
+|---|---|---|---|
+| blue visible local-fold area | 2,771 px² | 1,603 px² | **710 px²** |
+| blue non-local self-penetration | 12,276 px², 45.6 px deep | 9,311 px², 29.8 px | 7,194 px², 31.3 px |
+| yellow visible local-fold area | 1,935 px² | 255 px² | 661 px² |
+
+### Why e1 stops short (`tools/legs.py`)
+
+**What remains:** the crease where the two blue legs (stations ~1053 and ~1153) **fuse**. The pit is where that intersection curve ends.
+- **Screen:** the fit pushed the legs apart on screen, from 19 to 53 px. Their lateral radii sum to 80, so they still overlap.
+- **Depth:** they sit at **exactly** the same depth (Δz = 0.0). With the flattened depth radii they need about 43 px of depth separation.
+
+**Why the fit can't find it:**
+- **A symmetric saddle.** The collision term depends on depth only through Δz², so at Δz = 0 its depth gradient is exactly zero. Which leg goes in front is a discrete choice that gradient descent cannot make.
+- **No room in depth.** Each leg has yellow both in front of it (+38 px) and behind it (−56 px). The crossing-order constraint freezes the starting order, which is probably wrong exactly here.
+- **The reference** shows one blue bead at the bottom, with the two yellow lobes meeting above it, so the other blue leg is hidden behind yellow.
+
+### Surrogate fidelity (`tools/fidelity.py`)
+
+Along the z20 fit's path, the JAX raster and real Three.js renders improve together:
+
+| step along the path | raster vs reference | render vs reference | raster vs render |
+|---|---|---|---|
+| 0 | 0.884 | 0.885 | 0.989 |
+| 0.5 | 0.898 | 0.900 | 0.989 |
+| 1 | 0.916 | 0.918 | 0.989 |
+
+The image term is a faithful surrogate: it predicts the render's change to within 0.002.
+
+## Next
+
+- **Break the symmetry explicitly.** Run two short fits from e1, one with each blue leg in front, the other routed behind the yellow as in the reference.
+- **Relax the crossing-order constraint for those two legs only.**
+- **Judge on the same sheets.** Accept only if the crease and pit disappear in clay and zebra with the W intact.

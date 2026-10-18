@@ -25,15 +25,17 @@ def project(P, elev):
     return P[:, 0], -(P[:, 1] * c - P[:, 2] * s), P[:, 1] * s + P[:, 2] * c
 
 
-def soft_labels(P, r, onehot, grid, elev, tau=0.6, gamma=1.0, sharp=20.0):
+def soft_labels(P, r, onehot, grid, elev, tau=0.6, gamma=1.0, sharp=20.0, zscale=None):
     """P (m, 3) ball centres, r (m,), onehot (m, k) colour of each ball, grid (n, 2) pixel
-    centres. Returns (n, k + 1) probabilities: background, then each colour."""
+    centres. Returns (n, k + 1) probabilities: background, then each colour. `zscale` (m,), for
+    elliptical sections: r is the screen half-width and the front surface is zscale * r deep."""
     x, y, d = project(P, elev)
     d2 = (grid[:, 0, None] - x[None]) ** 2 + (grid[:, 1, None] - y[None]) ** 2
     dist = jnp.sqrt(d2 + 1e-9)
     t = (r[None] - dist) / tau
     log_a, log_1ma = jax.nn.log_sigmoid(t), jax.nn.log_sigmoid(-t)
-    zf = d[None] + jnp.sqrt(jnp.maximum(r[None] ** 2 - d2, 0.0) + 1e-6)
+    zf = jnp.sqrt(jnp.maximum(r[None] ** 2 - d2, 0.0) + 1e-6)
+    zf = d[None] + (zf if zscale is None else zscale[None] * zf)
     w = jax.nn.softmax(sharp * log_a + zf / gamma, axis=1)         # which ball is seen
     covered = 1.0 - jnp.exp(jnp.sum(log_1ma, axis=1))              # soft union
     col = w @ onehot                                               # (n, k)

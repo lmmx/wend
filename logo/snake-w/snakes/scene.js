@@ -215,7 +215,7 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
     });
   }
   const capHead = params.head_cones || params.head_profiles ? { ...look.head, snoutLen: 1, snoutQ: 2 } : look.head;
-  const tube = { head: capHead, ...(params.tube || {}) };
+  const tube = { head: capHead, ...(params.tube || {}), view: [0, Math.sin(elev), Math.cos(elev)] };
   if (tube.press && params.head_profiles) {
     // press only where the partner is a tube: not past its tail, and not above its join,
     // where its neck is part of the head surface

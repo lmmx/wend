@@ -12,6 +12,9 @@ Spec format (also read by snakes/strandspline.js):
   { "kind": "strandspline", "version": 1, "degree": 3, "L": spine length,
     "yellow": { "s0", "s1", "nseg", "ctrl": [[x,y,z]...] (nseg+3), "rseg", "rctrl": [...] (rseg+3) },
     "blue": { ... }, "tube": { overrides for params.tube }, "mate_window": px, "step": px }
+  optional per strand: "sec": { "seg", "ql", "qd", "psi" } (seg + 3 cubic B-spline control values
+  each over the same [s0, s1]): elliptical sections, evaluated by evaluate_sec (as
+  snakes/strandspline.js; the map itself is tools/jaxsurface.py ellipse and geometry.js strandSurface)
 """
 import numpy as np
 
@@ -82,6 +85,16 @@ def evaluate(st, u, deriv=0):
     X = basis(u, t, deriv) @ np.asarray(st["ctrl"], float)
     r = basis(u, tr, deriv) @ np.asarray(st["rctrl"], float)
     return X, r
+
+
+def evaluate_sec(st, u):
+    """Section controls (n, 3) = ql, qd, psi at stations u; round sections when the strand has none."""
+    u = np.asarray(u, float)
+    if "sec" not in st:
+        return np.column_stack([np.ones_like(u), np.ones_like(u), np.zeros_like(u)])
+    t = knots(st["s0"], st["s1"], st["sec"]["seg"])
+    B = basis(u, t)
+    return np.column_stack([B @ np.asarray(st["sec"][k], float) for k in ("ql", "qd", "psi")])
 
 
 def arc_sample(st, step=0.5, dense_per_span=24, n_out=None):

@@ -13,7 +13,7 @@ reg = json.load(open("audit/registry.json"))
 views = {"full": [0, 0, 1448, 1086]}
 for f in reg["features"]:
     views[f["id"]] = list(window(f, 30))
-look = json.load(open("cmp/colourjobs.json"))[0]["query"]["look"]
+look = open("snakes/w-final.look.json").read()
 name = None
 if spec != "-":
     name = f"spline-audit-{tag}.json"

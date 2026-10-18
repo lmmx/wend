@@ -18,7 +18,7 @@ if (specFile) {
 }
 const head = { snoutLen: 1, snoutQ: 2, q: 2.4, wide: 1.06, flat: 0.96 };
 const tube = { head, ...(params.tube || {}) };
-const res = { L: lines.L, spine: lines.spine, s: lines.s, theta: lines.theta, tube: params.tube, necks: params.necks };
+const res = { elev: params.cam.elev, L: lines.L, spine: lines.spine, s: lines.s, theta: lines.theta, tube: params.tube, necks: params.necks };
 ["yellow", "blue"].forEach((name, i) => {
   const st = body[name], nk = params.necks[i];
   const i0 = st.s.findIndex((x) => x >= nk.join_s - 2);

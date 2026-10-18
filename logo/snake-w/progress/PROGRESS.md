@@ -85,7 +85,7 @@ Parity with the real render after the fix:
 
 `02-soft-raster-bleed-fix.png` shows render labels | raster with sharp = 1 | differences | raster with sharp = 20 | differences, for the right valley and the central arch.
 
-**Still to do:** fidelity of the surrogate to real renders. These checks show only that JAX differentiates its own objective correctly. Once the spline body exists, small control-point perturbations will be rendered through Three.js, and the measured change compared with the JAX-predicted one.
+**Fidelity of the surrogate to real renders:** these checks show only that JAX differentiates its own objective correctly. The comparison with real Three.js renders along a fit's path is in section 4 ("Surrogate fidelity", `tools/fidelity.py`).
 
 ## 3. First spline body: rendered, and judged in clay and zebra
 
@@ -119,7 +119,7 @@ The architect's and the diagnostics agent's measurements say what those problems
 
 ### What the dimple is
 
-- **It is one blue hairpin.** The blue strand comes down at shared station 1051, curls at the valley bottom (stations 1079–1115), and goes back up at 1155.
+- **It is one blue hairpin.** The blue strand comes down at shared station 1051, curls at the valley bottom (stations 1079–1115), and goes back up at 1155. (On the starting spline the closest pair of legs is 1051 / 1155; after the elliptical fit e1 it is 1053 / 1153, the stations `--leg-front` / `--leg-back` use below.)
 - **The curl:** about 18 px in radius around a 37–44 px tube, so r·κ reaches 2.0–2.2. Its inside faces the camera, so the fold through itself is visible: that is the notch (`tools/dimple.py`).
 - **The collision:** the two legs, 1051 and 1155, are only 19 px apart in 3D with radii 39 + 45. That is a 65 px overlap between non-adjacent parts of the same strand (`tools/contact_map.py`).
 - A C2 spline does not prevent this. It can be perfectly smooth and still pass through itself.
@@ -167,7 +167,7 @@ How the terms use it:
 - ql alone sets the visible width.
 - A cost on any departure from round makes sections deform only where contact asks for it.
 - A soft area term, (ql·qd − 1)², is a preference, not a constraint: with ql ≤ 1.12, strong flattening cannot keep its area.
-- The fold pinch is off. The ellipse is the only deformation.
+- The fold pinch is off, so the ellipse replaces it. The press (`tube.press` of `w-final.params.json`) stays on in the scene; the surface-diagnostics agent measured it inert (no visible vertex moves more than 0.5 px, section 3).
 
 **One section map everywhere.** The same map is used by:
 - JAX: `tools/jaxsurface.py ellipse()`;
@@ -259,9 +259,35 @@ Mesh check, right-valley window:
 
 **Still different from the reference:** its blue lobe is a narrow teardrop between the two yellows, ours a broader bead. That is lobe-shape correspondence, not a surface defect.
 
-**The committed baseline is unchanged.** e3 is a candidate: `snakes/spline-rv-e3.json`, rendered with `still-spline.html?spec=spline-rv-e3.json`.
+**The committed baseline is unchanged.** e3 was a candidate (`snakes/spline-rv-e3.json`, rendered with `still-spline.html?params=w-final.params.json&spec=spline-rv-e3.json`). **The audit of section 5 rejects e3 and e2b:** L14, the right valley's rising yellow lobe, falls from IoU 0.76 to 0.41 in both (the leg-order change made it), which the crop-by-crop review above missed. e1 is the accepted best.
 
-## Next
+## 5. The audit loop (supersedes the per-region narrative above)
 
-- **The left valley, the same way.** It has the same structure: yellow passes 56.6 px into itself (stations 421 / 501) and blue 39 px (447 / 521). The procedure: an elliptical-section fit, choose the leg order (both tried), refine, and judge on the same sheets.
-- **Then the right valley's lobe shape:** narrow the blue bead towards the reference's teardrop.
+The judging is now separate from the fitting and covers every feature: `audit/README.md` describes the loop, `audit/LEDGER.md` records every candidate, and `audit/iterNN/` holds each iteration's metrics, critic reports, paired judgements and ledger.
+
+- **Anatomy:** 18 numbered reference features (H1, L01–L16, H2) and six negative spaces (`audit/reference-annotated.png`).
+- **Evaluator:** per-feature measurements on real renders (`tools/evaluate.py`), with a lobe split that reproduces the reference registry and flags its own doubtful splits.
+- **Blind critics:** fresh subagents that see only anonymised images. Absolute critics (`tools/critic_pages.py`) and paired judges (`tools/pair_pages.py`, reference | X | Y in random order).
+
+### Iteration 0
+
+- **Baseline:** severity 5 at L04; severity 4 at L05 and L13.
+- **e2b, e3: rejected.** L14 IoU 0.76 → 0.41.
+- **e1: accepted best.** It passes the gates against the baseline (L13 IoU 0.54 → 0.66, L12 0.59 → 0.73, L06 0.77 → 0.82). The paired judge finds it closer at L09–L14 and H2, with no defect of its own.
+
+**Consensus of the four independent critics** (`audit/iter00/ledger.md`):
+1. **L05:** a hard-edged cap with yellow in front of its lower part (wrong over/under), not reaching the floor.
+2. **L13/L14:** L13 too broad and creased, in front of L14 where the reference has L14 in front.
+3. **L04/L06:** the left valley's yellows fused into one bent tube.
+4. **G1, whole-body character:** a rope where the reference has stacked convex cushions. The arm lobes are 15–20° too steep and elongated, with saddle surfaces, and the rolled crevices between lobes are about 20× too light.
+5. **L01/L16:** the opposite-colour collar on each neck climbs 7–12 px too high.
+
+### Iteration 1: targets L04, L05 (left valley), from e1
+
+- **i1a** (centreline and sections) and **i1b** (radius free too): the metrics show small mixed gains.
+  - The paired judges call i1a a trade (L05 +1, L06 −1) and prefer e1 over i1b.
+  - **Both rejected.**
+- **i1c** (explicit depth order, blue in front of yellow inside L05): **rejected.** L04 IoU fell 0.69 → 0.59. Bringing blue forward over L05 also brought it forward over L04.
+- **Diagnosis** (`tools/who.py`): the reference's L04 and L05 sit side by side on the floor. In e1 the twist partners at the valley bottom are front and back, a twist-phase difference that neither local fits nor a depth flip reach.
+- **Next test:** `tools/twist.py` turns the left-valley pair about the local spine. +45° / +90° raise the blue shown inside L05's reference mask from 62% to 69% / 73%. Refining fits from those starts are running.
+- **Judge calibration:** one paired judge preferred e1 by one step on L12 and L13, features the fit did not touch. So paired verdicts count only beyond about one step.

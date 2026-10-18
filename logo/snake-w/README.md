@@ -43,9 +43,12 @@ pre-installed one.
 
 ## Python tools
 
-They need numpy, scipy, scikit-image and pillow. Run them from `snakes/`, as `../tools/name.py`.
+They need numpy, scipy, scikit-image and pillow; the fitting and raster tools (`jaxraster.py`, `jaxsurface.py`, `regionfit.py`, `fidelity.py`, `calib.py`) also need jax (x64, CPU).
 
-They read `ref/reference.png` relative to that folder.
+- The original fitting tools (`snakefit.py`, `fit_splines.py`, the head and lobe scripts) run from `snakes/`, as `../tools/name.py`, and read `ref/reference.png` relative to that folder.
+- The audit and region-fit tools (`anatomy.py`, `evaluate.py`, `audit_render.py`, `critic_pages.py`, `pair_pages.py`, `ledger.py`, `who.py`, `twist.py`, `render.py`, `fidelity.py`, `vsheet.py`, `fullsheet.py`) run from this folder (`logo/snake-w`), as `tools/name.py`; `audit/README.md` describes the loop.
+
+Spline specs render with `snakes/still-spline.html?params=w-final.params.json&spec=spline-….json`.
 
 ## Checkpoints
 

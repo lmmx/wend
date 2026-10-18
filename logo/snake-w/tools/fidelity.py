@@ -3,10 +3,10 @@
 same colour classifier as the reference's) are both scored against the reference labels in a
 window, and against each other. If the surrogate is faithful, the two agreement curves move
 together and the raster-vs-render agreement stays high.
-Usage (from the logo root, logo/snake-w): fidelity.py start.json fit.json x0,y0,x1,y1 tag"""
+Usage (from logo/): fidelity.py start.json fit.json x0,y0,x1,y1 tag"""
 import copy, json, os, subprocess, sys
 import numpy as np
-T = os.path.dirname(os.path.abspath(__file__))
+T = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "tools")
 sys.path.insert(0, T)
 import strandspline as S
 import jaxraster as jr
@@ -18,12 +18,15 @@ alphas = [0.0, 0.25, 0.5, 0.75, 1.0]
 _, ref = sf.ref_labels("snakes/ref/reference.png", 1.0)
 x0, y0, x1, y1 = box; R = ref[y0:y1, x0:x1]
 jobs, specs = [], []
-cj = json.load(open("cmp/colourjobs.json"))[0]
+cj = {"query": {"look": open("snakes/w-final.look.json").read(), "ss": "2", "heads": "heads-final.json"}}
 for a in alphas:
     sp = copy.deepcopy(a0)
     for n in ("yellow", "blue"):
         for k in ("ctrl", "rctrl"):
             sp[n][k] = (np.asarray(a0[n][k]) + a * (np.asarray(a1[n][k]) - np.asarray(a0[n][k]))).tolist()
+        if "sec" in a1[n]:   # elliptical sections: interpolate from round (or the start's field)
+            s0 = a0[n].get("sec") or {"seg": a1[n]["sec"]["seg"], **{q: [1.0 if q != "psi" else 0.0] * len(a1[n]["sec"]["ql"]) for q in ("ql", "qd", "psi")}}
+            sp[n]["sec"] = {"seg": a1[n]["sec"]["seg"], **{q: (np.asarray(s0[q]) + a * (np.asarray(a1[n]["sec"][q]) - np.asarray(s0[q]))).tolist() for q in ("ql", "qd", "psi")}}
     nm = f"spline-fid-{tag}-{a:.2f}.json"; json.dump(sp, open(f"snakes/{nm}", "w")); specs.append(sp)
     jobs.append({"out": f"../jfit/r/fid-{tag}-{a:.2f}.png", "params": "w-final.params.json", "query": {**cj["query"], "spec": nm}})
 json.dump(jobs, open(f"jfit/r/fid-{tag}-jobs.json", "w"))

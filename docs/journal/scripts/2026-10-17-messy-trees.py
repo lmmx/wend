@@ -6,9 +6,11 @@ Run from the repository root:
 
 With no arguments it builds the synthetic layouts below in temporary
 directories. For each tree it reports: paths and layouts, paths no layout
-matches, observed paths that glob does not find again through their own
-layout, layouts whose `optional` flag or `cardinality` disagrees with a
-brute-force check, duplicate patterns, and how many layouts have a SubPath.
+matches, paths that only layouts of the other kind match (an empty directory
+matched by a file layout), observed paths the layouts' counts leave out,
+observed paths that glob does not find again through their own layout,
+layouts whose `optional` flag or `cardinality` disagrees with a brute-force
+check, duplicate patterns, and how many layouts have a SubPath.
 """
 
 import os
@@ -33,7 +35,12 @@ def check(root):
     for p, _ in pairs:
         parts = PurePosixPath(p).parts
         dirs.update("/".join(parts[:i]) for i in range(1, len(parts)))
-    uncovered = [p for p, _ in pairs if not schema.match(p)]
+    uncovered = kind_wrong = 0
+    for p, d in pairs:
+        kinds = {lay.kind for lay in schema.layouts if lay.match(p) is not None}
+        uncovered += not kinds
+        kind_wrong += bool(kinds) and ("dir" if d else "file") not in kinds
+    uncounted = len(pairs) - sum(lay.count for lay in schema.layouts)
     missed = wrong_opt = wrong_card = 0
     for lay in schema.layouts:
         mine = [
@@ -69,8 +76,9 @@ def check(root):
     )
     print(
         f"{root}: {len(pairs)} paths, {len(schema.layouts)} layouts ({deep} SubPath), "
-        f"{ms:.0f} ms; uncovered={len(uncovered)} glob-missed={missed} "
-        f"optional-wrong={wrong_opt} cardinality-wrong={wrong_card} duplicates={dups}"
+        f"{ms:.0f} ms; uncovered={uncovered} kind-wrong={kind_wrong} "
+        f"uncounted={uncounted} glob-missed={missed} optional-wrong={wrong_opt} "
+        f"cardinality-wrong={wrong_card} duplicates={dups}"
     )
     return schema
 
@@ -135,6 +143,25 @@ def synthetic():
 
     grow("src/pkg", 0)
     package += ["src/pkg/data/schema.json", "src/pkg/data/defaults.toml"]
+    # /usr/share/doc: package directories of extensionless and gzipped files,
+    # some with an empty examples/ or html/ directory, others with files in
+    # them, and a few empty package directories ("/" marks a directory).
+    doc = []
+    pkgs = {
+        rnd.choice(["lib", "python3-", ""]) + "".join(rnd.choices("abcdefgh", k=5))
+        for _ in range(40)
+    }
+    for pkg in sorted(pkgs):
+        doc += [f"doc/{pkg}/copyright", f"doc/{pkg}/changelog.Debian.gz"]
+        extra = [f"doc/{pkg}/{f}" for f in ("README", "AUTHORS", "NEWS.gz")]
+        doc += rnd.sample(extra, rnd.randint(0, 3))
+        for sub in ("examples", "html"):
+            roll = rnd.random()
+            if roll < 0.2:
+                doc.append(f"doc/{pkg}/{sub}/")
+            elif roll < 0.35:
+                doc += [f"doc/{pkg}/{sub}/index", f"doc/{pkg}/{sub}/demo.gz"]
+    doc += ["doc/xproto/", "doc/kbproto/"]
     return {
         "hive": hive,
         "ml-runs": runs,
@@ -143,6 +170,7 @@ def synthetic():
         "fastq": fastq,
         "terminfo": terminfo,
         "package": package,
+        "doc": doc,
     }
 
 
@@ -155,5 +183,8 @@ if __name__ == "__main__":
             tmp = tempfile.mkdtemp(prefix=f"{name}-")
             for f in files:
                 Path(tmp, f).parent.mkdir(parents=True, exist_ok=True)
-                Path(tmp, f).touch()
+                if f.endswith("/"):
+                    Path(tmp, f).mkdir(exist_ok=True)
+                else:
+                    Path(tmp, f).touch()
             print(check(tmp))

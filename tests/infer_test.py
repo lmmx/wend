@@ -144,44 +144,96 @@ name = st.one_of(
 )
 
 
+@st.composite
+def observed_trees(draw):
+    """Relative paths as given to `infer`, a trailing "/" marking a directory.
+
+    A path that is a prefix of another is a directory: listed with its "/"
+    (a directory that holds paths) or left out. A listed directory that is a
+    prefix of nothing is an empty directory.
+    """
+    paths = draw(
+        st.lists(
+            st.lists(name, min_size=1, max_size=4).map("/".join),
+            min_size=1,
+            max_size=40,
+            unique=True,
+        )
+    )
+    out = []
+    for p in paths:
+        if draw(st.booleans()):
+            out.append(p + "/")
+        elif not any(q.startswith(p + "/") for q in paths):
+            out.append(p)
+    return out
+
+
 @settings(max_examples=300, deadline=None)
 @example(["0/_", "00/_", "1/_"])  # "00" is not an instance of {n:d}
-@given(
-    st.lists(
-        st.lists(name, min_size=1, max_size=4).map("/".join),
-        min_size=1,
-        max_size=40,
-        unique=True,
-    )
-)
-def test_every_observed_path_is_covered(paths):
-    # a path that is a prefix of another is a directory, not a file
-    files = [p for p in paths if not any(q.startswith(p + "/") for q in paths)]
-    _check_schema(files, infer(files))
+@example(["a/examples", "b/examples", "a/y", "b/y", "c/y", "c/examples/"])
+@example(["r/run_1/m.pt", "r/run_2/m.pt", "r/run_3/", "r/"])
+@given(observed_trees())
+def test_every_observed_path_is_covered_by_its_kind(entries):
+    _check_schema(entries, infer(entries))
 
 
-def _check_schema(files, schema):
-    """The properties every inferred schema has over its observed files."""
-    assert schema.check(files) == []
-    assert sum(lay.count for lay in schema.layouts) == len(files)
+def _observed(entries):
+    """(path, is_dir) pairs of paths given to `infer`."""
+    return [(e.rstrip("/"), e.endswith("/")) for e in entries]
+
+
+def _mine(lay, observed):
+    """The observed paths of the layout's kind that the layout matches."""
+    return [
+        p for p, d in observed if d == (lay.kind == "dir") and lay.match(p) is not None
+    ]
+
+
+def _check_schema(entries, schema):
+    """The properties every inferred schema has over its observed paths.
+
+    ``entries`` are paths as given to `infer` (a trailing "/" marks a
+    directory). Each observed path is covered by a layout of its own kind, and
+    the layouts' counts partition the observed paths of each kind.
+    """
+    observed = _observed(entries)
+    assert schema.check(entries) == []
+    assert schema.check(observed) == []
+    for p, d in observed:
+        kind = "dir" if d else "file"
+        assert any(
+            lay.kind == kind and lay.match(p) is not None for lay in schema.layouts
+        ), (p, kind)
+    assert schema.total == len(observed)
+    for kind in ("file", "dir"):
+        counted = sum(lay.count for lay in schema.layouts if lay.kind == kind)
+        assert counted == sum(d == (kind == "dir") for _, d in observed)
     patterns = [(lay.expr.pattern, lay.kind) for lay in schema.layouts]
     assert len(patterns) == len(set(patterns))
-    dirs = {
-        "/".join(f.split("/")[:i]) for f in files for i in range(1, f.count("/") + 1)
+    # Observed directories: listed ones and those holding an observed path.
+    dirs = {p for p, d in observed if d} | {
+        "/".join(p.split("/")[:i])
+        for p, _ in observed
+        for i in range(1, p.count("/") + 1)
     }
     for lay in schema.layouts:
+        assert lay.kind in ("file", "dir")
         assert lay.expr.is_absolute() is False
         assert P("/root") / lay.expr == lay.under("/root")
-        assert lay.optional == _optional_oracle(lay, files, dirs)
-        assert lay.cardinality == _cardinality_oracle(lay, files, dirs)
+        mine = _mine(lay, observed)
+        # a layout counts observed paths of its kind that it matches
+        assert 0 < lay.count <= len(mine)
+        assert lay.optional == _optional_oracle(lay, mine, dirs)
+        assert lay.cardinality == _cardinality_oracle(lay, mine, dirs)
 
 
-def _optional_oracle(lay, files, dirs):
+def _optional_oracle(lay, mine, dirs):
     """Some directory matching a proper prefix of the pattern holds none of its paths.
 
-    A prefix ending in a SubPath matches directories at any depth.
+    ``mine`` are the layout's paths: the observed paths of its kind that it
+    matches. A prefix ending in a SubPath matches directories at any depth.
     """
-    mine = [f for f in files if lay.match(f) is not None]
     for j in range(1, len(lay.expr.parts)):
         prefix = PathExpr(REL, lay.expr.parts[:j])
         for d in dirs:
@@ -192,11 +244,10 @@ def _optional_oracle(lay, files, dirs):
     return False
 
 
-def _cardinality_oracle(lay, files, dirs):
+def _cardinality_oracle(lay, mine, dirs):
     """Lower bound from the optional oracle; upper bound: some directory holds two."""
-    mine = [f for f in files if lay.match(f) is not None]
     many = any(c > 1 for c in Counter(f.rpartition("/")[0] for f in mine).values())
-    if _optional_oracle(lay, files, dirs):
+    if _optional_oracle(lay, mine, dirs):
         return Cardinality.MANY if many else Cardinality.OPTIONAL
     return Cardinality.AT_LEAST_ONE if many else Cardinality.ONE
 
@@ -248,6 +299,135 @@ def test_cardinality_per_directory():
     # renaming keeps the flags
     assert model.rename(run="r").cardinality is Cardinality.ONE
     assert logs.rename(run="r").cardinality is Cardinality.AT_LEAST_ONE
+
+
+# -- kinds --------------------------------------------------------------------
+
+
+def _make(root, entries):
+    """Create ``entries`` below ``root``; a trailing "/" makes a directory."""
+    for e in entries:
+        p = Path(root, e)
+        if e.endswith("/"):
+            p.mkdir(parents=True, exist_ok=True)
+        else:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.touch()
+
+
+def test_empty_directories_named_like_files_elsewhere():
+    # a/examples and b/examples are files; c/examples and d/examples are empty
+    # directories, in package directories alike enough to form one map.
+    entries = [f"{p}/{f}" for p in "abcd" for f in ("copyright", "README", "log.gz")]
+    entries += ["a/examples", "b/examples", "c/examples/", "d/examples/"]
+    schema = infer(entries)
+    _check_schema(entries, schema)
+    lays = {(lay.expr.pattern, lay.kind): lay for lay in schema.layouts}
+    names, examples = lays["{dir}/{name}", "file"], lays["{dir}/examples", "dir"]
+    assert names.count == 10 and examples.count == 2
+    assert examples.cardinality is Cardinality.OPTIONAL
+    assert examples.fields["dir"].sample == ("c", "d")
+    # a path matches layouts of either kind; given its kind, only its own
+    assert [lay for lay, _ in schema.match("c/examples")] == [names, examples]
+    assert [lay for lay, _ in schema.match("c/examples", kind="dir")] == [examples]
+    assert [lay for lay, _ in schema.match("c/examples/")] == [examples]
+    assert [lay for lay, _ in schema.match("a/examples", kind="file")] == [names]
+    assert schema.check(["c/examples/", ("d/examples", True), "a/examples"]) == []
+    assert schema.check([("a/copyright", True), ("b/examples/x", False)]) == [
+        "a/copyright",
+        "b/examples/x",
+    ]
+    # a path without a kind is checked against layouts of either kind
+    assert schema.check(["e/examples"]) == []
+
+
+def test_empty_example_directories_in_a_walk(tmp_path):
+    # /usr/share/doc: package directories of extensionless files, some with an
+    # empty examples/ directory and some with files in it.
+    entries = []
+    pkgs = ["apt", "bc", "sed", "nano", "mawk", "lsof", "sudo", "procps"]
+    for i, pkg in enumerate(pkgs):
+        entries += [f"{pkg}/{f}" for f in ("copyright", "README", "NEWS", "log.gz")]
+        if i % 3 == 0:
+            entries.append(f"{pkg}/examples/")
+        elif i % 3 == 1:
+            entries += [f"{pkg}/examples/demo.sh", f"{pkg}/examples/run.sh"]
+    _make(tmp_path, entries)
+    schema = infer(tmp_path)
+    _check_schema(entries, schema)
+    [(lay, m)] = schema.match("apt/examples", kind="dir")
+    assert (lay.expr.pattern, lay.kind, lay.count) == ("{dir}/examples", "dir", 3)
+    assert m == {"dir": "apt"}
+    assert {m.path for m in lay.under(tmp_path).glob(kind="dir")} >= {
+        str(tmp_path / p / "examples") for p in ("apt", "nano", "sudo")
+    }
+    [(names, _)] = schema.match("apt/examples", kind="file")
+    assert (names.expr.pattern, names.count) == ("{dir}/{name}", 24)
+
+
+def test_empty_directory_in_a_family_of_directories():
+    # run_3 shares a skeleton with run_1 and run_2, which hold files
+    paths = ["runs/run_1/model.pt", "runs/run_2/model.pt", "runs/run_3/"]
+    schema = infer(paths)
+    _check_schema(paths, schema)
+    lays = {(lay.expr.pattern, lay.kind): lay for lay in schema.layouts}
+    empty = lays["runs/run_{run:d}", "dir"]
+    assert empty.count == 1 and empty.fields["run"].sample == (3,)
+    model = lays["runs/run_{run:d}/model.pt", "file"]
+    assert model.count == 2 and model.cardinality is Cardinality.OPTIONAL
+
+
+def test_listed_directories_are_observed_paths():
+    # in an iterable, a directory ending in "/" is an observed path even when
+    # it holds others; duplicates and the root itself count once and not at all
+    schema = infer(["a/", "a/b", "a/b", "c/", "c/", "./"])
+    _check_schema(["a/", "a/b", "c/"], schema)
+    assert schema.total == 3
+    assert sorted((lay.expr.pattern, lay.kind) for lay in schema.layouts) == [
+        ("a", "dir"),
+        ("a/b", "file"),
+        ("c", "dir"),
+    ]
+
+
+def test_match_kind_is_file_or_dir():
+    import pytest
+
+    schema = infer(["a/b", "c/"])
+    assert schema.match("c", kind="file") == []
+    with pytest.raises(ValueError, match="kind"):
+        schema.match("a/b", kind="link")
+
+
+@st.composite
+def doc_trees(draw):
+    """Package directories whose entries share names across kinds."""
+    names = ["copyright", "README", "NEWS", "examples", "html", "log.gz"]
+    entries = []
+    for pkg in draw(st.lists(ident, min_size=1, max_size=10, unique=True)):
+        for n in draw(st.lists(st.sampled_from(names), max_size=6, unique=True)):
+            how = draw(st.sampled_from(["file", "empty", "full"]))
+            if how == "file":
+                entries.append(f"doc/{pkg}/{n}")
+            elif how == "empty":
+                entries.append(f"doc/{pkg}/{n}/")
+            else:
+                inner = st.lists(st.sampled_from(names), min_size=1, unique=True)
+                entries += [f"doc/{pkg}/{n}/{m}" for m in draw(inner)]
+    return entries
+
+
+@settings(
+    max_examples=100,
+    deadline=None,
+    suppress_health_check=[HealthCheck.too_slow, HealthCheck.data_too_large],
+)
+@given(doc_trees())
+def test_files_and_empty_directories_sharing_names(entries):
+    _check_schema(entries, infer(entries))
+    with tempfile.TemporaryDirectory() as tmp:
+        _make(tmp, entries)
+        _check_schema(entries, infer(tmp))
 
 
 # -- variable depth -----------------------------------------------------------
@@ -323,6 +503,23 @@ crates/giacometti/src/tests/mock.rs crates/giacometti/src/tests/mock/git.rs
 docs/JOURNAL.md docs/journal/2025-01-25-outlook-doc-6.md
 docs/journal/2025-01-25-uv-backends-4.md
 """.split()
+
+
+def test_empty_directories_fold_like_files(tmp_path):
+    # an empty fixtures/ directory in every package folds as the modules do
+    paths = _package()
+    inits = [p for p in paths if p.endswith("/__init__.py")]
+    fixtures = [p.replace("__init__.py", "fixtures/") for p in inits]
+    _make(tmp_path, paths + fixtures)
+    schema = infer(tmp_path)
+    _check_schema(paths + fixtures, schema)
+    lays = {(lay.expr.pattern, lay.kind): lay for lay in schema.layouts}
+    lay = lays["src/pkg/{rel...}/fixtures", "dir"]
+    assert lay.count == len(fixtures) == 15
+    assert lay.match("src/pkg/plugins/fixtures") == {"rel": "plugins"}
+    found = {m.path for m in lay.under(tmp_path).glob(kind="dir")}
+    assert found == {str(tmp_path / p.rstrip("/")) for p in fixtures}
+    assert lays["src/pkg/{rel...}/{stem}.py", "file"].count == 60
 
 
 def test_code_repository_keeps_its_records():
@@ -509,7 +706,10 @@ ident = st.text(alphabet="abcdefgh_", min_size=1, max_size=5)
 
 @st.composite
 def nested_packages(draw):
-    """src/pkg with modules at every level and regular sub-package names."""
+    """src/pkg with modules at every level and regular sub-package names.
+
+    Some packages hold an empty ``fixtures/`` directory.
+    """
     depth = draw(st.integers(2, 4))
     subs = [
         draw(st.lists(ident, min_size=2, max_size=3, unique=True)) for _ in range(depth)
@@ -523,6 +723,8 @@ def nested_packages(draw):
             paths.append(f"{at}/{m}.py")
             if cache:
                 paths.append(f"{at}/__pycache__/{m}.pyc")
+        if draw(st.booleans()):
+            paths.append(f"{at}/fixtures/")
         if level < depth:
             for s in subs[level]:
                 grow(f"{at}/{s}", level + 1)
@@ -545,12 +747,10 @@ def test_nested_trees_fold_into_subpath_layouts(paths):
     [py] = [lay for lay in schema.layouts if lay.expr.pattern.endswith(".py")]
     assert any(isinstance(part, Splice) for part in py.expr.parts)
     assert py.count == len(modules)
-    # glob through every layout finds its observed files again
+    # glob through every layout finds its observed paths again, of its kind
     with tempfile.TemporaryDirectory() as tmp:
-        for p in paths:
-            Path(tmp, p).parent.mkdir(parents=True, exist_ok=True)
-            Path(tmp, p).touch()
+        _make(tmp, paths)
         for lay in schema.layouts:
-            found = {m.path for m in lay.under(tmp).glob()}
-            mine = [p for p in paths if lay.match(p) is not None]
+            found = {m.path for m in lay.under(tmp).glob(kind=lay.kind)}
+            mine = _mine(lay, _observed(paths))
             assert {os.path.join(tmp, p) for p in mine} <= found

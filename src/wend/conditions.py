@@ -43,6 +43,7 @@ from .errors import (
 
 if TYPE_CHECKING:
     from ._expr import PathExpr
+    from .schema import Entry
 
 
 __all__ = [
@@ -74,6 +75,25 @@ class Condition:
 
     def __reduce__(self) -> str:
         return self.name  # the module-level singleton of that name
+
+    def __call__(
+        self,
+        path: Any,
+        /,
+        *,
+        optional: bool = False,
+        many: bool = False,
+        open: bool = False,
+    ) -> Entry:
+        """``File(path, ...)`` and ``Dir(path, ...)`` declare a schema entry
+        (see `wend.schema`): a relative path that names a file or directory,
+        with its cardinality. Other conditions are not callable."""
+        if self.name not in ("File", "Dir"):
+            raise TypeError(f"{self.name} is a condition, not a schema entry")
+        from .schema import Entry
+
+        kind = "file" if self.name == "File" else "dir"
+        return Entry(path, kind, optional=optional, many=many, open=open)
 
 
 Exists = Condition("Exists")

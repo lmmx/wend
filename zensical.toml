@@ -1,0 +1,179 @@
+[project]
+site_name = "wend"
+site_url = "https://lmmx.github.io/wend/"
+site_description = "Filesystem paths as symbolic expressions built from Python t-strings: render them, match them back, and find them on disk."
+site_author = "Louis Maddox"
+docs_dir = "docs/site"
+repo_name = "lmmx/wend"
+repo_url = "https://github.com/lmmx/wend"
+edit_uri = "edit/master/docs/site/"
+copyright = "wend is licensed under MIT"
+nav = [
+  {"Home" = "index.md"},
+  {"Reference" = [
+    {"API reference" = [
+      "reference/index.md",
+      {"wend" = "reference/api/wend.md"},
+      {"wend.anchors" = "reference/api/anchors.md"},
+      {"wend.conditions" = "reference/api/conditions.md"},
+      {"wend.errors" = "reference/api/errors.md"},
+      {"wend.fs" = "reference/api/fs.md"},
+      {"wend.infer" = "reference/api/infer.md"},
+      {"wend.schema" = "reference/api/schema.md"},
+      {"wend.lineage" = "reference/api/lineage.md"},
+      {"wend.query" = "reference/api/query.md"},
+      {"wend.templates" = "reference/api/templates.md"},
+      {"wend.frame" = "reference/api/frame.md"},
+      {"wend.pydantic" = "reference/api/pydantic.md"}
+    ]}
+  ]},
+  {"Maintainers" = ["maintainers/documentation.md"]}
+]
+extra_css = ["assets/stylesheets/extra.css"]
+
+[project.markdown_extensions.abbr]
+[project.markdown_extensions.admonition]
+[project.markdown_extensions.attr_list]
+[project.markdown_extensions.def_list]
+[project.markdown_extensions.footnotes]
+[project.markdown_extensions.md_in_html]
+[project.markdown_extensions.tables]
+[project.markdown_extensions.toc]
+permalink = true
+[project.markdown_extensions.pymdownx.details]
+[project.markdown_extensions.pymdownx.highlight]
+pygments_lang_class = true
+[project.markdown_extensions.pymdownx.inlinehilite]
+[project.markdown_extensions.pymdownx.keys]
+[project.markdown_extensions.pymdownx.snippets]
+check_paths = true
+[project.markdown_extensions.pymdownx.superfences]
+[project.markdown_extensions.pymdownx.tabbed]
+alternate_style = true
+
+[project.plugins.search]
+
+# API reference: mkdocstrings' Python handler (griffe, static analysis of src/; wend's
+# optional dependencies are not needed). Zensical maps this plugin table onto its own
+# mkdocstrings Markdown extension and enables autorefs with it.
+[project.plugins.mkdocstrings]
+default_handler = "python"
+
+[project.plugins.mkdocstrings.handlers.python]
+paths = ["src"]
+inventories = ["https://docs.python.org/3/objects.inv"]
+
+[project.plugins.mkdocstrings.handlers.python.options]
+docstring_style = "google"
+# "public" honours each module's __all__ (else: no leading underscore). Undocumented members
+# are shown (most properties and dataclass fields have no docstring); the extension removes
+# special methods that are not API (__repr__, __eq__, __slots__, ...).
+filters = "public"
+extensions = ["docs/scripts/griffe_wend.py"]
+members_order = ["__all__", "source"]
+group_by_category = false
+heading_level = 2
+show_root_heading = false
+show_root_full_path = true
+show_root_members_full_path = false
+show_object_full_path = false
+show_symbol_type_heading = true
+show_symbol_type_toc = true
+show_signature_annotations = true
+separate_signature = true
+signature_crossrefs = true
+line_length = 88
+merge_init_into_class = true
+show_source = false
+show_bases = true
+show_labels = true
+show_overloads = true
+overloads_only = true
+show_if_no_docstring = true
+summary = false
+scoped_crossrefs = true
+
+[project.theme]
+variant = "modern"
+font.text = "IBM Plex Sans"
+font.code = "IBM Plex Mono"
+language = "en"
+features = [
+  "content.action.copy",
+  "content.action.edit",
+  "content.code.copy",
+  "content.tabs.link",
+  "navigation.footer",
+  "navigation.indexes",
+  "navigation.instant",
+  "navigation.instant.prefetch",
+  "navigation.top",
+  "search.highlight",
+  "search.suggest",
+  "toc.follow"
+]
+
+[project.theme.icon]
+repo = "fontawesome/brands/github"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: light)"
+scheme = "default"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/moon"
+toggle.name = "Switch to dark mode"
+
+[[project.theme.palette]]
+media = "(prefers-color-scheme: dark)"
+scheme = "slate"
+primary = "custom"
+accent = "custom"
+toggle.icon = "lucide/sun"
+toggle.name = "Switch to light mode"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/github"
+link = "https://github.com/lmmx/wend"
+name = "wend on GitHub"
+
+[[project.extra.social]]
+icon = "fontawesome/brands/python"
+link = "https://pypi.org/project/wend/"
+name = "wend on PyPI"
+
+# llms.txt, llms-full.txt and a Markdown copy of each page listed here (<page>/index.md).
+# Each description must equal the page's front-matter description (check_site.py).
+[project.plugins.llmstxt]
+full_output = "llms-full.txt"
+markdown_description = """
+wend is a Python 3.14 library that builds filesystem paths as symbolic expressions from
+t-strings (PEP 750). One expression renders paths from values (`render`), reads values back
+out of a path (`match`) and finds the existing paths it describes (`glob`); it also carries
+conditions, relations to other paths, schemas, inference and lineage. Install with
+`pip install wend`. Each link below is the Markdown version of a page of
+https://lmmx.github.io/wend/.
+"""
+
+[project.plugins.llmstxt.sections]
+"Start here" = [
+  {"index.md" = "Filesystem paths as symbolic expressions built from Python t-strings: render them, match them back, and find them on disk."},
+]
+"API reference" = [
+  {"reference/index.md" = "wend's public API, module by module, generated from the docstrings."},
+  {"reference/api/wend.md" = "The wend package: building, resolving, matching and discovering path expressions."},
+  {"reference/api/anchors.md" = "Anchors: the home directory, the working directory and the XDG base directories."},
+  {"reference/api/conditions.md" = "Conditions a path must meet when it is realised, and their effects."},
+  {"reference/api/errors.md" = "The exceptions wend raises, all subclasses of WendError."},
+  {"reference/api/fs.md" = "The filesystem protocol that glob and infer use, with local and fsspec backends."},
+  {"reference/api/infer.md" = "Infer path expressions from an existing directory tree."},
+  {"reference/api/schema.md" = "Declare a directory layout as a schema of files and directories, and check trees against it."},
+  {"reference/api/lineage.md" = "Lineage of expressions and of the files made from them."},
+  {"reference/api/query.md" = "Queries over discovered paths, with filesystem predicates."},
+  {"reference/api/templates.md" = "Ready-made path templates, such as numbered shards."},
+  {"reference/api/frame.md" = "Vectorised resolution and matching of path columns with Polars."},
+  {"reference/api/pydantic.md" = "Path fields for Pydantic models."},
+]
+"Optional" = [
+  {"maintainers/documentation.md" = "How wend's documentation site is built, checked, tested and published to GitHub Pages."},
+]

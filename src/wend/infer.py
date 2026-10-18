@@ -402,7 +402,9 @@ def _unify(rules: list[_Rule], cfg: _Config, opaque: bool = False) -> list[_Rule
                 if len(group) > 1
                 else group[0]
             )
-            if merged.literal_like() or (opaque and _local_family(merged)):
+            if merged.shape == ("lit", ".."):
+                out.append(merged)  # a field never binds "..": it stays literal
+            elif merged.literal_like() or (opaque and _local_family(merged)):
                 lone.append(merged)
             else:
                 out.append(merged)

@@ -571,6 +571,18 @@ def test_parent_components_stay_out_of_subpaths():
     assert "src/{rel...}/{stem}.py" in pats and "src/../q/x.py" in pats
 
 
+def test_parent_references_stay_literal():
+    # a field never binds "..": a directory or a file named so stays a record
+    for paths, record in (
+        (["a/x/f.txt", "b/x/f.txt", "c/x/f.txt", "../x/f.txt"], "../x/f.txt"),
+        (["q/a", "q/b", "q/c", "q/.."], "q/.."),
+    ):
+        schema = infer(paths)
+        _check_schema(paths, schema)
+        assert [lay.count for lay in schema.layouts] == [3, 1]
+        assert schema.layouts[1].expr.pattern == record
+
+
 def test_recursion_needs_three_depths_and_a_root():
     two = [f"src/{d}{m}.py" for d in ("", "a/", "b/") for m in ("x", "y", "z")]
     assert all("{rel" not in lay.expr.pattern for lay in infer(two).layouts)

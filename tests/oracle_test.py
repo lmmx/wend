@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import string
 from pathlib import PurePosixPath
+from string.templatelib import Interpolation, Template
 
 import pytest
 from hypothesis import HealthCheck, assume, given, settings
@@ -28,6 +29,7 @@ from hypothesis import strategies as st
 
 from wend import (
     InvalidBindingError,
+    Kind,
     NotInvertibleError,
     P,
     Param,
@@ -326,3 +328,157 @@ def test_match_fast_path_equals_search(start, prog, env):
         return
     fast = expr.match_all(rendered)
     assert fast == slow, (expr, fast, slow)
+
+
+# -- Fast-path shapes (docs/SEMANTICS.md §8) ---------------------------------
+#
+# Expressions are generated from templates that mix integer fields (every
+# supported presentation type, padded or not, typed or untyped), free string
+# fields, `choices` fields, whole-segment parameters, SubPath splices and
+# literals chosen to sit next to fields' digit classes ("-", "a", "0", "f").
+# Wherever an expression has a fast plan, its result must equal the full
+# search, on rendered paths and on paths a few edits away from them.
+
+FP_INTS = [Param(f"n{i}", type=int) for i in range(3)]
+FP_UNTYPED = Param("u")
+FP_STRS = [Param("fw"), Param("fv", type=str)]
+FP_CHOICES = [
+    Param("c0", choices={"a", "ab", "b"}),
+    Param("c1", choices={"train", "test", "val"}),
+    Param("c2", choices={"x", "x_1", ""}),
+    Param("c3", choices={"0", "1a", "-", "f"}),
+    Param("c4", type=str, choices={"gz", "tar.gz", "txt"}),
+]
+FP_SEG = Param("fs", choices={"p", "q.r"})
+FP_SUBS = [SubPath("s0"), SubPath("s1")]
+FP_ROOTS = {"root": Param("root"), "abs": Param("abs", kind=Kind.ABSOLUTE)}
+
+FP_INT_SPECS = ["", "d", "03d", "x", "02x", "X", "o", "03o", "b", "04b"]
+FP_UNTYPED_SPECS = ["d", "x", "05", "02X", "o"]
+FP_LITERALS = ["_", "-", ".", "a", "f", "0", "9", "x", "-v", "a-", "_1", " ", "\n"]
+FP_ALPHABET = "ab_-.0x1f \n"
+
+fp_field = st.one_of(
+    st.tuples(st.just("int"), st.integers(0, 2), st.sampled_from(FP_INT_SPECS)),
+    st.tuples(st.just("untyped"), st.just(0), st.sampled_from(FP_UNTYPED_SPECS)),
+    st.tuples(st.just("str"), st.integers(0, 1), st.just("")),
+    st.tuples(st.just("choice"), st.integers(0, len(FP_CHOICES) - 1), st.just("")),
+)
+fp_lit = st.sampled_from(["", *FP_LITERALS])  # "" makes the fields adjacent
+# A template segment: a leading literal, then fields each followed by a literal.
+fp_template = st.tuples(
+    fp_lit, st.lists(st.tuples(fp_field, fp_lit), min_size=1, max_size=3)
+)
+fp_part = st.one_of(
+    st.tuples(st.just("tpl"), fp_template),
+    st.tuples(st.just("lit"), st.sampled_from(["a", "x.y", "..", "0"])),
+    st.tuples(st.just("seg"), st.none()),
+    st.tuples(st.just("sub"), st.integers(0, 1)),
+)
+fp_start = st.sampled_from([".", "/", "//", "/base", "root", "abs"])
+
+
+def fp_build(start, parts):
+    expr = P(FP_ROOTS[start]) if start in FP_ROOTS else P(start)
+    for kind, arg in parts:
+        if kind == "lit":
+            expr = expr / arg
+        elif kind == "seg":
+            expr = expr / FP_SEG
+        elif kind == "sub":
+            expr = expr / FP_SUBS[arg]
+        else:
+            lead, fields = arg
+            items: list = [lead]
+            for (what, i, spec), lit in fields:
+                if what == "int":
+                    p = FP_INTS[i]
+                elif what == "choice":
+                    p = FP_CHOICES[i]
+                elif what == "str":
+                    p = FP_STRS[i]
+                else:
+                    p = FP_UNTYPED
+                items += [Interpolation(p, p.name, None, spec), lit]
+            expr = expr / T(Template(*items))
+    return expr
+
+
+fp_text = st.text(alphabet=FP_ALPHABET, max_size=4)
+fp_int = st.one_of(
+    st.integers(-300, 300), st.sampled_from([0, -1, 10, -10, 255, -255, 4096])
+)
+fp_env = st.fixed_dictionaries(
+    {
+        "root": st.sampled_from(["/mnt/x", "rel", "/", "//", ".", "a/b", "//net", "0"]),
+        "abs": st.sampled_from(["/", "//", "/a", "//n/b", "/0/x"]),
+        **{p.name: fp_int for p in FP_INTS},
+        "u": st.one_of(fp_int, fp_text),
+        "fw": fp_text,
+        "fv": fp_text,
+        **{p.name: st.sampled_from(sorted(p.choices)) for p in FP_CHOICES},
+        "fs": st.sampled_from(["p", "q.r"]),
+        "s0": st.sampled_from([".", "a", "a/b", "0/x", "..", "x.y"]),
+        "s1": st.sampled_from([".", "b", "a/.."]),
+    }
+)
+
+
+def typed(solutions):
+    """Solutions with each value's type, so that 1 and True (or 1.0) differ."""
+    return [{k: (type(v), v) for k, v in s.items()} for s in solutions]
+
+
+def check_fast_equals_search(expr, path):
+    from wend._match import _expr_plan
+
+    try:
+        slow = expr.match_all(path, fast=False)
+    except NotInvertibleError:
+        return None
+    fast = expr.match_all(path)
+    assert typed(fast) == typed(slow), (expr, path, fast, slow)
+    planned = _expr_plan(expr) is not None
+    if planned:
+        assert len(slow) <= 1, (expr, path, slow)
+    return planned
+
+
+def mutate(path, edits):
+    for op, i, ch in edits:
+        i = i % (len(path) + 1)
+        if op == 0:
+            path = path[:i] + ch + path[i:]
+        elif op == 1:
+            path = path[:i] + path[i + 1 :]
+        else:
+            path = path[:i] + ch + path[i + 1 :]
+    return path or "."
+
+
+fp_edits = st.lists(
+    st.tuples(
+        st.integers(0, 2), st.integers(0, 60), st.sampled_from(FP_ALPHABET + "/")
+    ),
+    min_size=1,
+    max_size=3,
+)
+
+FP_SETTINGS = settings(
+    max_examples=1500, deadline=None, suppress_health_check=[HealthCheck.too_slow]
+)
+
+
+@FP_SETTINGS
+@given(fp_start, st.lists(fp_part, max_size=4), fp_env, st.lists(fp_edits, max_size=3))
+def test_fast_plan_equals_search_on_new_shapes(start, parts, env, edits):
+    try:
+        expr = fp_build(start, parts)
+    except WendError, ValueError, TypeError:
+        return
+    kind, rendered = outcome(lambda: expr.render(env))
+    if kind != "ok":
+        rendered = "/base/a"  # unrenderable bindings still give edits to match
+    check_fast_equals_search(expr, rendered)
+    for e in edits:
+        check_fast_equals_search(expr, mutate(rendered, e))

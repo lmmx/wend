@@ -1,6 +1,9 @@
 """Benchmarks across workloads, with baselines.
 
-Run with: uv run python bench/bench.py [--quick]
+Run with: uv run python bench/bench.py [--quick] [workload ...]
+
+Workloads: single, batch, matching, shapes, discovery, inference, symbolic
+(all by default).
 
 Every timing is the median of R repeats (min and max shown), each repeat timing
 a loop of N calls; values are nanoseconds per item. Absolute numbers are
@@ -175,11 +178,71 @@ def matching() -> None:
         ("wend match (head unbound)", bench(lambda: shard.match(OUT), n)),
         ("wend match (root bound)", bench(lambda: bound.match(OUT), n)),
         (
+            "wend match_all(fast=False) (full search, head unbound)",
+            bench(lambda: shard.match_all(OUT, fast=False), n),
+        ),
+        (
             "baseline: hand-written regex + int() (no round-trip check)",
             bench(regex_baseline, n),
         ),
     ]
     table("Matching one path to typed bindings", rows)
+
+
+def shapes() -> None:
+    """Matching layouts beyond the README shard: SubPath, other int bases,
+    choices, and a string field before other fields."""
+    n = 2_000 if QUICK else 10_000
+    rel, stem = SubPath("rel"), Param("stem")
+    kind = Param("kind", choices={"img", "txt", "bin"})
+    model, epoch = Param("model"), Param("epoch", type=int)
+    cases = [
+        (
+            "SubPath, fixed tail (root bound)",
+            (root / "data" / rel / "x" / T(t"chunk_{idx:04d}.bin")).bind(
+                root="/mnt/storage"
+            ),
+            "/mnt/storage/data/a/b/c/x/chunk_0007.bin",
+        ),
+        (
+            "SubPath then a file (root bound)",
+            (root / rel / T(t"{stem}.py")).bind(root="/src"),
+            "/src/pkg/sub/mod.py",
+        ),
+        (
+            "choices + hex",
+            P("/objs") / split / T(t"{kind}_{idx:04x}.bin"),
+            "/objs/train/img_00ff.bin",
+        ),
+        (
+            "string before a padded int",
+            P("/ckpt") / T(t"{model}_epoch{epoch:03d}.pt"),
+            "/ckpt/resnet_50_epoch007.pt",
+        ),
+    ]
+    rows = []
+    for name, e, path in cases:
+        assert e.match(path) is not None, name
+        rows.append((f"wend match: {name}", bench(lambda e=e, p=path: e.match(p), n)))
+        rows.append(
+            (
+                f"wend match_all(fast=False): {name}",
+                bench(lambda e=e, p=path: e.match_all(p, fast=False), n),
+            )
+        )
+    rx = re.compile(r"/mnt/storage/data/(?:(.+)/)?x/chunk_(\d{4})\.bin")
+
+    def regex_baseline():
+        m = rx.fullmatch(cases[0][2])
+        return m[1] or ".", int(m[2])
+
+    rows.append(
+        (
+            "baseline: hand-written regex, SubPath case (no round-trip check)",
+            bench(regex_baseline, n),
+        )
+    )
+    table("Matching other layouts", rows)
 
 
 def discovery() -> None:
@@ -275,11 +338,21 @@ def symbolic() -> None:
     table("Symbolic operations", rows)
 
 
+WORKLOADS = {
+    "single": single,
+    "batch": batch,
+    "matching": matching,
+    "shapes": shapes,
+    "discovery": discovery,
+    "inference": inference,
+    "symbolic": symbolic,
+}
+
 if __name__ == "__main__":
+    chosen = [a for a in sys.argv[1:] if not a.startswith("--")] or list(WORKLOADS)
+    unknown = sorted(set(chosen) - WORKLOADS.keys())
+    if unknown:
+        sys.exit(f"unknown workloads {unknown}; choose from {list(WORKLOADS)}")
     print(env_line())
-    single()
-    batch()
-    matching()
-    discovery()
-    inference()
-    symbolic()
+    for name in chosen:
+        WORKLOADS[name]()

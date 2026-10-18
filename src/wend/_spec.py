@@ -95,6 +95,36 @@ def facts(spec: str, conversion: str | None, declared: Any) -> tuple[bool, bool]
     return info.fill_char != ".", True
 
 
+_PLAIN_INT_SPEC = re.compile(r"(?:0[0-9]+)?([bdoxX]?)")
+# Presentation type -> (the digits it writes, the base that reads them back).
+INT_DIGITS = {
+    "b": ("01", 2),
+    "o": ("01234567", 8),
+    "d": ("0123456789", 10),
+    "x": ("0123456789abcdef", 16),
+    "X": ("0123456789ABCDEF", 16),
+}
+
+
+def plain_int(spec: str, declared: Any) -> tuple[str, int] | None:
+    """(digits, base) when every int formats under ``spec`` as ``-?[digits]+``.
+
+    Covers the presentation types ``b``, ``d``, ``o``, ``x`` and ``X`` with an
+    optional zero-padded width (``05x``), and an empty or width-only spec for a
+    parameter declared ``int``. Anything else (signs, grouping, ``#``, fills,
+    space padding) returns None. ``declared`` must be None or ``int``.
+    """
+    m = _PLAIN_INT_SPEC.fullmatch(spec)
+    if m is None:
+        return None
+    t = m[1]
+    if not t:
+        if declared is not int:
+            return None  # an untyped "" or "05" spec formats (and parses) a str
+        t = "d"
+    return INT_DIGITS[t]
+
+
 def allowed_chars(
     spec: str, conversion: str | None, declared: Any
 ) -> frozenset[str] | None:

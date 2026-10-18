@@ -295,27 +295,70 @@ wend's obligations, for every expression `e` and environment `env`:
 | every observed path matches an inferred layout of its kind (file or directory), and the layouts' counts partition the observed paths of each kind | **by construction** (inference verifies each path against its layout and the counts per kind, and raises otherwise) and tested |
 
 **Fast-path uniqueness argument.** A fast-path segment is a sequence of
-literal strings and fields in which:
+literals and fields (no conversion, a static spec), where each field is:
 
-- every integer field is followed by a literal whose first character is not a
-  digit (or by the end of the segment);
-- at most one string field appears, and only after the last other field.
+- an *integer* field (untyped or `type=int`): spec `[0N]t` with `t` one of
+  `b d o x X`, or `[0N]` with `type=int` (`t = d`). Its renderings are
+  `-?D+` for the digit class `D` of `t` (`01`, `0-7`, `0-9`, `0-9a-f`,
+  `0-9A-F`). An untyped field with spec `05` formats a `str`, so it is not
+  one;
+- a *choice* field (untyped or `type=str`): spec `""` and `choices` that are
+  all `str`. Its renderings are the choices;
+- a *free* string field (untyped or `type=str`): spec `""`, any text without
+  `/`. A whole-segment parameter is free too, as the segment's only piece.
 
-The regex is built from fixed literals, integer fields `-?[0-9]+`, and the
-final string field `.*`. It is matched against the whole segment. Reading left
-to right:
+The segment needs a *pivot* field (the free field, if any). Every field before
+the pivot must be *forced from the left* by the piece after it. Every field
+after the pivot must be *forced from the right* by the piece before it:
 
-- a literal must match at a fixed position;
-- an integer field is a maximal digit run: it cannot stop earlier, because the
-  next character must begin the following literal, which is not a digit; and
-  it cannot extend further;
-- the final string field ends where the trailing literal must begin, at a
-  fixed distance from the end.
+| field | forced from the left | forced from the right |
+|---|---|---|
+| integer, class `D` | the next piece is a literal not starting with a character in `D` | the previous piece is a literal not ending with a character in `D` or `-` |
+| choice; `L` is the literal on that side, `""` for a field | for distinct choices `c` and `c + r`, neither of `r` and `L` is a prefix of the other | the mirror: for `c` and `r + c`, neither of `r` and `L` is a suffix of the other |
+| free | never | never |
 
-So each field's span is forced, and at most one parse exists. Values come from
-the spans by `int()` or identity, so at most one binding exists per segment.
-With no `SubPath` and a fixed head extent, the expression has at most one
-candidate overall.
+Reading from the start of the segment, each piece before the pivot starts at a
+forced position and ends at a forced one:
+
+- a literal has a fixed length;
+- an integer field `-?D+` ends at the first character after its digits that
+  is not in `D`, since the next literal starts there;
+- a choice field can be only one choice: if `c` and `c + r` both fit, then `r`
+  and `L` both start the rest of the text, so one is a prefix of the other.
+
+Reading from the end gives the mirror argument for the pieces after the pivot.
+There, an integer field starts where its maximal run of `D` characters
+starts, or one character earlier if that character is `-`. The previous
+literal cannot end with either character, so it cannot take that position
+instead. The pivot takes the text in between. Every span is forced, and
+values come from spans by `int(span, base)` or identity, so each segment has
+at most one binding.
+
+A free field is never forced: it may contain any literal next to it. So there
+is at most one per segment, and only as the pivot. `{a}{b}`, `{n:02d}{w}` and
+`{w}-{n:d}` are ambiguous (for the last, `x--5` is `w="x", n=-5` or
+`w="x-", n=5`) and use the full search. `choices` make a field's values
+finite, so the condition is checked on the declared values.
+
+The whole path is one regex `fullmatch` on the canonical path. Each segment
+regex matches only non-empty text without `/`, so segments line up with
+separators:
+
+- under a literal or root head without a `SubPath`, the segments are the
+  path's components;
+- under a literal or root head with one `SubPath`, the segments before it take
+  the first components and those after it the last ones. Both counts are
+  fixed, so the `SubPath` takes the run in between (`.` when empty);
+- under a head parameter without a `SubPath`, the segments take the last
+  components and the head the rest.
+
+A head parameter with a `SubPath`, two `SubPath`s, or a deferred head have no
+forced split. For example, `root / SubPath("s") / "x"` reads `/a/b/x` both as
+`root="/a/b", s="."` and as `root="/a", s="b"`. Those use the full search,
+which reports the ambiguity. Fast results are still verified by rendering.
+The tests enumerate every two-field segment template over these field kinds
+and boundary literals, and check that a plan never meets an ambiguous path
+and agrees with the full search.
 
 ## 9. Connectivity
 

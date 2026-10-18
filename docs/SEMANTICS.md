@@ -94,7 +94,10 @@ Let `v` be the bound value. Declared `type` and `choices` are checked against
   `"3"` and `None` gives `"None"` (a declared `type=` rejects values you do
   not expect). A format call that raises makes the binding invalid.
 
-Text containing NUL is invalid.
+Text containing NUL is invalid. No path can contain NUL, so the rule
+applies to literal text too: a literal path, template text, name, stem or
+suffix containing NUL is an operation error, and a bound value containing
+NUL is an invalid binding.
 
 | kind | requirement | contributes |
 |---|---|---|

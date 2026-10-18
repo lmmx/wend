@@ -30,7 +30,7 @@ both are listed here.
 | `glob` and symlinks | (no `glob`) | not followed below the expression's literal prefix unless `follow_symlinks=True` | following links out of a tree is opt-in |
 | `repr(expr)` | nested dataclasses | `PathExpr('{root}/data/{dataset}')` | readable patterns |
 | Using a `Param` inside an f-string (`f"chunk_{idx}"`) | produced a string containing the Param's repr | `TypeError` pointing to t-strings | catches a silent bug |
-| `resolve(...)` | mapping only | mapping and/or keyword arguments; `cls=` chooses the result type | |
+| `resolve(...)` | mapping only | mapping and/or keyword arguments; `cls=` chooses the result type, so a parameter named `cls` is bound in the mapping | a `cls=` keyword on an expression with a `cls` parameter could mean either, so it raises `TypeError` unless the mapping binds `cls` |
 
 ## New, with no 0.1 counterpart
 

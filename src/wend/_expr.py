@@ -1039,7 +1039,17 @@ class PathExpr(_Cached):
         cls: type = Path,
         **kw: Any,
     ) -> Any:
-        """Resolve to a concrete path (``pathlib.Path`` unless ``cls`` is given)."""
+        """Resolve to a concrete path (``pathlib.Path`` unless ``cls`` is given).
+
+        A parameter named ``cls`` is bound in ``mapping``; a ``cls=`` keyword
+        is then the result type. Without it in ``mapping``, a ``cls=`` keyword
+        on such an expression is ambiguous and raises `TypeError`.
+        """
+        if cls is not Path and "cls" in self.param_names:
+            from .errors import _check_option_keywords
+
+            env = _make_env(mapping, kw)
+            _check_option_keywords("resolve", self, env, [("cls", cls, Path)])
         return cls(self.render(mapping, **kw))
 
     # -- matching, discovery, compilation (implemented in sibling modules) --
@@ -1059,7 +1069,8 @@ class PathExpr(_Cached):
         return match_all(self, path, limit=limit, fast=fast)
 
     def glob(self, mapping: Any = None, /, **kw: Any) -> Any:
-        """Discover existing paths matching this expression (see `wend.glob`)."""
+        """Discover existing paths matching this expression (see `wend.glob`
+        for the options, including ``ambiguous=``)."""
         from ._fs import glob
 
         return glob(self, mapping, **kw)

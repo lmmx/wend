@@ -18,6 +18,7 @@ separate agent that sees only the pair pages.
            2. Render the result, measure it, and gate it.
            3. If the gates pass, it becomes the incumbent; record the judged rejections.
 
+Only one autoround runs at a time (auto/LOCK holds its pid; a second one exits).
 State: auto/state.json holds:
   incumbent  {tag, spec, renders, metrics}
   tried      {fid: rejected attempts}; the ranking halves a feature's score per rejection
@@ -172,5 +173,19 @@ if __name__ == "__main__":
     ap.add_argument("cmd"); ap.add_argument("round"); ap.add_argument("accepted", nargs="?", default="")
     ap.add_argument("--n", type=int, default=3); ap.add_argument("--gens", type=int, default=18); ap.add_argument("--rejected")
     A = ap.parse_args()
-    S = json.load(open(STATE))
-    (propose if A.cmd == "propose" else merge)(A, S)
+    # one round at a time: a wake-up must not start a round while another is alive
+    LOCK = "auto/LOCK"
+    if os.path.exists(LOCK):
+        pid = int(json.load(open(LOCK))["pid"])
+        try:
+            os.kill(pid, 0); alive = True
+        except OSError:
+            alive = False
+        if alive:
+            sys.exit(f"autoround: {json.load(open(LOCK))} is still running")
+    json.dump({"pid": os.getpid(), "cmd": A.cmd, "round": A.round}, open(LOCK, "w"))
+    try:
+        S = json.load(open(STATE))
+        (propose if A.cmd == "propose" else merge)(A, S)
+    finally:
+        os.remove(LOCK)

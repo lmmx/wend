@@ -237,7 +237,31 @@ Mesh check, right-valley window:
 | blue visible local-fold area | 2,771 px² | 710 px² | 1,365 px² |
 | yellow visible local-fold area | 1,935 px² | 661 px² | 587 px² |
 
+### Round 5: refine e2b (e3): the right-valley candidate
+
+The same fit from e2b, with the visible-fold weight 20 → 60 and the image weight 100 → 150.
+
+`12-refine-e3-curl.png`: rows baseline (reference beside it) | e2b | e3; columns colour, clay, zebra. `13-refine-e3-full.png`: whole body, hero and 3/4 views.
+
+- **The dimple is gone,** in clay and in zebra.
+- **The tuck is cleaner than e2b's.** The stripes where the back leg tucks under fan out instead of bunching, and e2b's small singular spot at the right edge is gone.
+- **The W is intact** in the hero and the 3/4 view.
+- **The blue lobe still reads as full** from the front. Its sections flatten only in depth at the hairpin (qd ≥ 0.62); the lateral axis stays at 0.95–1.0.
+
+Mesh check, right-valley window:
+
+| | baseline spline | e2b | e3 |
+|---|---|---|---|
+| blue non-local self-penetration | 12,276 px², 45.6 px deep | 1,581 px², 6.1 px | **0** |
+| blue visible local-fold area | 2,771 px² | 1,365 px² | 799 px² |
+| yellow visible local-fold area | 1,935 px² | 587 px² | 381 px² |
+| yellow non-local self-penetration | 5,585 px², 11 px | 1,160 px², 5.7 px | 1,983 px², 8.2 px |
+
+**Still different from the reference:** its blue lobe is a narrow teardrop between the two yellows, ours a broader bead. That is lobe-shape correspondence, not a surface defect.
+
+**The committed baseline is unchanged.** e3 is a candidate: `snakes/spline-rv-e3.json`, rendered with `still-spline.html?spec=spline-rv-e3.json`.
+
 ## Next
 
-- **Refine e2b (running):** one short run from e2b with the visible-fold and image weights raised, aimed at the tuck's fold and the bead's extent.
-- **Then decide by eye.** Promote only if the tuck's zebra flow is clean, the bead matches the reference's extent, and the W stays intact.
+- **The left valley, the same way.** It has the same structure: yellow passes 56.6 px into itself (stations 421 / 501) and blue 39 px (447 / 521). The procedure: an elliptical-section fit, choose the leg order (both tried), refine, and judge on the same sheets.
+- **Then the right valley's lobe shape:** narrow the blue bead towards the reference's teardrop.

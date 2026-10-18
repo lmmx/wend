@@ -446,6 +446,32 @@ def test_a_spec_read_from_the_path_cannot_ask_for_more_than_the_text():
     assert T(t"{p:d}_{x:.{p}g}").match("40_1.5") == {"p": 40, "x": 1.5}
 
 
+def test_a_tuple_or_union_type_reads_each_member():
+    """``type=`` takes what ``isinstance`` takes, so a field reads each member
+    type in order, and verification keeps the readings that render."""
+    either = Param("x", type=(int, str))
+    assert T(t"k{either}").match("kab") == {"x": "ab"}
+    with pytest.raises(AmbiguousMatchError):  # 5 and "5" both render k5
+        T(t"k{either}").match("k5")
+    maybe = Param("n", type=int | None)
+    assert T(t"k{maybe}").match("kNone") == {"n": None}
+    assert T(t"k{maybe:03d}").match("k007") == {"n": 7}
+    assert T(t"k{maybe:03d}").match("kNone") is None  # None takes no spec
+    seg = Param("n", type=int | None)
+    assert (P("/r") / seg).match("/r/None") == {"n": None}
+    assert (P("/r") / seg).match("/r/12") == {"n": 12}
+    # The width bound still applies when every member formats by the
+    # standard mini-language.
+    w = Param("w", type=int)
+    assert T(t"{w:d}_{maybe:{w}}").match("999999999_7") is None
+
+
+def test_a_signalling_nan_is_read_without_comparing_it():
+    x = Param("x", type=Decimal)
+    m = T(t"k{x:>5}").match("k sNaN")
+    assert m is not None and repr(m["x"]) == "Decimal('sNaN')"
+
+
 def test_fast_path_reads_newlines_and_long_numbers():
     e = P("/r") / T(t"{stem}.txt")
     assert e.match("/r/a\nb.txt") == {"stem": "a\nb"}

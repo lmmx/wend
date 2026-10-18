@@ -18,6 +18,7 @@ import re
 import sys
 from dataclasses import dataclass, field
 from functools import lru_cache
+from types import NoneType, UnionType
 from typing import Any
 
 
@@ -334,6 +335,8 @@ def _construct(tt: Any, texts: list[str]) -> list[Any]:
     """
     if tt is bool:
         return [b for t in texts for b in (False, True) if t == str(b)]
+    if tt is NoneType:
+        return [None for t in texts if t == "None"]
     out: list[Any] = []
     for t in texts:
         try:
@@ -355,11 +358,32 @@ def _distinct(values: list[Any]) -> list[Any]:
             if key in seen:
                 continue
             seen.add(key)
-        except TypeError:  # unhashable, from a literal
-            if any(type(v) is type(o) and v == o for o in out):
+        except TypeError:  # unhashable: a literal's list, or a signalling NaN
+            if any(_same(v, o) for o in out):
                 continue
         out.append(v)
     return out
+
+
+def _same(a: Any, b: Any) -> bool:
+    """Whether ``a`` and ``b`` are the same candidate: equal and of one type,
+    or, for values that refuse comparison (a signalling NaN), of one repr."""
+    if type(a) is not type(b):
+        return False
+    try:
+        return bool(a == b)
+    except Exception:
+        return repr(a) == repr(b)
+
+
+def _members(declared: Any) -> tuple[Any, ...]:
+    """The types a declared ``type=`` admits, in order: the type itself, or
+    each member of a tuple or union, as ``isinstance`` reads them."""
+    if isinstance(declared, tuple):
+        return tuple(t for d in declared for t in _members(d))
+    if isinstance(declared, UnionType):
+        return _members(declared.__args__)
+    return (declared,)
 
 
 def _read(text: str, spec: str, info: Spec | None, tt: Any) -> list[Any]:
@@ -393,13 +417,21 @@ def _read(text: str, spec: str, info: Spec | None, tt: Any) -> list[Any]:
 _PRECISION_DIGITS = frozenset("fFeE%")
 
 
+def _decimal(t: Any) -> bool:
+    decimal = sys.modules.get("decimal")  # imported if Decimal is declared
+    return decimal is not None and t is decimal.Decimal
+
+
 def _standard(declared: Any) -> bool:
     """Whether values of ``declared`` format by the standard mini-language
-    (None: the str, int and float an untyped field reads)."""
-    if declared is None or declared in (str, int, float, bool):
+    (None: the str, int and float an untyped field reads). None itself
+    formats under no spec but the empty one, so it never breaks a bound."""
+    if declared is None:
         return True
-    decimal = sys.modules.get("decimal")  # imported if Decimal is declared
-    return decimal is not None and declared is decimal.Decimal
+    return all(
+        t in (str, int, float, bool, NoneType) or _decimal(t)
+        for t in _members(declared)
+    )
 
 
 def _too_short(
@@ -427,7 +459,9 @@ def _too_short(
             or (
                 info.alt
                 and info.type in (None, "g", "G")
-                and declared in (None, float)  # Decimal's drops the zeros
+                and not any(
+                    map(_decimal, _members(declared))
+                )  # Decimal's drops the zeros
             )
         )
         and not ("inf" in text.lower() or "nan" in text.lower())
@@ -448,15 +482,20 @@ def invert(text: str, spec: str, conversion: str | None, declared: Any) -> list[
         cores = unpad(text, info, False)  # a conversion formats a str
         if conversion != "s":
             cands = [v for c in cores for v in _literal(c)]
-        elif declared is None or declared is str:
+        elif declared is None:
             cands = cores
-        else:  # the declared type's values whose str is the text
-            cands = _construct(declared, cores)
+        else:  # the declared types' values whose str is the text
+            cands = [
+                v
+                for tt in _members(declared)
+                for v in (cores if tt is str else _construct(tt, cores))
+            ]
     else:
-        types = (declared,) if declared is not None else implied_types(info)
-        cands = _read(text, spec, info, types[0])
-        if len(types) > 1:  # zero padding: str, then int
-            cands = cands + _read(text, spec, info, types[1])
+        # A declared type, or each member of a declared tuple or union, in
+        # order; untyped, the types the spec implies (str, then int, for
+        # zero padding).
+        types = implied_types(info) if declared is None else _members(declared)
+        cands = [v for tt in types for v in _read(text, spec, info, tt)]
     out: list[Any] = []
     for v in _distinct(cands):
         try:

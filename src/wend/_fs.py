@@ -9,7 +9,7 @@ into subdirectories. Every result is verified by rendering its bindings.
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator
 from typing import Any
 
 from ._expr import (
@@ -59,7 +59,7 @@ def _dir_key(d: str) -> tuple[int, int] | None:
 
 def glob(
     expr: PathExpr,
-    mapping: Mapping[Any, Any] | None = None,
+    mapping: Any = None,
     /,
     *,
     kind: str | None = None,
@@ -99,8 +99,13 @@ def glob(
     elif isinstance(h, Root):
         base = h.anchor
     elif isinstance(h, HeadParam):
+        hint = (
+            " (glob does not apply defaults; e.bind(e.defaults) does)"
+            if h.param.has_default
+            else ""
+        )
         raise NotStaticError(
-            f"Bind {h.param.name!r} (the root of {e.pattern!r}) before globbing"
+            f"Bind {h.param.name!r} (the root of {e.pattern!r}) before globbing{hint}"
         )
     else:
         assert isinstance(h, Deferred)

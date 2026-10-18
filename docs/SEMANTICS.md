@@ -25,12 +25,14 @@ Decisions this version adopts, provisional until ratification:
 - a non-path value at a segment position is formatted natively, so `None` gives
   `"None"`; a declared `type=` rejects values of other types (§3);
 - integer-formatted fields keep their format type (§4);
-- matching raises rather than choosing between readings (§7).
+- matching raises rather than choosing between readings (§7);
+- a parameter's default stands in for an absent binding when a path is
+  rendered, and nowhere else: not in `bind`, matching or discovery (§3.1).
 
 `glob`'s symlink policy is a traversal policy documented on `glob`, outside this
-contract. This version adds connectivity (§9), conditions (§10), unions
-and queries (§11), schemas (§12) and lineage (§13). A later version is
-expected to extend the contract for Windows path flavours.
+contract. This version adds parameter defaults (§3.1), connectivity (§9),
+conditions (§10), unions and queries (§11), schemas (§12) and lineage (§13).
+A later version is expected to extend the contract for Windows path flavours.
 
 ## 1. Terms
 
@@ -107,6 +109,66 @@ NUL is an invalid binding.
 | SEGMENT | no `/`; `s` not in `{"", ".", ".."}` | the single segment `s` |
 | SUBPATH | `PurePosixPath(s)` is relative and has no `..` part | `PurePosixPath(s)` |
 
+### 3.1 Defaults
+
+A parameter may declare a default `d`: `Param(name, default=d)`, or the same
+keyword on `Segment`, `SubPath`, `AnyPath` and `Absolute`.
+
+**Declaration.** The default is part of the declaration. Two declarations that
+differ only in their defaults are different, so using both under one name is
+a declaration conflict. Two defaults are the same only if they have the same
+type, compare equal and have the same `repr`: `1`, `True` and `1.0` compare
+equal but render apart.
+
+`d` must be hashable, and must be a valid binding as far as the declaration
+alone decides:
+- it satisfies `type` and `choices`;
+- for an explicit kind, it meets that kind's requirement in the table above;
+- for `AUTO`, whose kind depends on position (§2), it is a path or a value a
+  segment can format.
+
+Wherever the parameter is used, its default is checked again like any binding,
+so an `AUTO` default such as `"/srv"` is valid at the head and invalid below it.
+
+**Rendering.** Let `env⁺` be `env` extended, for every parameter of `e` that
+declares a default and whose name `env` does not bind, with that default.
+Every route that renders `e` with `env` renders it with `env⁺`, and §6 holds
+with `R(e, env⁺)` in place of `R(e, env)`. The routes are `render`, `resolve`,
+compiled renderers, `Under` bases (§10), a lens's target, and `resolve_frame`
+for a parameter with no column.
+
+So rendering with a default is rendering with the default bound explicitly.
+Only an absent name takes its default: a name bound to any value, `None`
+included, is bound to that value (§3). A parameter without a default that
+`env` does not bind is a missing binding, and `required_params(e)` lists
+exactly those.
+
+**Binding.** `bind` is partial evaluation and does not apply defaults. A
+parameter it is not given stays free, with its declaration and so its
+default. `e.defaults` gives the free parameters' defaults by name, and
+`e.bind(e.defaults)` applies them.
+
+**Matching and discovery** do not use defaults (§7). A default does not make
+any part of a path optional: a path must contain every part of `e`, defaulted
+or not. Each reading binds every parameter to what the path holds, whether or
+not it equals the default. `glob` does not fix an unbound defaulted parameter
+to its default; it discovers its values, and an unbound head is an error as
+before.
+
+### 3.2 Environments
+
+An environment is given as a mapping keyed by name or by `Param`, or as an
+object, plus keyword bindings, which take precedence. An object binds its
+declared fields by name:
+- the fields of a dataclass, attrs or Pydantic instance (and a model's extra
+  fields);
+- the fields of a named tuple;
+- for any other object, its instance attributes (`vars`).
+
+Properties, methods and Pydantic computed fields bind nothing. `wend.bindings`
+gives the mapping an object stands for. How an environment is given does not
+change its meaning.
+
 ## 4. Templates
 
 A t-string's literal text is split at every `/`. The pieces between separators
@@ -173,7 +235,8 @@ exactly what Python's formatting produces. The template then differs from
 ## 6. The reference value and wend's obligations
 
 The reference value `R(e, env)` evaluates every sub-term (it is strict),
-applying §2–§5. It either yields a path (or string), or fails with an invalid
+applying §2–§5, with each parameter whose name `env` does not bind taking its
+default (§3.1). It either yields a path (or string), or fails with an invalid
 binding or an operation error.
 
 wend's obligations, for every expression `e` and environment `env`:
@@ -194,7 +257,7 @@ wend's obligations, for every expression `e` and environment `env`:
    - everything before an absolute join.
 5. **Errors are typed.** Invalid bindings raise `InvalidBindingError`;
    operation errors raise `PathOperationError` (both are `ValueError`s);
-   unbound parameters raise `MissingBindingError`.
+   unbound parameters without a default raise `MissingBindingError`.
 
 ## 7. Matching
 
@@ -207,6 +270,9 @@ wend's obligations, for every expression `e` and environment `env`:
   otherwise `str`).
 - `match` returns the single binding, `None` if there is none, and raises
   `AmbiguousMatchError` if there are several.
+- **Defaults** play no part (§3.1). Every returned binding binds every
+  parameter of `e` to what the path holds, so a path that leaves out a
+  defaulted part does not match, and verification never fills in a default.
 
 ## 8. What is guaranteed by construction, and what is only tested
 
@@ -215,7 +281,8 @@ wend's obligations, for every expression `e` and environment `env`:
 | a `match`/`glob` result renders to its path (matching soundness) | **by construction**: every candidate is checked by rendering before it is returned |
 | a compiled function raises the same errors as the interpreter | **by construction**: any exception in the fast path re-runs the interpreter |
 | the matching fast path returns at most one binding | **argued** (below) and tested |
-| obligations 1–3 above (agreement, no spurious rejection, strictness) | **tested** (Hypothesis, independent reference evaluator). Random terms cover every term of §1, every parameter kind, nested format specs, text fields, and values whose `__format__` breaks their format type |
+| obligations 1–3 above (agreement, no spurious rejection, strictness) | **tested** (Hypothesis, independent reference evaluator). Random terms cover every term of §1, every parameter kind, nested format specs, text fields, parameters with defaults, and values whose `__format__` breaks their format type |
+| rendering with a default equals rendering with it bound explicitly, interpreted and compiled; `bind` leaves defaulted parameters free; every reading binds every parameter (§3.1) | **tested** (Hypothesis, random terms with defaulted parameters, and environments that leave them unbound) |
 | below a literal base, no binding of an `AUTO`, `Segment` or `SubPath` parameter leads outside it, whatever operations the term applies | **tested** (Hypothesis, random terms) |
 | `rebase(old, new)` equals building the expression afresh with `new` in place of `old` (§9) | **tested** (Hypothesis, random terms and substitutions) |
 | a join equals its `base` joined with its `base_rel` | **tested** |

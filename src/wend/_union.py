@@ -18,7 +18,7 @@ from __future__ import annotations
 
 import heapq
 import itertools
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator
 from dataclasses import dataclass
 from pathlib import Path
 from string.templatelib import Interpolation, Template
@@ -229,7 +229,7 @@ class PathUnion:
     def relative_to(self, other: Any) -> PathUnion:
         return self._map(lambda a: a.relative_to(other))
 
-    def bind(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> PathUnion:
+    def bind(self, mapping: Any = None, /, **kw: Any) -> PathUnion:
         env = _make_env(mapping, kw)
         return self._map(lambda a: a.bind(env))
 
@@ -262,7 +262,7 @@ class PathUnion:
 
     # -- rendering ------------------------------------------------------------
 
-    def render(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> str:
+    def render(self, mapping: Any = None, /, **kw: Any) -> str:
         """The rendering of the only alternative. A union of several has no
         single rendering: use `renderings`, or `first` to pick by existence."""
         if len(self.alternatives) != 1:
@@ -275,7 +275,7 @@ class PathUnion:
 
     def resolve(
         self,
-        mapping: Mapping[Any, Any] | None = None,
+        mapping: Any = None,
         /,
         *,
         cls: type = Path,
@@ -283,14 +283,12 @@ class PathUnion:
     ) -> Any:
         return cls(self.render(mapping, **kw))
 
-    def renderings(
-        self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any
-    ) -> tuple[str, ...]:
+    def renderings(self, mapping: Any = None, /, **kw: Any) -> tuple[str, ...]:
         """Every alternative rendered with the same bindings, in order."""
         env = _make_env(mapping, kw)
         return tuple(a.render(env) for a in self.alternatives)
 
-    def first(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> Path:
+    def first(self, mapping: Any = None, /, **kw: Any) -> Path:
         """The first alternative that exists and meets its own preconditions,
         checked now against the filesystem (an effect, unlike `render`).
 
@@ -338,9 +336,7 @@ class PathUnion:
             raise AmbiguousMatchError(s, list(self.match_all(s)))
         return found[0]
 
-    def glob(
-        self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any
-    ) -> Iterator[AltMatch]:
+    def glob(self, mapping: Any = None, /, **kw: Any) -> Iterator[AltMatch]:
         """Discover existing paths that any alternative matches, in path order
         (see `wend.glob` for the options). A path two alternatives find is
         ambiguous."""

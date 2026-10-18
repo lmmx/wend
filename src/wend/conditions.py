@@ -201,6 +201,8 @@ def attach(e: PathExpr, conds: Conditions | None) -> PathExpr:
     out = PathExpr(e.head, e.parts)
     if e.derivation is not None:
         out.__dict__["derivation"] = e.derivation
+    if e.tags:
+        out.__dict__["tags"] = e.tags
     if conds is not None and (conds.requires or conds.ensures):
         out.__dict__["conditions"] = conds
     return out

@@ -35,6 +35,7 @@ from dataclasses import dataclass, fields
 from functools import cached_property
 from pathlib import Path, PurePosixPath
 from string.templatelib import Interpolation, Template
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, overload
 
 from . import _spec
@@ -435,6 +436,8 @@ class PathExpr(_Cached):
     derivation: ClassVar[Derivation | None] = None
     # Declared conditions (§10), metadata like the derivation.
     conditions: ClassVar[Conditions | None] = None
+    # Tags (§13): what the path is for or where it came from, also metadata.
+    tags: ClassVar[Mapping[str, Any]] = MappingProxyType({})
 
     def __getstate__(self) -> dict[str, Any]:
         state = super().__getstate__()
@@ -442,7 +445,15 @@ class PathExpr(_Cached):
             state["derivation"] = self.derivation
         if self.conditions is not None:
             state["conditions"] = self.conditions
+        if self.tags:
+            state["tags"] = dict(self.tags)
         return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        tags = state.pop("tags", None)
+        super().__setstate__(state)
+        if tags:
+            self.__dict__["tags"] = MappingProxyType(tags)
 
     # -- construction -------------------------------------------------------
 
@@ -583,6 +594,15 @@ class PathExpr(_Cached):
 
         return declare(self, (), conditions)
 
+    def tag(self, **tags: Any) -> PathExpr:
+        """This path, tagged with metadata (``source="upload"``): what it is
+        for or where it came from. Tags take no part in equality; `bind` and
+        `rebase` keep them, other operations do not, and `wend.lineage`
+        collects them through a path's derivation (§13)."""
+        out = _carry(self, self)
+        out.__dict__["tags"] = MappingProxyType({**self.tags, **tags})
+        return out
+
     def check(self, mapping: Mapping[Any, Any] | None = None, /, **kw: Any) -> Path:
         """Render, check every precondition against the filesystem now, and
         return the path. Raises a `ConditionError` for the first that fails."""
@@ -707,13 +727,17 @@ class PathExpr(_Cached):
 
     def __repr__(self) -> str:
         c = self.conditions
-        if c is None:
+        if c is None and not self.tags:
             return f"PathExpr({self.pattern!r})"
         extra = "".join(
             f", {label}=({', '.join(map(repr, cs))})"
-            for label, cs in (("requires", c.requires), ("ensures", c.ensures))
+            for label, cs in (
+                (("requires", c.requires), ("ensures", c.ensures)) if c else ()
+            )
             if cs
         )
+        if self.tags:
+            extra += f", tags={dict(self.tags)!r}"
         return f"PathExpr({self.pattern!r}{extra})"
 
     __str__ = __repr__
@@ -918,6 +942,8 @@ class PathExpr(_Cached):
             from .conditions import attach, moved
 
             out = attach(out, moved(self.conditions, lambda b: b.bind(env)))
+        if self.tags:
+            out.__dict__["tags"] = self.tags
         return out
 
     def rebase(self, *args: Any) -> PathExpr:
@@ -952,6 +978,9 @@ class PathExpr(_Cached):
                 return b if r is None else r
 
             out = attach(out, moved(self.conditions, move))
+        if self.tags:
+            out = _carry(out, out)
+            out.__dict__["tags"] = self.tags
         return out
 
     def _rebased(self, old: PathExpr, new: PathExpr) -> PathExpr:
@@ -1044,9 +1073,9 @@ def _derived(result: PathExpr, op: str, args: tuple[Any, ...]) -> PathExpr:
         else:
             result.__dict__["derivation"] = d
             return result
-    if result.conditions is not None:
-        # Conditions belong to the expression they were declared on (§10),
-        # and cached state (the compiled renderer) depends on them.
+    if result.conditions is not None or result.tags:
+        # Conditions and tags belong to the expression they were declared on
+        # (§10, §13), and cached state (the compiled renderer) depends on them.
         out = PathExpr(result.head, result.parts)
     else:
         out = object.__new__(PathExpr)
@@ -1056,6 +1085,17 @@ def _derived(result: PathExpr, op: str, args: tuple[Any, ...]) -> PathExpr:
 
 
 _new_tuple = tuple.__new__
+
+
+def _carry(e: PathExpr, meta: PathExpr) -> PathExpr:
+    """A fresh copy of ``e`` with ``meta``'s derivation, conditions and tags."""
+    out = PathExpr(e.head, e.parts)
+    d = out.__dict__
+    for k in ("derivation", "conditions", "tags"):
+        v = meta.__dict__.get(k)
+        if v is not None:
+            d[k] = v
+    return out
 
 
 def _apply(op: str, args: tuple[Any, ...]) -> PathExpr:

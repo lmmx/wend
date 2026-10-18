@@ -52,6 +52,10 @@ nav = [
       {"wend.pydantic" = "reference/api/pydantic.md"}
     ]}
   ]},
+  {"Background" = [
+    "background/future-paths.md",
+    "background/history.md"
+  ]},
   {"Maintainers" = ["maintainers/documentation.md"]}
 ]
 extra_css = ["assets/stylesheets/extra.css"]
@@ -224,6 +228,10 @@ https://lmmx.github.io/wend/.
   {"reference/api/frame.md" = "Vectorised resolution and matching of path columns with Polars."},
   {"reference/api/pydantic.md" = "Path fields for Pydantic models."},
 ]
+"Background" = [
+  {"background/future-paths.md" = "How the five Future Paths essays map onto wend: what was built, what changed on the way, and what is still open."},
+]
 "Optional" = [
+  {"background/history.md" = "wend's development journal: how the dated entries are written and labelled, what each one records, and where to start reading."},
   {"maintainers/documentation.md" = "How wend's documentation site is built, checked, tested and published to GitHub Pages."},
 ]

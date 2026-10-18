@@ -260,3 +260,12 @@ def test_used_expressions_pickle_and_copy():
         }
     w = pickle.loads(pickle.dumps(Param("w")))
     assert T(t"x_{idx:0{w}d}").render(idx=3, w=4) == "x_0003"
+
+
+def test_parameters_inside_format_specs_are_checked():
+    n, w = Param("n", type=int), Param("w", type=int)
+    e = T(t"c{n:0{w}d}")
+    assert e.render(n=7, w=3) == "c007"
+    with pytest.raises(InvalidBindingError):
+        e.render(n=7, w="3")  # w is declared int, even inside a spec
+    assert e.bind(w=3).match("c007") == {"n": 7}  # binding w folds the spec

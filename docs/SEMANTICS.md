@@ -8,6 +8,29 @@ form, simplifications, matcher or compiler.
 
 Paths are POSIX paths with `pathlib.PurePosixPath` semantics throughout.
 
+## Status
+
+Contract version 0.2, **proposed**. It describes wend as it will be released as
+0.2.0, and is ratified by that release; until then any section may change. A
+change to this document comes with the matching change to the reference
+evaluator in `tests/contract_test.py`, and the reverse.
+
+Decisions this version adopts, provisional until ratification:
+
+- the hybrid semantics of §6, with its three refinements: structural
+  elimination, non-strict evaluation, and whole-segment interpolations joined
+  like `/`;
+- a parameter after the head binds one segment unless declared otherwise (§2,
+  §3);
+- a non-path value at a segment position is formatted natively, so `None` gives
+  `"None"`; a declared `type=` rejects values of other types (§3);
+- integer-formatted fields keep their format type (§4);
+- matching raises rather than choosing between readings (§7).
+
+`glob`'s symlink policy is a traversal policy documented on `glob`, outside this
+contract. Later versions are expected to extend the contract for relations
+between paths, union expressions and Windows path flavours.
+
 ## 1. Terms
 
 An expression is built from these terms:
@@ -17,6 +40,7 @@ An expression is built from these terms:
 | literal path `s` | `P("a/b")`, `x / "a/b"` |
 | parameter operand `p` | `P(p)`, `x / p`, `p / x` |
 | template `t` | `T(t"...")`, `x / t"..."` |
+| text field | `name(a)`, `stem(a)` or `suffix(a)` interpolated into a template |
 | join `a / b` | `/`, `joinpath` |
 | `parent(a)`, `with_suffix(a, s)`, `with_name(a, n)`, `with_stem(a, s)`, `relative_to(a, b)` | the methods of the same names |
 | `name(a)`, `stem(a)`, `suffix(a)` | properties; these yield strings, not paths |
@@ -85,12 +109,28 @@ pathlib. A segment is one of:
   is a `Param`, `str`, `os.PathLike`, path expression or template**: a *path
   operand*, joined exactly as `/` joins it (§2, §3 for parameters; literal
   path semantics for strings);
-- **anything else**: a *formatted segment*. Each interpolation becomes
-  `format(convert(v, conversion), spec)`, where `v` is the bound value of a
-  `Param`, or the interpolated constant; `type` and `choices` are checked
-  first, and a `format` call that raises makes the binding invalid. Each formatted field must contain neither `/` nor NUL, and the
-  concatenated segment must not be `""`, `"."` or `".."`. Otherwise the binding
-  is invalid.
+- **anything else**: a *formatted segment*, the concatenation of its literal
+  text and its *fields*. A field is an interpolation with value `v`,
+  conversion `c` and spec `s`:
+  - `v` is the bound value of a `Param`, checked against its `type` and
+    `choices` first; an interpolated constant; or the string `name(a)`,
+    `stem(a)` or `suffix(a)` of a path expression `a`, evaluated as an
+    expression of its own;
+  - a spec may contain nested parameters (`{x:0{w}d}`). Each is checked
+    against its declaration and replaced by `format(w, "")`. A spec with no
+    nested parameter is *static*;
+  - the field's text is `format(convert(v, c), s)`, and a `format` call that
+    raises makes the binding invalid;
+  - the text must contain neither `/` nor NUL;
+  - an *integer-formatted* field (no conversion, a static spec, and a
+    presentation type of `b`, `d`, `o`, `x` or `X`, or no presentation type
+    with an `int` parameter or constant) must also be non-empty, and must
+    contain no `.` unless `.` is its fill character. Structural operations
+    rely on these guarantees, for example a static suffix after `{n:04d}`, so a
+    value whose `__format__` breaks them is invalid.
+
+  The concatenated segment must not be `""`, `"."` or `".."`. Otherwise the
+  binding is invalid.
 
 The template's value is its anchor joined with its segments in order, using
 pathlib join semantics.
@@ -165,7 +205,7 @@ wend's obligations, for every expression `e` and environment `env`:
 | a `match`/`glob` result renders to its path (matching soundness) | **by construction**: every candidate is checked by rendering before it is returned |
 | a compiled function raises the same errors as the interpreter | **by construction**: any exception in the fast path re-runs the interpreter |
 | the matching fast path returns at most one binding | **argued** (below) and tested |
-| obligations 1–3 above (agreement, no spurious rejection, strictness) | **tested** (Hypothesis, independent reference evaluator) |
+| obligations 1–3 above (agreement, no spurious rejection, strictness) | **tested** (Hypothesis, independent reference evaluator). Random terms cover every term of §1, every parameter kind, nested format specs, text fields, and values whose `__format__` breaks their format type |
 | below a literal base, no binding of an `AUTO`, `Segment` or `SubPath` parameter leads outside it, whatever operations the term applies | **tested** (Hypothesis, random terms) |
 | matching completeness | **tested** (Hypothesis round trips; exhaustive enumeration over small domains) |
 | compiled successes equal interpreted successes | **tested** |

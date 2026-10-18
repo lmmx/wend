@@ -628,6 +628,9 @@ class _Lowering:
         if h.op == "with_suffix":
             self.check(f"{pattern}: empty name", name == "", PathOperationError)
             return pl.concat_str([_dirname(b), _stem(name), pl.lit(h.arg)])
+        # The new name or stem holds no NUL unless a field puts it there, and
+        # `field` checks that: literal text with NUL is refused when the
+        # expression is built (§3), as render relies on too.
         new = self.let(self.text(h.arg))
         if h.op == "with_name":
             bad = (new == "") | (new == ".") | new.str.contains("/", literal=True)

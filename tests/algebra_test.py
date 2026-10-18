@@ -16,6 +16,7 @@ from wend import (
     Segment,
     SubPath,
     T,
+    Text,
 )
 
 
@@ -337,6 +338,9 @@ def test_no_literal_text_contains_nul():
         lambda: P("/b/a.txt").with_suffix(".x\x00"),
         lambda: P("/b/a").sibling("n\x00"),
         lambda: P("/b/a").cousin("../x\x00"),
+        # however the text was built: a Text's pieces are spliced in as they are
+        lambda: Text(("x\x00",)),
+        lambda: (P("/b") / s).with_stem(Text(("x\x00",))),
     ):
         with pytest.raises(PathOperationError):
             build()

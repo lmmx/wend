@@ -144,10 +144,19 @@ def batch() -> None:
         df = pl.DataFrame(data)
         assert resolve_frame(shard, df).to_list()[:3] == compiled.many(data[:3])
         lowered = to_polars(shard, df.schema)
+        # A root column that render normalises ("/mnt/./storage/" -> "/mnt/storage").
+        messy = df.with_columns(root=pl.Series(["/mnt/./storage/"] * n))
+        assert resolve_frame(shard, messy).to_list()[:3] == compiled.many(data[:3])
         rows.append(
             (
                 "wend.frame.resolve_frame (validated)",
                 bench(lambda: resolve_frame(shard, df), 1),
+            )
+        )
+        rows.append(
+            (
+                "wend.frame.resolve_frame (non-canonical root column)",
+                bench(lambda: resolve_frame(shard, messy), 1),
             )
         )
         rows.append(

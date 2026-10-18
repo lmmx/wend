@@ -97,3 +97,43 @@ Parity with the real render after the fix:
 `02-soft-raster-bleed-fix.png` shows render labels | raster with sharp = 1 | differences | raster with sharp = 20 | differences, for the right valley and the central arch.
 
 **Still to do:** fidelity of the surrogate to real renders. These checks show only that JAX differentiates its own objective correctly. Once the spline body exists, small control-point perturbations will be rendered through Three.js, and the measured change compared with the JAX-predicted one.
+
+## 3. First spline body: rendered, and judged in clay and zebra
+
+The geometry-architect agent built the new representation:
+- **Strands:** each strand is an independent clamped cubic B-spline in 3D, with knots every 16 px of station, about 84 control points.
+- **Radius:** a cubic B-spline, knots every 12 px.
+- **Fit:** both are fitted to the current body with fairness-regularised least squares (∫|X'''|², ∫r''²).
+- **Evaluation:** linear in the control points (X = B @ ctrl), with JS (`snakes/strandspline.js`) and NumPy (`tools/strandspline.py`) agreeing to 1e-11 px.
+- **Rendering:** through the real scene via `createScene(..., { body })` (`still-spline.html?spec=...`).
+- **Head joins:** the join point is within 0.3 px and the tangent within 1.6–3.2°.
+
+The comparison sheets render both bodies under identical lighting and materials. Columns: reference | colour | colour | clay | clay | zebra | zebra (8 bars), baseline then new, for the full frame, the central arch, both valleys and both arms. The clay/zebra page is `snakes/diag-clay.html` (surface-diagnostics agent); `cmp-spline-geo.js` feeds it the spline body.
+
+- `03-spline-hi-vs-baseline.png`: the spline body with stronger fairing, fold pinch and press kept.
+- `04-spline-nofold-vs-baseline.png`: the spline body with the fold pinch off.
+
+**Honest verdict: the refit alone does not visibly change the sculpture.**
+- spline-hi is nearly indistinguishable from the baseline in clay and zebra. The stripes flow the same way, and the right-valley crease and dimple remain.
+- Turning the fold pinch off is the one visible gain: the right-valley dimple softens, and its zebra swirl becomes cleaner stripes.
+- That is expected. The refit reproduces the old shape, and the old shape's problems are in the shape itself, not in how it is parameterised.
+
+The architect's and the diagnostics agent's measurements say what those problems are:
+1. **Cross-turn interpenetration at both valleys.** The spine bends so tightly that different turns of the rope pass 10–15 px apart while their radii sum to ~86 px, so they overlap by up to ~75 px. The press only pairs a strand with its twist partner at the same station, so this overlap is never resolved. It is the right-valley seam.
+2. **A squeezed helix.** r·κ > 1 over 34–37% of each strand (r ≈ 43 px on a helix with ~55 px curvature radius), so the inside of every turn would fold. The fold pinch is load-bearing, and it is also what makes the right-valley dimple: it pulls the blue in by up to 15 px.
+3. **Kinks from the piecewise-linear spine offsets.** The strands jump up to 10 px between 0.5 px samples at ~30 stations; the tube's 12 px smoothing hides most of it. A C2 spline for the offsets alone cuts visible >2° creases from 346 to 106.
+4. **The press is visually inert.** It moves no visible vertex more than 0.5 px.
+
+## Next: the first JAX fit, on one region
+
+Start from spline-hi and free only the control points covering one valley. Objective:
+- the soft image term against the reference, and the outline term;
+- surface fairness (arc-length invariant);
+- **contact**: twist-partner overlap held in a band (~5–25 px), and a hinge penalty max(0, r1 + r2 − d − allowance)² between different turns;
+- a fold barrier at r·κ ≈ 2 (not 1: that would be 35% of the shape);
+- the neck-join control points pinned.
+
+Then L-BFGS-B, x64. Before accepting:
+- check its predicted direction against finite differences of real renders;
+- render through Three.js and compare in colour, clay and zebra with the baseline;
+- accept only if it visibly looks better.

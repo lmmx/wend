@@ -302,6 +302,16 @@ def static_len(term, at_head: bool) -> int | None:
         return None if a is None else max(a - 1, 0)
     if kind in ("with_suffix", "with_name", "with_stem"):
         return static_len(term[1], at_head)
+    if kind in ("sibling", "cousin"):  # §9: defined by parent and join
+        a = static_len(term[1], at_head)
+        if a is None:
+            return None
+        n = max(a - 1, 0)
+        if kind == "sibling":
+            return n + len(PurePosixPath(term[2]).parts)
+        for part in PurePosixPath(term[2]).parts:
+            n = max(n - 1, 0) if part == ".." else n + 1
+        return n + (1 if term[3] else 0)
     if kind == "relative_to":
         a, b = term[1], term[2]
         if a == b:
@@ -334,6 +344,14 @@ def evaluate(term, env: dict, at_head: bool = True):
             return a / b
         if kind == "parent":
             return evaluate(term[1], env, at_head).parent
+        if kind == "sibling":  # §9: parent(a) / name
+            a = evaluate(term[1], env, at_head).parent
+            return a / evaluate(("lit", term[2]), env)
+        if kind == "cousin":  # §9: from parent(a), ".." steps up, then join
+            cur = evaluate(term[1], env, at_head).parent
+            for part in PurePosixPath(term[2]).parts:
+                cur = cur.parent if part == ".." else cur / part
+            return cur / term[3] if term[3] else cur
         if kind in ("with_suffix", "with_name", "with_stem"):
             return getattr(evaluate(term[1], env, at_head), kind)(term[2])
         if kind == "relative_to":
@@ -474,6 +492,8 @@ LITERALS = [
 SUFFIXES = ["", ".json", ".tar.gz", ".", "json", "a/b"]
 NAMES = ["new.txt", "", ".", "a/b", "..", ".rc", "z"]
 STEMS = ["st", "", ".s"]
+SIBLINGS = ["schema.json", "a/b", "..", ".", ""]
+COUSINS = ["../out", "..", "../../x", "sub", "./y"]
 
 
 def build(term):
@@ -494,6 +514,11 @@ def build(term):
         return getattr(build(term[1]), kind)(term[2])
     if kind == "relative_to":
         return build(term[1]).relative_to(build(term[2]))
+    if kind == "sibling":
+        return build(term[1]).sibling(term[2])
+    if kind == "cousin":
+        names = (term[3],) if term[3] else ()
+        return build(term[1]).cousin(term[2], *names)
     if kind == "tfield":
         _, attr, sub, conv, spec, (pre, post) = term
         text = getattr(build(sub), attr)
@@ -523,6 +548,13 @@ terms = st.recursive(
         st.tuples(st.just("with_name"), kids, st.sampled_from(NAMES)),
         st.tuples(st.just("with_stem"), kids, st.sampled_from(STEMS)),
         st.tuples(st.just("relative_to"), kids, kids),
+        st.tuples(st.just("sibling"), kids, st.sampled_from(SIBLINGS)),
+        st.tuples(
+            st.just("cousin"),
+            kids,
+            st.sampled_from(COUSINS),
+            st.sampled_from(["", "o.csv"]),
+        ),
     ),
     max_leaves=7,
 )

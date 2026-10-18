@@ -220,6 +220,47 @@ upload.render(root="/srv", rel="../etc/passwd")  # ContainmentError
 be a file. Checks are point-in-time, not a sandbox: a path can change between
 `check` and `open`. The rules are in [SEMANTICS.md §10](docs/SEMANTICS.md#10-conditions).
 
+### Unions and queries
+
+Layouts have variants. A union is an ordered set of expressions (`a | b`, or
+`U(...)`). `Alt` offers alternatives inside a t-string without any pattern
+syntax, so log rotation is one pattern:
+
+```py
+from wend import Alt, U
+
+d, k = Param("d"), Param("k", type=int)
+logs = U(t"{d}/app.log{Alt('', t'.{k}')}{Alt('', '.gz')}")
+for m in logs.glob(d="/var/log"):  # app.log, app.log.1, app.log.2.gz ...
+    print(m.path, m.alternative, m.get("k"))
+```
+
+`match` and `glob` take every alternative's readings. A path two alternatives
+read is ambiguous, as everywhere in wend.
+
+`render` needs a single alternative. `renderings` gives all of them. `first`
+is the explicit, effectful fallback, which picks the first alternative that
+exists and meets its own conditions:
+
+```py
+config = P(home) / ".config/app.toml" | P("/etc/app.toml") | P(pkg) / "default.toml"
+config.first(home="/home/a", pkg="/opt/app")  # NoAlternativeError if none exists
+```
+
+A query filters what a pattern finds, lazily, as `glob` streams it (Future Paths
+[part 1](https://cog.spin.systems/future-paths-types)'s `PathQ`):
+
+```py
+from wend.query import modified_after
+
+src = P("src") / SubPath("rel") / T(t"{stem}.py")
+tests = P("src") / SubPath("rel") / T(t"{stem}_test.py")
+for m in (src - tests).where(File, modified_after(yesterday)).glob():
+    ...
+```
+
+The rules are in [SEMANTICS.md §11](docs/SEMANTICS.md#11-unions-and-queries).
+
 ### Discovery and lenses
 
 ```py
@@ -301,6 +342,7 @@ Layouts are ordinary expressions (`rename`, `match`, `under(root).glob()`, ...),
 - a project layout bound per environment;
 - untrusted input;
 - pipeline pre- and postconditions;
+- log rotation and config fallbacks with unions;
 - layout inference.
 
 ### Limitations
@@ -310,8 +352,8 @@ Layouts are ordinary expressions (`rename`, `match`, `under(root).glob()`, ...),
   unambiguously by construction. Otherwise they fall back to a general backtracking
   matcher, which is correct but slower.
 - Polars resolution rejects non-canonical path columns that `render` would normalise.
-- Patterns have no alternation or optional pieces: `app.log.{k}` and `app.log.{k}.gz` are
-  two expressions.
+- Alternation expands to a union of plain expressions, so `n` binary `Alt`s make `2ⁿ`
+  alternatives (capped at 4096); matching tries each.
 - `glob` raises `AmbiguousMatchError` if any path it finds parses more than one way
   (`{stem}.{ext}` on `a.tar.gz`); constrain a field with `choices=` or `type=`.
 - `glob`'s symlink policy decides what it traverses; it is not a sandbox.

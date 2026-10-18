@@ -14,6 +14,7 @@ from ._fs import glob
 from ._lens import Lens, NoMatchError
 from ._match import Match
 from ._params import Absolute, AnyPath, Kind, Param, Segment, SubPath
+from ._union import Alt, PathUnion, U
 from .conditions import (
     Absent,
     Condition,
@@ -35,6 +36,7 @@ from .errors import (
     InvalidBindingError,
     MissingBindingError,
     MissingPathError,
+    NoAlternativeError,
     NotInvertibleError,
     NotStaticError,
     ParamConflictError,
@@ -43,11 +45,13 @@ from .errors import (
     WendError,
     WrongKindError,
 )
+from .query import Query
 
 
 __all__ = [
     "Absent",
     "Absolute",
+    "Alt",
     "AmbiguousMatchError",
     "AnyPath",
     "CapabilityError",
@@ -65,6 +69,7 @@ __all__ = [
     "Match",
     "MissingBindingError",
     "MissingPathError",
+    "NoAlternativeError",
     "NoMatchError",
     "NotInvertibleError",
     "NotStaticError",
@@ -74,12 +79,15 @@ __all__ = [
     "PathExistsError",
     "PathExpr",
     "PathOperationError",
+    "PathUnion",
+    "Query",
     "Readable",
     "Segment",
     "Step",
     "SubPath",
     "T",
     "Text",
+    "U",
     "Under",
     "WendError",
     "Writable",

@@ -353,6 +353,8 @@ FP_CHOICES = [
     Param("c3", choices={"0", "1a", "-", "f"}),
     Param("c4", type=str, choices={"gz", "tar.gz", "txt"}),
 ]
+FP_BOOL = Param("fq", type=bool)
+FP_BOOL_SPECS = ["", "d", "03", "x", "_>3", "+"]
 FP_SEG = Param("fs", choices={"p", "q.r"})
 FP_SUBS = [SubPath("s0"), SubPath("s1")]
 FP_ROOTS = {"root": Param("root"), "abs": Param("abs", kind=Kind.ABSOLUTE)}
@@ -362,6 +364,8 @@ FP_UNTYPED_SPECS = ["d", "x", "05", "02X", "o"]
 # Padded specs, whose fill a value may contain (none has a fast plan).
 FP_INT_SPECS += ["03", "0<3", "->3d", "x^4x"]
 FP_UNTYPED_SPECS += ["03", "+03", "x<3", "0^4"]
+# Options only numbers take, which an untyped field reads as an int (§7).
+FP_UNTYPED_SPECS += ["+", ",", "=3", " ", "_", "#", "x=+4", "n"]
 FP_STR_SPECS = ["03", "x<3", "_>4", "0^5"]
 FP_LITERALS = ["_", "-", ".", "a", "f", "0", "9", "x", "-v", "a-", "_1", " ", "\n"]
 FP_ALPHABET = "ab_-.0x1f \n"
@@ -375,6 +379,7 @@ fp_field = st.one_of(
         st.one_of(st.just(""), st.sampled_from(FP_STR_SPECS)),
     ),
     st.tuples(st.just("choice"), st.integers(0, len(FP_CHOICES) - 1), st.just("")),
+    st.tuples(st.just("bool"), st.just(0), st.sampled_from(FP_BOOL_SPECS)),
 )
 fp_lit = st.sampled_from(["", *FP_LITERALS])  # "" makes the fields adjacent
 # A template segment: a leading literal, then fields each followed by a literal.
@@ -409,6 +414,8 @@ def fp_build(start, parts):
                     p = FP_CHOICES[i]
                 elif what == "str":
                     p = FP_STRS[i]
+                elif what == "bool":
+                    p = FP_BOOL
                 else:
                     p = FP_UNTYPED
                 items += [Interpolation(p, p.name, None, spec), lit]
@@ -430,6 +437,7 @@ fp_env = st.fixed_dictionaries(
         "fv": fp_text,
         **{p.name: st.sampled_from(sorted(p.choices)) for p in FP_CHOICES},
         "fs": st.sampled_from(["p", "q.r"]),
+        "fq": st.booleans(),
         "s0": st.sampled_from([".", "a", "a/b", "0/x", "..", "x.y"]),
         "s1": st.sampled_from([".", "b", "a/.."]),
     }
@@ -511,10 +519,12 @@ pad_lit = st.sampled_from(["", "a", "0", "-", "x", "_", "1"])
 def padded_cases(draw):
     """(declared type, spec parts, value, lead, trail), with spec options the
     value's type accepts (a str takes no sign, "#", grouping or "=")."""
-    declared = draw(st.sampled_from([None, str, int]))
+    declared = draw(st.sampled_from([None, str, int, bool]))
     is_str = declared is str or (declared is None and draw(st.booleans()))
     if is_str:
         value = draw(st.text(alphabet="01-x_ a+,", max_size=6))
+    elif declared is bool:
+        value = draw(st.booleans())
     else:
         value = draw(st.integers(-3000, 3000))
     parts = (
@@ -531,11 +541,13 @@ def padded_cases(draw):
 
 def pad_reads(parts, declared):
     """The types a field reads (§7), from the parts of its spec."""
-    _, align, _, zero, width, _, kind = parts
+    _, align, sign, zero, width, grouping, kind = parts
     if declared is not None:
         return {declared}
     if kind:
         return {str} if kind == "s" else {int}
+    if sign or grouping or align == "=":  # no str takes these ("#" is a sign here)
+        return {int}
     return {str, int} if zero and width is not None and not align else {str}
 
 

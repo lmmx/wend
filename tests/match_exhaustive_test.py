@@ -31,6 +31,8 @@ nested = Param("c", choices={"a", "a_b", "b"})
 exts = Param("c", choices={"gz", "tar.gz", "txt"})
 flat_exts = Param("c", choices={"gz", "txt", "csv"})
 letters = Param("c", choices={"a", "b"})
+v = Param("v")
+q, r = Param("q", type=bool), Param("r", type=bool)
 
 FAMILIES = {
     "adjacent strings": (
@@ -145,9 +147,33 @@ FAMILIES = {
         T(t"{u:03}_{w}"),
         {"u": ["", "1", "1_", "10", "100", 1, -1, 100], "w": ["", "0", "_0"]},
     ),
+    # Only numbers take a sign or grouping, so these untyped fields read ints
+    # (issue #55); no str renders.
+    "untyped signed int, then a string": (
+        T(t"{u:+}{w}"),
+        {"u": ["a", "", -1, 0, 5, 12, 125], "w": ["", "5", "+5", "a"]},
+    ),
+    "untyped grouped ints": (
+        T(t"{u:,}{v:_}"),
+        {"u": [0, 1, 1000, 10, "1"], "v": [0, 1, 1000, -1]},
+    ),
     "newline in a string": (
         P("/r") / T(t"{w}.txt"),
         {"w": ["a\nb", "\n", "a", "a.txt\n"]},
+    ),
+    # bool fields: True and False under the empty spec, 1 and 0 under any
+    # other (issue #55), next to fields whose texts look alike.
+    "bool then string": (
+        T(t"{q}{w}"),
+        {"q": [True, False], "w": ["", "True", "e", "1", "False"]},
+    ),
+    "bool as a number": (
+        T(t"{q:d}{n:d}_{r:>2}"),
+        {"q": [True, False], "n": [0, 1, 10, 11], "r": [True, False]},
+    ),
+    "bool segment, bool as a float": (
+        P("d") / Segment("q", type=bool) / T(t"{r:.1f}"),
+        {"q": [True, False], "r": [True, False]},
     ),
 }
 
@@ -309,10 +335,20 @@ def test_exhaustive_padded_field_templates(first):
 # sign, and characters the fill can be confused with.
 
 PAD_SPECS = {
-    # spec: (width, alphabet, what an untyped field reads)
+    # spec: (width, alphabet, what an untyped field reads). Each spec is also
+    # tried on str, int and bool fields.
     "03": (3, "01-a", {str, int}),  # issue #45: "0" flag, no alignment
-    "+03": (3, "01-+", {str, int}),  # only an int formats with a sign
-    "04,": (4, "01,", {str, int}),  # zero padding with grouping exceeds the width
+    "+03": (3, "01-+", {int}),  # only a number formats with a sign
+    "04,": (4, "01,", {int}),  # zero padding with grouping exceeds the width
+    # Options only numbers take: an untyped field reads ints (issue #55).
+    "+4": (4, "01-+ ", {int}),
+    " 3": (3, "01- ", {int}),
+    "=4": (4, "01- ", {int}),
+    "x=+4": (4, "01-+x", {int}),
+    "-#3": (3, "01-", {int}),
+    ",": (5, "01,", {int}),
+    "_": (5, "01_", {int}),
+    "n": (3, "01-", {int}),
     "3": (3, "01- ", {str}),
     "x<3": (3, "01-x", {str}),
     "x>3": (3, "01-x", {str}),
@@ -341,7 +377,7 @@ PAD_SPECS = {
 
 def pad_domain(spec, width, alphabet, types):
     longest = width + 1
-    values: list = []
+    values: list = [False, True] if bool in types else []
     if str in types:
         values += [
             "".join(p)
@@ -373,7 +409,7 @@ def typed_set(solutions, name):
 def test_exhaustive_padded_fields(spec):
     width, alphabet, untyped = PAD_SPECS[spec]
     rendered = 0
-    for declared in (None, str, int):
+    for declared in (None, str, int, bool):
         types = untyped if declared is None else {declared}
         p = Param("u", type=declared)
         expr = P("d") / T(Template(Interpolation(p, "u", None, spec)))
@@ -405,3 +441,77 @@ def test_exhaustive_padded_fields(spec):
                 assert len(got) == 1, label
                 assert typed_set(expr.match_all(path), "u") == got, label
     assert rendered, f"{spec}: no value rendered"
+
+
+# The limits of completeness (docs/SEMANTICS.md §7): a precision truncates a
+# str, a float type rounds, and an untyped field does not read the floats
+# that render under its spec. A path then has more bindings than the search
+# returns, but every binding it does return must render to the path, and the
+# reading named below must be among them.
+
+xf = Param("x", type=float)
+LIMITS = {
+    # name: (expr, name, domain, readings of a path's text that are returned)
+    "str precision": (
+        T(t"k{u:.2}"),
+        "u",
+        ["".join(p) for k in range(5) for p in itertools.product("ab.", repeat=k)],
+        lambda text: {(str, text)},
+    ),
+    "padded str precision": (
+        T(t"k{u:_<4.2}"),
+        "u",
+        ["".join(p) for k in range(5) for p in itertools.product("a_", repeat=k)],
+        lambda text: {(str, text.rstrip("_"))},
+    ),
+    "rounding float": (
+        T(t"k{xf:.1f}"),
+        "x",
+        [i / 100 for i in range(-300, 300)] + [float("inf"), -0.0],
+        lambda text: {(float, float(text))},
+    ),
+    "rounding percentage": (
+        T(t"k{xf:.0%}"),
+        "x",
+        [i / 1000 for i in range(-100, 100)],
+        lambda text: {(float, float(text[:-1]) / 100)},
+    ),
+    "int under a rounding float type": (
+        T(t"k{n:.1e}"),
+        "n",
+        list(range(-300, 3000, 7)),
+        lambda text: {(int, int(float(text)))},
+    ),
+    "floats under an untyped zero-padded spec": (
+        T(t"k{u:05}"),
+        "u",
+        [i / 4 for i in range(-20, 20)] + [5, -5, "5.0", "005.0"],
+        lambda text: {(str, text)},
+    ),
+    "floats under an untyped signed spec": (
+        T(t"k{u:+}"),
+        "u",
+        [i / 4 for i in range(-20, 20)] + list(range(-5, 5)),
+        lambda text: set(),
+    ),
+}
+
+
+@pytest.mark.parametrize("family", sorted(LIMITS))
+def test_limits_return_only_verified_bindings(family):
+    expr, name, domain, reading = LIMITS[family]
+    groups: dict[str, set] = {}
+    for value in domain:
+        try:
+            path = expr.render({name: value})
+        except InvalidBindingError:
+            continue
+        groups.setdefault(path, set()).add((type(value), value))
+    missed = 0
+    for path, want in groups.items():
+        got = typed_set(expr.match_all(path, fast=False), name)
+        for _, value in got:
+            assert expr.render({name: value}) == path, (family, path, value)
+        assert reading(path[1:]) <= got, (family, path, got)
+        missed += len(want - got)
+    assert missed, f"{family}: completeness holds here, so update §7's limits"

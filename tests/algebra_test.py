@@ -1,4 +1,5 @@
 from pathlib import Path, PurePosixPath
+from string.templatelib import Interpolation, Template
 
 import pytest
 
@@ -136,6 +137,56 @@ def test_dynamic_format_spec():
     e = T(t"x_{idx:0{width}d}")
     assert e.render(idx=3, width=5) == "x_00003"
     assert e.bind(width=2).render(idx=3) == "x_03"
+
+
+# Values that format rejects, by raising OverflowError (a c field out of range,
+# an int too large for a float type) or ValueError (an int beyond the digit
+# limit, whose repr fails too), are invalid bindings on every route.
+UNFORMATTABLE = [
+    pytest.param("c", -1, id="c-negative"),
+    pytest.param("c", 0x110000, id="c-beyond-unicode"),
+    pytest.param("c", 2**64, id="c-beyond-c-long"),
+    pytest.param("f", 10**400, id="f-beyond-float"),
+    pytest.param("e", -(10**400), id="e-beyond-float"),
+    pytest.param("d", 10**5000, id="d-beyond-digit-limit"),
+    pytest.param("!r", 10**5000, id="repr-beyond-digit-limit"),
+]
+ROUTES = {
+    "render": lambda e, env: e.render(env),
+    "compiled": lambda e, env: e.compile().render(env),
+    "bind": lambda e, env: e.bind(env),
+    "bind one by one": lambda e, env: e.bind(dict([env.popitem()])).render(env),
+    "name": lambda e, env: e.name.render(env),
+}
+
+
+@pytest.mark.parametrize("route", sorted(ROUTES))
+@pytest.mark.parametrize(("spec", "value"), UNFORMATTABLE)
+def test_values_format_rejects_are_invalid_bindings(route, spec, value):
+    n, fmt = Param("n"), Param("fmt")
+    conv, spec = ("r", "") if spec == "!r" else (None, spec)
+    static = P("d") / T(Template("x", Interpolation(n, "n", conv, spec)))
+    dynamic = P("d") / T(Template("x", Interpolation(n, "n", conv, f"{fmt}")))
+    for e, env in [(static, {"n": value}), (dynamic, {"n": value, "fmt": spec})]:
+        with pytest.raises(InvalidBindingError):
+            ROUTES[route](e, dict(env))
+
+
+@pytest.mark.parametrize("route", sorted(ROUTES))
+def test_bindings_without_a_repr_are_invalid_not_value_errors(route):
+    big = 10**5000  # repr(big) raises ValueError, so messages must not use it
+    w, fmt, c = Param("w", type=str), Param("fmt"), Param("c", choices={"a"})
+    cases = [
+        (P("d") / Param("s"), {"s": big}),  # a segment formats its value
+        (P(Param("root")), {"root": big}),  # a head takes paths only
+        (P("d") / T(t"x{w}"), {"w": big}),  # the declared type
+        (P("d") / T(t"x{idx:{fmt}}"), {"idx": 1, "fmt": big}),  # a spec value
+        (P("d") / T(t"x{c}"), {"c": ["a"]}),  # unhashable, so not a choice
+        (P("d") / c, {"c": ["a"]}),
+    ]
+    for e, env in cases:
+        with pytest.raises(InvalidBindingError):
+            ROUTES[route](e, dict(env))
 
 
 # -- structural operations -----------------------------------------------

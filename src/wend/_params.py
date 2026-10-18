@@ -8,7 +8,7 @@ import weakref
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Final
 
-from .errors import InvalidBindingError
+from .errors import InvalidBindingError, show
 
 
 if TYPE_CHECKING:
@@ -146,11 +146,11 @@ class Param:
         """Raise InvalidBindingError if ``value`` violates the declared type or choices."""
         if self.type is not None and not isinstance(value, self.type):
             raise InvalidBindingError(
-                f"{self.name}={value!r}: expected {getattr(self.type, '__name__', self.type)}"
+                f"{self.name}={show(value)}: expected {getattr(self.type, '__name__', self.type)}"
             )
-        if self.choices is not None and value not in self.choices:
+        if self.choices is not None and not _is_choice(value, self.choices):
             raise InvalidBindingError(
-                f"{self.name}={value!r}: not one of {sorted(map(repr, self.choices))}"
+                f"{self.name}={show(value)}: not one of {sorted(map(repr, self.choices))}"
             )
 
 
@@ -182,6 +182,13 @@ def _check_default(p: Param) -> None:
             _segment_text(p.name, d)
     except InvalidBindingError as e:
         raise InvalidBindingError(f"Invalid default for {p.name!r}: {e}") from None
+
+
+def _is_choice(value: Any, choices: frozenset[Any]) -> bool:
+    try:
+        return value in choices
+    except TypeError:  # unhashable, so not among the (hashable) choices
+        return False
 
 
 def Segment(

@@ -1,7 +1,22 @@
-import pytest
+import itertools
+from decimal import Decimal
+from string.templatelib import Interpolation, Template
 
-from wend import AmbiguousMatchError, NotInvertibleError, P, Param, SubPath, T
+import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
+
+from wend import (
+    AmbiguousMatchError,
+    InvalidBindingError,
+    NotInvertibleError,
+    P,
+    Param,
+    SubPath,
+    T,
+)
 from wend._match import _expr_plan, seg_plan
+from wend._spec import implied_types, parse_spec
 
 
 root, dataset, idx, total = (
@@ -68,6 +83,48 @@ def test_hex_and_repr_fields_invert():
     n = Param("n", type=int)
     assert T(t"obj_{n:x}").match("obj_ff") == {"n": 255}
     assert T(t"k={dataset!r}").match("k='abc'") == {"dataset": "abc"}
+
+
+LITERAL_TEXTS = st.text(alphabet="[]{}(),:'\"1a-+ .\\", max_size=14)
+
+
+@pytest.mark.filterwarnings("ignore::SyntaxWarning")  # literal_eval("'\\+'") warns
+@settings(max_examples=500, deadline=None)
+@given(LITERAL_TEXTS, st.sampled_from(["r", "a"]), st.sampled_from(["", ">9", "*^9"]))
+def test_reading_a_literal_never_raises(text, conversion, spec):
+    # Issue #55: a text that is no literal gives no candidate, whatever
+    # literal_eval raises for it ("{[1]: 2}" raises TypeError).
+    u = Param("u")
+    e = T(Template("k", Interpolation(u, "u", conversion, spec)))
+    for sol in e.match_all("k" + text):
+        assert e.render(sol) == "k" + text
+
+
+def test_unreadable_literals_give_no_candidate():
+    u = Param("u")
+    e = T(t"k{u!r}")
+    for text in [
+        "{[1]: 2}",  # TypeError: an unhashable key
+        "{1, [2]}",
+        "{(1, [2]): 3}",
+        "[" * 300 + "]" * 300,  # SyntaxError: too deeply nested
+        "-" * 100_000 + "1",  # MemoryError: the parser's stack
+        "1" * 5000,  # beyond the digit limit
+        "1+",
+    ]:
+        assert e.match_all("k" + text) == []
+    assert T(t"k{u!a}").match("k{[1]: 2}") is None
+    assert e.match("k{1: [2]}") == {"u": {1: [2]}}
+    c = Param("c", choices={"a"})  # an unhashable literal is no choice
+    assert T(t"k{c!r}").match("k['a']") is None
+    assert T(t"k{c!r}").match("k'a'") == {"c": "a"}
+
+
+def test_declared_types_that_reject_text_give_no_candidate():
+    x = Param("x", type=Decimal)
+    e = T(t"k{x}")
+    assert e.match("kabc") is None  # Decimal raises decimal.InvalidOperation
+    assert e.match("k1.50") == {"x": Decimal("1.50")}
 
 
 def test_deferred_head_is_not_invertible():
@@ -194,6 +251,64 @@ def test_untyped_zero_padded_spec_reads_str_and_int():
     assert T(t"x{u:+05}").match("x+0005") == {"u": 5}
 
 
+def test_untyped_fields_under_options_only_numbers_take():
+    # Issue #55: no str formats under a sign, "#", grouping or "=", so an
+    # untyped field with one of them reads ints, as a type=int field does.
+    u = Param("u")
+    for spec, value in [
+        ("+5", 5),
+        (",", 1234567),
+        ("=5", -5),
+        (" ", 5),
+        ("_", -10000),
+        ("#", 7),
+        ("x=+6", 5),
+        ("+05", -3),
+        ("n", 42),  # a presentation type only numbers take
+        ("-#,", 1234),
+    ]:
+        e = P("d") / T(Template("k", Interpolation(u, "u", None, spec)))
+        path = e.render(u=value)
+        assert readings(e, path, "u") == {(int, value)}, spec
+        with pytest.raises(InvalidBindingError):
+            e.render(u="x")  # no str formats here
+    assert T(t"k{u:+5}").match("k   +5") == {"u": 5}
+    assert T(t"k{u:,}").match("k1,000") == {"u": 1000}
+    assert T(t"k{u:,}").match("k1000") is None  # 1000 formats as 1,000
+    # z and a precision are refused by ints too: only floats remain.
+    for spec, value in [("z", 0.5), ("+.3", 1.25), ("z,", -1234.5)]:
+        e = P("d") / T(Template("k", Interpolation(u, "u", None, spec)))
+        assert readings(e, e.render(u=value), "u") == {(float, value)}, spec
+    assert readings(T(t"k{u:z}"), "k0.0", "u") == {(float, 0.0)}  # -0.0 too
+
+
+def test_implied_types_follow_what_formats():
+    # An untyped field without a presentation type reads the first of str,
+    # int and float that formats under its spec (§7), checked against format.
+    options = [
+        ("", "<", "=", "x^"),  # fill and alignment
+        ("", "+", " "),  # sign
+        ("", "z"),
+        ("", "#"),
+        ("", "4", "04"),  # the 0 flag and width
+        ("", ",", "_"),  # grouping
+        ("", ".2"),  # precision
+    ]
+    for parts in itertools.product(*options):
+        spec = "".join(parts)
+        formats = []
+        for t, sample in ((str, "x"), (int, 0), (float, 0.0)):
+            try:
+                format(sample, spec)
+            except ValueError:
+                continue
+            formats.append(t)
+        got = implied_types(parse_spec(spec))
+        assert formats, spec  # a float formats under every such spec
+        assert got[0] is formats[0], (spec, got, formats)
+        assert set(got) <= set(formats), (spec, got, formats)
+
+
 def test_declared_type_picks_the_zero_padded_reading():
     ui = Param("u", type=int)
     e = P("d") / T(t"{ui:05}")
@@ -262,6 +377,73 @@ def test_character_fields_invert():
     assert T(t"x{n:c}_{n:d}").match("xq_113") == {"n": 113}
     assert T(t"x{n:3c}").match("x  A") == {"n": 65}
     assert T(t"x{n:03c}").match("x000") == {"n": ord("0")}
+
+
+def test_bool_fields_read_true_and_false():
+    # Issue #55: a bool formats as True or False under the empty spec, and as
+    # the number 1 or 0 under any other; its int readings failed its type.
+    q = Param("q", type=bool)
+    cases = [
+        ("", "True", True),
+        ("", "False", False),
+        ("d", "1", True),
+        ("d", "0", False),
+        ("05", "00001", True),
+        (">3", "  0", False),
+        ("+", "+1", True),
+        ("=+4", "+  1", True),
+        ("#x", "0x1", True),
+        ("c", "\x01", True),
+        ("f", "1.000000", True),
+        (".0%", "0%", False),
+        ("g", "1", True),
+    ]
+    for spec, text, value in cases:
+        e = P("d") / T(Template("k", Interpolation(q, "q", None, spec)))
+        assert e.render(q=value) == "d/k" + text
+        assert readings(e, "d/k" + text, "q") == {(bool, value)}, spec
+        assert type(e.match("d/k" + text)["q"]) is bool
+    assert T(t"k{q:d}").match("k2") is None
+    assert T(t"k{q:d}").match("kTrue") is None
+    assert T(t"k{q}").match("k1") is None
+    assert readings(P("d") / q, "d/False", "q") == {(bool, False)}  # a segment
+    assert readings(T(t"k{q!s:>6}"), "k False", "q") == {(bool, False)}
+    assert readings(T(t"k{q!r}"), "kTrue", "q") == {(bool, True)}
+
+
+def test_typed_fields_under_float_types_and_the_str_conversion():
+    n, x = Param("n", type=int), Param("x", type=float)
+    # An int formats under a float presentation type as its float.
+    assert readings(T(t"k{n:f}"), "k5.000000", "n") == {(int, 5)}
+    assert readings(T(t"k{n:.0%}"), "k-500%", "n") == {(int, -5)}
+    assert readings(T(t"k{n:g}"), "k1e+20", "n") == {(int, 10**20)}
+    assert T(t"k{n:f}").match("k5.500000") is None
+    # Under !s, a declared type reads the values whose str is the text.
+    assert readings(T(t"k{n!s}"), "k-5", "n") == {(int, -5)}
+    assert readings(T(t"k{n!s:*>4}"), "k**12", "n") == {(int, 12)}
+    assert T(t"k{n!s}").match("k05") is None  # str(5) is "5"
+    assert readings(T(t"k{x!s}"), "k0.5", "x") == {(float, 0.5)}
+    assert T(t"k{x!s}").match("k1") is None  # str(1.0) is "1.0"
+
+
+def test_a_spec_read_from_the_path_cannot_ask_for_more_than_the_text():
+    """A width or precision bound from the path itself is bounded by the text:
+    formatting a candidate under ``{u:999999999}`` would allocate a gigabyte."""
+    w, p = Param("w", type=int), Param("p", type=int)
+    u, x = Param("u"), Param("x")
+    wide = T(t"{w:d}_{u:{w}}")
+    assert wide.match("999999999_x") is None
+    assert wide.match("3_xyz") == {"w": 3, "u": "xyz"}
+    precise = T(t"{p:d}_{x:.{p}f}")
+    assert precise.match("999999999_1.5") is None
+    assert precise.match("2_1.50") == {"p": 2, "x": 1.5}
+    # inf and nan ignore precision, so they are still read.
+    assert precise.match("12_inf") == {"p": 12, "x": float("inf")}
+    alt = T(t"{p:d}_{x:#.{p}g}")
+    assert alt.match("999999999_1.5") is None
+    assert alt.match("3_1.50") == {"p": 3, "x": 1.5}
+    # Without the alternate form, g drops trailing zeros: precision is no bound.
+    assert T(t"{p:d}_{x:.{p}g}").match("40_1.5") == {"p": 40, "x": 1.5}
 
 
 def test_fast_path_reads_newlines_and_long_numbers():

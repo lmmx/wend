@@ -52,4 +52,3 @@ def lobes_of(path):
                                 length=float(np.percentile(pa, 97) - np.percentile(pa, 3)), width=float(np.percentile(pb, 97) - np.percentile(pb, 3)),
                                 mask=mm))
     return out
-

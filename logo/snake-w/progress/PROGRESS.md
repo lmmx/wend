@@ -214,8 +214,30 @@ Along the z20 fit's path, the JAX raster and real Three.js renders improve toget
 
 The image term is a faithful surrogate: it predicts the render's change to within 0.002.
 
+### Round 4: choose which blue leg goes in front (e2a, e2b)
+
+`regionfit.py --leg-front S1 --leg-back S2` orders the two legs in depth, by a 45 px margin wherever they overlap on screen. That breaks the saddle. Crossing order is not enforced for those two legs alone, because their layering is the thing being decided. Both runs start from e1.
+
+`10-leg-order-crops.png` (baseline | e1 | e2a | e2b), `10b-curl-zoom-e1-e2a-e2b.png` (clay, zebra, colour of the curl), `11-leg-order-full.png` (hero and 3/4 views).
+
+- **e2a, leg 1053 in front: worse.** The crease and pit stay, and the zebra swirl remains.
+- **e2b, leg 1153 in front: the notch is gone.**
+  - **Clay:** the front leg is a clean convex bead. Where it overlaps the back leg there is a soft contact groove, not a pit.
+  - **Zebra:** the bead's stripes flow cleanly.
+  - **Whole body:** the W is intact in the hero and the 3/4 view.
+- **e2b's residual flaws:**
+  - At the lower left, where the back leg tucks under, the zebra stripes still converge. The blue visible-fold area there is 1,365 px² (e1: 710).
+  - The blue bead reaches further right than the reference's: agreement with the reference 0.907, against 0.908 for e1.
+
+Mesh check, right-valley window:
+
+| | baseline spline | e1 | e2b |
+|---|---|---|---|
+| blue non-local self-penetration | 12,276 px², 45.6 px deep | 7,194 px², 31.3 px | **1,581 px², 6.1 px** |
+| blue visible local-fold area | 2,771 px² | 710 px² | 1,365 px² |
+| yellow visible local-fold area | 1,935 px² | 661 px² | 587 px² |
+
 ## Next
 
-- **Break the symmetry explicitly.** Run two short fits from e1, one with each blue leg in front, the other routed behind the yellow as in the reference.
-- **Relax the crossing-order constraint for those two legs only.**
-- **Judge on the same sheets.** Accept only if the crease and pit disappear in clay and zebra with the W intact.
+- **Refine e2b (running):** one short run from e2b with the visible-fold and image weights raised, aimed at the tuck's fold and the bead's extent.
+- **Then decide by eye.** Promote only if the tuck's zebra flow is clean, the bead matches the reference's extent, and the W stays intact.

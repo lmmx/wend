@@ -29,6 +29,12 @@ Objective (all evaluated on the spline itself, X = B @ ctrl, r = Br @ rctrl):
            penalised quadratically. The reference is nearly frontal, so depth is weakly observed:
            without this a fit can hide a large 3D loop where the image term cannot see it
   osc      depth oscillation: the second derivative of the depth displacement along the strand
+  legs     (--leg-front S1 --leg-back S2, blue shared stations) an explicit depth order for two
+           sections of the blue strand that meet head-on: the one at S1 in front of the one at S2
+           by --leg-margin px wherever they overlap on screen. A self-collision that is symmetric
+           in depth (both at the same depth) has zero depth gradient, so a fit cannot choose which
+           goes in front; this makes the choice. Crossing order is not enforced for these two
+           sections (their layering is what is being decided).
   order    crossing order: every pair of non-adjacent sections whose discs overlap on screen at the
            start, with a clear depth order (> 15 px), keeps that order with a 10 px margin
   tik      a small pull to the start
@@ -91,6 +97,11 @@ def parse():
     ap.add_argument("--rho-z", type=float, default=20.0)
     ap.add_argument("--w-osc", type=float, default=1.0)
     ap.add_argument("--w-order", type=float, default=1.0)
+    ap.add_argument("--leg-front", type=float, default=None)
+    ap.add_argument("--leg-back", type=float, default=None)
+    ap.add_argument("--leg-halfwidth", type=float, default=30.0)
+    ap.add_argument("--leg-margin", type=float, default=45.0)
+    ap.add_argument("--w-legs", type=float, default=1.0)
     ap.add_argument("--free-radius", type=int, default=1)
     ap.add_argument("--sec", type=int, default=0)
     ap.add_argument("--sec-h", type=float, default=24.0)
@@ -282,8 +293,24 @@ def main():
     dq = np.linalg.norm(q0[:, None] - q0[None], axis=-1); dz0 = z0[:, None] - z0[None]
     nonadj = np.where(same, sep >= 90, True)
     ordered = np.triu((dq < 0.9 * (Rc0[:, None] + Rc0[None])) & (np.abs(dz0) > 15) & nonadj, 1)
+    if A.leg_front is not None:
+        legA = (sid == 1) & (np.abs(sh - A.leg_front) < A.leg_halfwidth)
+        legB = (sid == 1) & (np.abs(sh - A.leg_back) < A.leg_halfwidth)
+        inleg = legA | legB
+        ordered &= ~(inleg[:, None] | inleg[None])
+        li, lj = np.nonzero(legA[:, None] & legB[None] & (dq < 1.0 * (Rc0[:, None] + Rc0[None])))
+        print(f"legs: {legA.sum()} samples in front (blue @{A.leg_front:.0f}), {legB.sum()} behind (@{A.leg_back:.0f}), {len(li)} overlapping pairs")
+    else:
+        li = lj = np.zeros(0, int)
     oi, oj = np.nonzero(ordered); osign = jnp.asarray(np.sign(dz0[oi, oj]))
     print(f"crossing order: {len(oi)} ordered pairs kept")
+
+    def legs(g):
+        if not len(li):
+            return 0.0
+        Pc = jnp.vstack([g["yellow"][0][::2], g["blue"][0][::2]])
+        _, z = scr(Pc)
+        return jnp.mean(jax.nn.relu(A.leg_margin - (z[li] - z[lj])) ** 2)
 
     def trust(g):
         tr = osc = 0.0
@@ -323,11 +350,11 @@ def main():
             r0 = strands[n]["r0"]
             rad += jnp.mean(((r - r0) / r0) ** 2) * 100 + jnp.mean(jax.nn.relu(0.85 - r / r0) ** 2) * 1e4
         tik = jnp.mean(v ** 2)
-        trs, osc = trust(g); ordr = order(g)
+        trs, osc = trust(g); ordr = order(g); lg = legs(g)
         dmax = jnp.max(jnp.concatenate([jnp.abs(scr(g[n][0] - P0[n])[1]) for n in names]))
-        return dict(secdev=sdev, secsm=ssm, area=area, qd_min=qdmin, trust=trs, osc=osc, order=ordr, depth_move_max=dmax, img=img, self=slf, contact=con, self_overlap_max=ovself, across_overlap_max=ovacross, bend=bend, jerk=jerk, fold=fold, visfold=vf, speed=spd, radius=rad, tik=tik, jvis=jvis)
+        return dict(legs=lg, secdev=sdev, secsm=ssm, area=area, qd_min=qdmin, trust=trs, osc=osc, order=ordr, depth_move_max=dmax, img=img, self=slf, contact=con, self_overlap_max=ovself, across_overlap_max=ovacross, bend=bend, jerk=jerk, fold=fold, visfold=vf, speed=spd, radius=rad, tik=tik, jvis=jvis)
 
-    W = dict(secdev=A.w_secdev, secsm=A.w_secsm, area=A.w_area, trust=A.w_trust, osc=A.w_osc, order=A.w_order, img=A.w_img, self=A.w_self, contact=A.w_contact, bend=A.w_fair, jerk=A.w_jerk, fold=A.w_fold, visfold=A.w_visfold, speed=A.w_speed, radius=A.w_rad, tik=A.w_tik)
+    W = dict(legs=A.w_legs, secdev=A.w_secdev, secsm=A.w_secsm, area=A.w_area, trust=A.w_trust, osc=A.w_osc, order=A.w_order, img=A.w_img, self=A.w_self, contact=A.w_contact, bend=A.w_fair, jerk=A.w_jerk, fold=A.w_fold, visfold=A.w_visfold, speed=A.w_speed, radius=A.w_rad, tik=A.w_tik)
 
     def loss(v):
         tm = terms(v)

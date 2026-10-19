@@ -335,3 +335,28 @@ The judging is now separate from the fitting and covers every feature: `audit/RE
 3. **The judge rates lvt60's L04/L06 at severity 2** (a soft fold, band-like), where the metric says 5. The metric's severity there is driven by the merged/unstable segmentation flags, so it overstates them.
 
 **Next:** the competing strand-local deformation prototype (one continuous swept surface, deformed in place), then a single side-by-side against the reference and lvt60.
+
+## 6. The autonomous loop overnight (rounds 11–19)
+
+![last night against now, full frame](14-overnight-full.png)
+
+![the regions that changed](15-overnight-crops.png)
+
+**Last night** is the round 10 incumbent (`incms`). **Now** is the round 18 incumbent (`r18-L12`). Columns run reference | last night | now in colour, then last night | now in clay.
+
+**Accepted overnight** (blind paired judge, real renders):
+- **r12-L06, r15-L06:** the left valley's yellow L06 went from an angular band with a V notch to a round-ended cushion (IoU 0.822 → 0.897).
+- **r13-L01:** the blue collar under the yellow head moved one step closer, with its top end 2 px lower.
+- **r18-L12:** the right valley's yellow L12 is plumper at the top, without the pinched tip and S-shaped waist (and L13 one step closer).
+
+**Rejected overnight:**
+- **The collar L01, six times.** The fits came down to 4 px of the reference's top (IoU up to 0.903), but the judges preferred the incumbent each time: a stray blob under the jaw, a flat-topped shoulder, and "paler, slimmer".
+- **L05:** a two-step gain (IoU 0.708 → 0.918) with a zebra seam, then a repair that creased the valley.
+- **L16 and L13 several times each**, for pinches and creases.
+
+Rounds, verdicts and the loop's changes are in `auto/LEDGER.md` and `docs/journal/2026-10-19-logo-autonomous-loop-86.md`.
+
+**Still different from the reference:**
+- The reference's lobes are fatter, balloon-like cushions with dark creases between them.
+- The collar is wider, and its top sits darker under the head.
+- The L13/L14 dimple remains.

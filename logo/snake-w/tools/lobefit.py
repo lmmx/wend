@@ -10,7 +10,9 @@ renders of the real geometry.
          (lobekit.waist: a dip in the width profile beyond the reference's) / 10 (cost_t)
   guards every other feature inside the crop may not lose IoU (> 0.005), p95 (> 1 px), its
          worst arc (> 2 px), solidity (> 0.01) or waist (> 2 px); the crop's silhouette and negative spaces, the local fold area, the
-         clay crease (target and guards) and the press depth (the deepest overlap of the two tubes
+         clay crease (target and guards), stray blobs (from round 17, lobekit.stray: px of small
+         separate blobs of a colour outside the reference's features of that colour; more than
+         20 px over the incumbent's, / 100) and the press depth (the deepest overlap of the two tubes
          before the press flattens them, inside the crop: a deeper press dents the partner) may
          not get worse than the incumbent's
   reg    0.01 x the squared controls in search units (lobekit.SCALE: 10 px, 8 deg, 0.1)
@@ -147,6 +149,7 @@ def main():
             pen += max(0.0, ex["press"] - ex0["press"] - 2.0) / 4.0
             pen += 0.08 * max(0.0, ex["corners"] - ex0["corners"] - 1)
             pen += 0.5 * max(0.0, ex["bottom"] - ex0["bottom"] - 1)
+            pen += max(0.0, ex["stray"] - ex0["stray"] - 20) / 100
             for g, cr in ex["crease"].items():
                 pen += 0.5 * max(0.0, cr / max(ex0["crease"].get(g, 0.6), 0.6) - 1.4)
             reg = 0.01 * float(np.sum(np.square(x)))

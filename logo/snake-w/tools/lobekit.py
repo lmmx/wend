@@ -338,10 +338,27 @@ def corners(b, y, thr=55.0, k=5):
     return n
 
 
+def stray(M, room, small=1500):
+    """the px of small separate blobs of a colour (components under `small` px that do not touch the
+    crop's edge) that lie outside `room`, where the reference shows that colour. r16-L01's open-tail
+    move carried the blue tail's end out past the far side of the yellow neck: a ~100 px blob under
+    the jaw that no feature's measures saw, and that a plain count of colour outside the reference
+    missed because the same move took the collar's overshooting tip back inside it"""
+    lab, n = ndimage.label(M)
+    if not n:
+        return 0
+    edge = np.unique(np.r_[lab[0], lab[-1], lab[:, 0], lab[:, -1]])
+    area = np.bincount(lab.ravel(), minlength=n + 1)
+    out = np.bincount(lab[~room].ravel(), minlength=n + 1)
+    keep = (area < small) & ~np.isin(np.arange(n + 1), edge)
+    keep[0] = False
+    return int(out[keep].sum())
+
+
 class Scorer:
     """per-feature measurements of a flat render on a crop: the evaluate.py lobe split and match,
     IoU, boundary distances, centroid, arcs (both ways, arcs2), waist; silhouette IoU, negative-space
-    intrusion, clay crease"""
+    intrusion, clay crease, stray blobs (stray())"""
 
     def __init__(self, clip, feats):
         self.clip = clip; x0, y0, x1, y1 = clip
@@ -354,6 +371,8 @@ class Scorer:
         neg = NEGLAB[y0:y1, x0:x1]
         self.neg = {n["id"]: neg == int(n["id"][1:]) for n in REG["negatives"] if (neg == int(n["id"][1:])).sum() > 500}
         self.sil = ndimage.binary_fill_holes(morphology.closing(self.lab > 0, morphology.disk(4)))
+        # where each colour shows in the reference (its features of that colour), for the stray blobs
+        self.room = {c: np.isin(self.lab, [i + 1 for i, f in enumerate(FEATS) if f["colour"] == c]) for c in ("blue", "yellow")}
         # the reference lobes' shape: elongation, orientation (degrees), solidity (area / convex hull
         # area: the reference's cushions are near-convex, 0.94-0.96; a band, wedge or notch is less)
         self.props = {}
@@ -386,6 +405,7 @@ class Scorer:
         sil = ndimage.binary_fill_holes(morphology.closing(blue | yellow, morphology.disk(4)))
         ex = {"sil": float((sil & self.sil).sum() / (sil | self.sil).sum()), "intr": {k: float(sil[m].mean()) for k, m in self.neg.items()}, "crease": {},
               "corners": corners(blue, yellow),
+              "stray": stray(blue, self.room["blue"]) + stray(yellow, self.room["yellow"]),
               # the lowest body pixel row in the crop: the floor shadow is painted from the model's lowest feet (scene.js
               # shadowCard), so a lobe lowered past the feet leaves a pale gap (r3-L13, r5-L13)
               "bottom": int(np.nonzero((blue | yellow).any(1))[0].max()) if (blue | yellow).any() else 0}

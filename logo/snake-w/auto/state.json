@@ -11,7 +11,10 @@
   "L05": 1,
   "L09": 1,
   "L14": 1,
-  "L06": 1
+  "L06": 1,
+  "L07": 1,
+  "L01": 1,
+  "L12": 1
  },
  "rounds": [
   {
@@ -114,6 +117,16 @@
     "L16: severity 2 -> 1, IoU 0.81 -> 0.86"
    ],
    "verdict": "new incumbent r7-merged"
+  },
+  {
+   "round": "r8",
+   "incumbent_before": "r7-merged",
+   "accepted": [],
+   "rejected": [
+    "L01",
+    "L07",
+    "L12"
+   ]
   }
  ]
 }

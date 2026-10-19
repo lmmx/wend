@@ -25,3 +25,10 @@
 - Real renders: mean lobe IoU 0.852 -> 0.856 / 0.854 / 0.852, silhouette 0.950 -> 0.951 / 0.950 / 0.949, no lobe worse by 0.03; the colour, clay and zebra crops are visually indistinguishable from the incumbent (auto/waists/cmp.png). The pinched stations are behind the partner strand, so the visible lobes keep their shape.
 - Not judged (no measured gain to accept, no visible change). Finding: the reference's distinct-cushion read comes from the visible lobes' own shape and shading, not from waists in the hidden stretches.
 - Seen on the same sheet: the reference's bands on the arch legs (L10-L12) run flatter (closer to horizontal) and fatter than ours, which are more diagonal: a helix-pitch difference along the arch legs, a candidate for a composition move (tools/twist.py with --helix) if the per-lobe rounds stall there.
+
+## ~03:20 UTC: the blue look (auto/look2/)
+- Measured (per-lobe luminance inside the reference masks): the incumbent's blue lobes have a p95 of 180 against the reference's 131 (spread 126 vs 70); the yellow is close (p95 244 vs 235).
+- Per-material envMapIntensity has no effect (the scene's environment and environmentIntensity override it): b1 / b2 are pixel-identical to the incumbent.
+- c4 (the blue's clearcoat 0, specular 0.2 #4a74c8, roughness 0.5: p95 163): REJECTED by the judge, the blue flat and matte with no crisp highlight (the reference's highlight is small and sharp).
+- d1 (a sharp clearcoat 0.35 / 0.06 over a rougher base): indistinguishable to the judge (7689 px changed).
+- Finding: the material parameters move the blue little; the broad lit zone comes from the lighting (env key / fill / envLevel), which the earlier look work fitted. Not pursued further tonight.

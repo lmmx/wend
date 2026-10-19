@@ -71,6 +71,7 @@ for await (const line of rl) {
       Object.assign(reply, await page.evaluate(([s, b]) => window.__run(s, b), [spec, req.box || null]));
       await page.screenshot({ path: req.out, clip: { x: c[0], y: c[1], width: c[2] - c[0], height: c[3] - c[1] } });
       if (req.shade) { await page.evaluate(() => window.__shade()); await page.screenshot({ path: req.shade, clip: { x: c[0], y: c[1], width: c[2] - c[0], height: c[3] - c[1] } }); }
+      if (req.normals) { await page.evaluate(() => window.__normals()); await page.screenshot({ path: req.normals, clip: { x: c[0], y: c[1], width: c[2] - c[0], height: c[3] - c[1] } }); }
     }
     reply.total_ms = Date.now() - t0;
     console.log(JSON.stringify(reply));

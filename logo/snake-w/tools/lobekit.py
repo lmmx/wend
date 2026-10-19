@@ -149,6 +149,25 @@ def waist(R, K, nb=10):
     return float(max(0.0, np.max(dip(wK) - dip(wR))))
 
 
+def ridges(normals_png):
+    """sharp ridges of the surface: how fast the view-space normal turns (ffd-flat.html
+    __normals), less its own blur over 4 px, so the smooth turning near a silhouette cancels and a
+    fold's thin line remains"""
+    N = np.asarray(Image.open(normals_png).convert("RGB")).astype(float) / 127.5 - 1
+    N = np.stack([ndimage.gaussian_filter(N[..., k], 0.8) for k in range(3)], -1)
+    g = sum(np.hypot(*np.gradient(N[..., k])) for k in range(3))
+    return g - ndimage.gaussian_filter(g, 4.0)
+
+
+def fold_length(rg, K, thr=0.03):
+    """the longest ridge inside lobe K (8 px in from its edge), px: 0 on a smooth cushion, ~30 for
+    r18-L12's compact dimple on L13, 44 for r22-L13+L14's long diagonal fold, which the clay
+    crease (the sharpest point) and the fold area both missed"""
+    inner = morphology.erosion(K, morphology.disk(8))
+    lab = measure.label((rg > thr) & inner)
+    return float(max((r.axis_major_length for r in measure.regionprops(lab) if r.area >= 6), default=0.0))
+
+
 def profile(R, K, nb=10):
     """how far K's width profile along R's axis is from R's: mean |width difference| / R's mean
     width. A lobe with the right outline area but its mass in the wrong place (a flat-topped
@@ -412,7 +431,7 @@ class Scorer:
             p = measure.regionprops(self.ref[fid][0].astype(int))[0]
             self.props[fid] = (float(p.axis_major_length / max(p.axis_minor_length, 1)), float(np.degrees(p.orientation)), float(p.solidity))
 
-    def measure(self, png, shade=None):
+    def measure(self, png, shade=None, normals=None):
         im = np.asarray(Image.open(png).convert("RGB"))
         L = lobes(im)
         res = {}
@@ -451,6 +470,11 @@ class Scorer:
             g = np.asarray(Image.open(shade).convert("L")).astype(float)
             lap = np.abs(filters.laplace(filters.gaussian(g, 1.0)))
             Ks = {fid: r.pop("_K", None) for fid, r in res.items()}
+            if normals is not None:
+                rg = ridges(normals)
+                for fid, K in Ks.items():
+                    if K is not None:
+                        res[fid]["fold"] = fold_length(rg, K)
             for fid, K in Ks.items():
                 if K is None:
                     continue

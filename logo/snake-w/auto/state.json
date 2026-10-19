@@ -9,13 +9,13 @@
   "look": "snakes/w-meshshadow.look.json"
  },
  "tried": {
-  "L13": 2,
-  "L05": 3,
+  "L13": 3,
+  "L05": 4,
   "L09": 2,
   "L14": 2,
   "L06": 2,
   "L07": 2,
-  "L01": 2,
+  "L01": 3,
   "L12": 1,
   "L15": 2,
   "L04": 2,
@@ -276,6 +276,17 @@
     "L16",
     "L01",
     "L09"
+   ],
+   "verdict": "no correction accepted"
+  },
+  {
+   "round": "r22",
+   "incumbent_before": "r18-L12",
+   "accepted": [],
+   "rejected": [
+    "L05+L04",
+    "L13+L14",
+    "L01w"
    ],
    "verdict": "no correction accepted"
   }

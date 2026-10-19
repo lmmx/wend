@@ -1,10 +1,11 @@
 """A round's visual report (LOOP.md, "Visual reporting"), from renders the round already made:
   full.png        reference | previous accepted best | new accepted best (colour, then clay)
-  KEY.png         per attempted correction, the region of its target and joint neighbour:
-                  columns reference | before | candidate; rows colour, clay, zebra, delta (green:
-                  the colour now agrees with the reference where it did not; red: now disagrees
-                  where it agreed; grey: still wrong), contours (reference red, before blue,
-                  candidate green), with the numbered features labelled
+  KEY.png         per attempted correction, the region of its target and joint neighbour, three
+                  rows by four columns: colour (reference | before | candidate | delta: green, the
+                  colour now agrees with the reference where it did not; red, now disagrees where
+                  it agreed; grey, still wrong), clay (contours on the reference: reference red,
+                  before blue, candidate green | before | candidate), zebra (before | candidate),
+                  with the numbered features labelled
   cumulative.png  (--cumulative) reference | the loop's start (lvt60) | the diagnosis-driven
                   start (r18-L12) | the latest accepted best, full frame in colour and clay
   report.md       the per-feature numbers of each candidate's target, neighbour and guards
@@ -72,7 +73,7 @@ for key, s in S["targets"].items():
         w = window(K.FEATS[K.FIDS.index(f)], 45)
         bx = w if bx is None else (min(bx[0], w[0]), min(bx[1], w[1]), max(bx[2], w[2]), max(bx[3], w[3]))
     bx = tuple(int(v) for v in bx)
-    sc = min(2.0, 620 / max(bx[2] - bx[0], bx[3] - bx[1]))
+    sc = min(1.6, 420 / max(bx[2] - bx[0], bx[3] - bx[1]))
     sz = (int((bx[2] - bx[0]) * sc), int((bx[3] - bx[1]) * sc))
     cut = lambda im: im.crop(bx).resize(sz, Image.LANCZOS)
     bcol, ccol = img(prev, "colour"), Image.open(f"{R}/renders/{s['tag']}-colour.png").convert("RGB")
@@ -106,11 +107,11 @@ for key, s in S["targets"].items():
                 x, y = (cx - bx[0]) * sc, (cy - bx[1]) * sc
                 d.rectangle((x - 2, y - 2, x + 30, y + 12), fill=(255, 255, 255)); d.text((x, y), f["id"], fill=(0, 0, 0))
         return im
-    rows = [("colour", [label(cut(ref)), cut(bcol), cut(ccol)]), ("clay", [None, cut(img(prev, "clay")), cut(cc("clay"))]),
-            ("zebra", [None, cut(img(prev, "zebra")), cut(cc("zebra"))]),
-            ("delta", [None, None, label(cut(dl[2]))]), ("contours", [contours(ref), None, None])]
+    rows = [("colour", [label(cut(ref)), cut(bcol), cut(ccol), label(cut(dl[2]))]),
+            ("clay", [contours(ref), cut(img(prev, "clay")), cut(cc("clay")), None]),
+            ("zebra", [None, cut(img(prev, "zebra")), cut(cc("zebra")), None])]
     jv = open(f"{R}/judge-{s['tag']}.md").readline().strip() if os.path.exists(f"{R}/judge-{s['tag']}.md") else "verdict: (gates) " + ("REJECT" if s.get("gate_fails") else "pending")
-    grid(rows, ["reference", f"before ({prev})", f"candidate ({s['tag']})"],
+    grid(rows, ["reference (contours below: reference red, before blue, candidate green)", f"before ({prev})", f"candidate ({s['tag']})", "delta: green now agrees, red now disagrees, grey still wrong"],
          f"{s['tag']}: {key}  |  {jv}  |  delta: green = now agrees with the reference, red = now disagrees, grey = still wrong  |  contours: reference red, before blue, candidate green",
          f"{out}/{key}.png", sc)
     mb = json.load(open(find(prev).replace("/renders", "") + f"/metrics-{prev}.json")) if os.path.exists(find(prev).replace("/renders", "") + f"/metrics-{prev}.json") else None

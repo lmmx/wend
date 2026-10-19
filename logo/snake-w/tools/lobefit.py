@@ -155,9 +155,9 @@ def main():
         sc = K.Scorer(clip, feats, edge)
         def measure(spec, wi, tag):
             w = W[wi % len(W)]
-            p, s = f"{out}/w{w.wid}-{tag}.png", f"{out}/w{w.wid}-{tag}-shade.png"
-            r = w.call(spec_obj=spec, out=p, clip=clip, box=clip, shade=s)
-            m, ex = sc.measure(p, s)
+            p, s, nm = f"{out}/w{w.wid}-{tag}.png", f"{out}/w{w.wid}-{tag}-shade.png", f"{out}/w{w.wid}-{tag}-normals.png"
+            r = w.call(spec_obj=spec, out=p, clip=clip, box=clip, shade=s, normals=nm)
+            m, ex = sc.measure(p, s, nm)
             ex["press"] = r.get("press_box", 0.0)
             return m, ex, r["fold_box"]
         m0, ex0, f0 = measure(inc, 0, "inc")
@@ -189,6 +189,11 @@ def main():
                 pen += 4 * max(0.0, a["solid"] - b["solid"] - 0.01) + (0.15 if g in cz.get("thinning", ()) else 0.05) * max(0.0, b.get("waist", 0.0) - a.get("waist", 0.0) - (0 if g in cz.get("thinning", ()) else 2))
                 if g in mass:
                     pen += 2.0 * max(0.0, b.get("profile", 0.0) - a.get("profile", 0.0) - 0.01)
+            # folds (from round 23, lobekit.fold_length): a ridge growing inside any lobe; a feature
+            # with a fold on record (r22-L13: a long diagonal fold) may not grow one at all
+            for g in feats:
+                fa, fb = m0[g].get("fold", 0.0), m[g].get("fold", 0.0)
+                pen += (0.06 if g in cz.get("fold", ()) else 0.02) * max(0.0, fb - fa - (0 if g in cz.get("fold", ()) else 6))
             pen += 6 * max(0.0, ex0["sil"] - ex["sil"] - 0.002)
             for k, v in ex["intr"].items():
                 pen += 6 * max(0.0, v - ex0["intr"].get(k, 0) - 0.003)

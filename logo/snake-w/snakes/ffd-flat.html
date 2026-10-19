@@ -219,5 +219,14 @@ window.__shade = () => {
   scene.add(lights); renderer.render(scene, camera); scene.remove(lights);
   for (const [o, m] of mats) { o.material.dispose(); o.material = m; }
 };
+// the view-space normals as colour (for the fold measure, lobekit.folds): a gentle fold that a
+// one-light Lambert shade barely shows (r22-L13: a long diagonal fold the blind judge saw in
+// zebra) is a ridge where the normal turns quickly
+window.__normals = () => {
+  const mats = [];
+  group.traverse((o) => { if (o.isMesh) { if (!o.geometry.attributes.normal || !Object.values(heads).includes(o.geometry)) o.geometry.computeVertexNormals(); mats.push([o, o.material]); o.material = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide }); } });
+  renderer.render(scene, camera);
+  for (const [o, m] of mats) { o.material.dispose(); o.material = m; }
+};
 window.__ready = true;
 </script>

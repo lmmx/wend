@@ -95,7 +95,7 @@ function build(spec, box) {
   const body = strandsFromSpec(spec);
   const tube = { head: { snoutLen: 1, snoutQ: 2, q: 2.4, wide: 1.06, flat: 0.96 }, ...(p.tube || {}), view: VIEW };
   const ce = Math.cos(elev), se = Math.sin(elev);
-  let foldTot = 0, foldBox = 0;
+  let foldTot = 0, foldBox = 0, pressBox = 0;
   const surfaces = {};
   ["yellow", "blue"].forEach((name, i) => {
     const st = body[name], nk = p.necks[i], i0 = st.s.findIndex((x) => x >= nk.join_s - 2);
@@ -104,6 +104,17 @@ function build(spec, box) {
     const S = strandSurface(sl, tube);
     surfaces[name] = S;
     const capN = 13, m = S.centre.pts.length, rings = S.rings.slice(capN, capN + m);
+    // the deepest overlap of the two tubes before the press flattens them (2 r - centre distance
+    // to the mate), over the pressed samples inside the box: the fits must not push the strands
+    // deeper into each other (a deeper press flattens, so dents, the partner)
+    const C = S.centre;
+    if (box && C.mate && C.press) for (let k = 0; k < m; k++) {
+      if (!(C.press[k] > 0.5)) continue;
+      const q = C.pts[k], qx = q[0], qy = -(q[1] * ce - q[2] * se);
+      if (qx < box[0] || qx > box[2] || qy < box[1] || qy > box[3]) continue;
+      const ov = 2 * C.r[k] - Math.hypot(q[0] - C.mate[k][0], q[1] - C.mate[k][1], q[2] - C.mate[k][2]);
+      if (ov > pressBox) pressBox = ov;
+    }
     for (let k = 0; k + 1 < m; k++) {
       const T = S.frames.T[k], ar = (3 * 2 * Math.PI * S.centre.r[k]) / rings[k].length;
       for (let j = 0; j < rings[k].length; j++) {
@@ -116,7 +127,7 @@ function build(spec, box) {
       }
     }
   });
-  return { surfaces, fold_area: Math.round(foldTot), fold_box: Math.round(foldBox) };
+  return { surfaces, fold_area: Math.round(foldTot), fold_box: Math.round(foldBox), press_box: Math.round(pressBox * 10) / 10 };
 }
 
 function setGroup(meshes) {
@@ -134,7 +145,7 @@ window.__run = (spec, box) => {
   for (const [name, g] of Object.entries(heads)) meshes.push(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: COL[name], side: THREE.DoubleSide })));
   setGroup(meshes);
   renderer.render(scene, camera);
-  return { ms: Math.round(performance.now() - t0), fold_area: built.fold_area, fold_box: built.fold_box };
+  return { ms: Math.round(performance.now() - t0), fold_area: built.fold_area, fold_box: built.fold_box, press_box: built.press_box };
 };
 
 const idMat = (id) => new THREE.ShaderMaterial({

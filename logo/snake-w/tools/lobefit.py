@@ -5,8 +5,10 @@ of the necks), and fit the controls by CMA-ES on flat renders of the real geomet
   cost   the target's (1 - IoU) + mean boundary distance / 8 + |worst contour arc| / 15
          + p95 / 40 + |centroid offset| / 30
   guards every other feature inside the crop may not lose IoU (> 0.005), p95 (> 1 px) or its
-         worst arc (> 2 px); the crop's silhouette and negative spaces, the local fold area and
-         the clay crease (target and guards, against the incumbent) may not get worse
+         worst arc (> 2 px); the crop's silhouette and negative spaces, the local fold area, the
+         clay crease (target and guards) and the press depth (the deepest overlap of the two tubes
+         before the press flattens them, inside the crop: a deeper press dents the partner) may
+         not get worse than the incumbent's
   reg    0.01 x the squared controls in search units (lobekit.SCALE: 10 px, 8 deg, 0.1)
 Writes OUT/handle.json, OUT/spec.json (the incumbent with the handle applied), OUT/fit.json
 (attribution, surrogate before / after per feature, the log).
@@ -108,10 +110,11 @@ def main():
             p, s = f"{out}/w{w.wid}-{tag}.png", f"{out}/w{w.wid}-{tag}-shade.png"
             r = w.call(spec_obj=spec, out=p, clip=clip, box=clip, shade=s)
             m, ex = sc.measure(p, s)
+            ex["press"] = r.get("press_box", 0.0)
             return m, ex, r["fold_box"]
         m0, ex0, f0 = measure(inc, 0, "inc")
         print(f"{A.target}: {att['strand']} stations {h['a']:.0f}..{h['b']:.0f} (ramps {h['ra']:.0f}, {h['rb']:.0f}; {att['frac']:.0%} of the lobe's pixels in this run, head {att['head_frac']:.0%}); crop {clip}; guards {[f for f in feats if f != A.target]}", flush=True)
-        print("  incumbent:", {k: (round(v["iou"], 3), round(v["arc"], 1)) for k, v in m0.items()}, "sil", round(ex0["sil"], 4), "fold", f0, flush=True)
+        print("  incumbent:", {k: (round(v["iou"], 3), round(v["arc"], 1)) for k, v in m0.items()}, "sil", round(ex0["sil"], 4), "fold", f0, "press", ex0["press"], flush=True)
         guards = [f for f in feats if f != A.target]
 
         def J(m, ex, fold, x):
@@ -123,6 +126,7 @@ def main():
             for k, v in ex["intr"].items():
                 pen += 6 * max(0.0, v - ex0["intr"].get(k, 0) - 0.003)
             pen += max(0.0, fold - f0 - 200) / 2000
+            pen += max(0.0, ex["press"] - ex0["press"] - 2.0) / 4.0
             for g, cr in ex["crease"].items():
                 pen += 0.5 * max(0.0, cr / max(ex0["crease"].get(g, 0.6), 0.6) - 1.4)
             reg = 0.01 * float(np.sum(np.square(x)))

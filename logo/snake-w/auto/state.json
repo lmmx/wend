@@ -1,0 +1,23 @@
+{
+ "incumbent": {
+  "tag": "r1-L13",
+  "spec": "auto/r1/spec-r1-L13.json",
+  "renders": "auto/r1/renders",
+  "metrics": "auto/r1/metrics-r1-L13.json"
+ },
+ "tried": {},
+ "rounds": [
+  {
+   "round": "r1",
+   "incumbent_before": "lvt60",
+   "accepted": [
+    "L13"
+   ],
+   "rejected": [
+    "L04",
+    "L01"
+   ],
+   "verdict": "new incumbent r1-L13"
+  }
+ ]
+}

@@ -1,0 +1,4 @@
+# Next action (for the next loop invocation)
+
+- r2 propose is running (background), from incumbent r1-L13. When it finishes: judge each gate-passing candidate (JUDGE_PROMPT.md; the pages now include page4-focus.png), write judge-*.md, update sev.json, merge, autoledger, autosync, commit, propose r3.
+- A subagent is smoothing the yellow head mesh's hidden neck patch (exposed when the L01 collar is lowered) in scratchpad/logo-neck: deliverable snakes/heads-neck1.json (+ w-neck1.params.json if params changed) and neck-sheet.png. When it reports: if the visible head is unchanged and the patch is smooth, adopt the new heads in the loop workspace (copy heads-neck1.json over the flat renderer's heads and audit_render's heads file, re-render the incumbent, re-measure), then retry L01 (its rejected count was not raised).

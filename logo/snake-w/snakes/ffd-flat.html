@@ -91,7 +91,7 @@ function geometry(surface, withIds) {
 }
 
 // build the strand surfaces of a spec (as scene.js does), and their local fold areas
-function build(spec, box) {
+function build(spec, box, extra) {
   const p = structuredClone(params);
   if (spec.tube) p.tube = { ...(p.tube || {}), ...spec.tube };
   const body = strandsFromSpec(spec);
@@ -104,8 +104,13 @@ function build(spec, box) {
     const st = body[name], nk = p.necks[i], i0 = st.s.findIndex((x) => x >= nk.join_s - 2);
     const sl = Object.fromEntries(Object.entries(st).map(([k, v]) => [k, Array.isArray(v) ? v.slice(i0) : v]));
     if (tube.press) { const mj = p.necks[1 - i].join_s; sl.press = sl.mateW.map((w, j) => w * smoothstep(mj, mj + 30, sl.mateS[j])); }
-    const S = strandSurface(sl, tube);
+    // extra.cut (scene.js's hook): the tube left out between the strand's own stations c0..c1; the
+    // region's meshes (extra.meshes) take its place (tools/cushions.py)
+    const c = extra?.cut?.[name];
+    const part = (keep) => Object.fromEntries(Object.entries(sl).map(([k, v]) => [k, Array.isArray(v) ? v.filter((_, j) => keep(sl.s[j])) : v]));
+    const S = strandSurface(c ? part((x) => x < c[0]) : sl, c ? { ...tube, capLen: [1, 0] } : tube);
     surfaces[name] = S;
+    if (c) surfaces[name + "_2"] = strandSurface(part((x) => x > c[1]), { ...tube, capLen: [0, 1] });
     const capN = 13, m = S.centre.pts.length, rings = S.rings.slice(capN, capN + m);
     // surface regularity inside the box, on the camera-facing half of every ring: the second
     // difference of the ring vertices along the strand (3 px apart) and round the ring (2 pi r / 64
@@ -163,11 +168,35 @@ function setGroup(meshes) {
   scene.add(group);
 }
 
-window.__run = (spec, box) => {
+// a mesh attribute given as a list, or as little-endian bytes in base64 (`positions64`: the fits
+// pass meshes that way, a list of numbers is slow to hand to the page)
+function meshArray(m, key, T) {
+  if (m[key]) return new T(m[key]);
+  const b = atob(m[key + "64"]), u = new Uint8Array(b.length);
+  for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+  return new T(u.buffer);
+}
+
+function extraMeshes(extra) {
+  const out = [];
+  for (const [name, list] of Object.entries(extra?.meshes || {})) for (const m of list) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(meshArray(m, "positions", Float32Array), 3));
+    g.setAttribute("normal", new THREE.BufferAttribute(meshArray(m, "normals", Float32Array), 3));
+    g.setIndex(new THREE.BufferAttribute(meshArray(m, "indices", Uint32Array), 1));
+    const mesh = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: COL[name], side: THREE.DoubleSide }));
+    mesh.userData.keepNormals = true;
+    out.push(mesh);
+  }
+  return out;
+}
+
+window.__run = (spec, box, extra) => {
   const t0 = performance.now();
-  built = build(spec, box);
+  built = build(spec, box, extra);
   const meshes = [];
-  for (const [name, S] of Object.entries(built.surfaces)) meshes.push(new THREE.Mesh(geometry(S), new THREE.MeshBasicMaterial({ color: COL[name], side: THREE.DoubleSide })));
+  for (const [key, S] of Object.entries(built.surfaces)) meshes.push(new THREE.Mesh(geometry(S), new THREE.MeshBasicMaterial({ color: COL[key.split("_")[0]], side: THREE.DoubleSide })));
+  meshes.push(...extraMeshes(extra));
   for (const [name, g] of Object.entries(heads)) meshes.push(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: COL[name], side: THREE.DoubleSide })));
   setGroup(meshes);
   renderer.render(scene, camera);
@@ -215,7 +244,7 @@ const key = new THREE.DirectionalLight(0xffffff, 1.6); key.position.set(-3, 4, 5
 const fill = new THREE.DirectionalLight(0xffffff, 0.35); fill.position.set(4, -1, 3); lights.add(fill);
 window.__shade = () => {
   const mats = [];
-  group.traverse((o) => { if (o.isMesh) { if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals(); else if (!Object.values(heads).includes(o.geometry)) o.geometry.computeVertexNormals(); mats.push([o, o.material]); o.material = new THREE.MeshLambertMaterial({ color: 0xcccccc, side: THREE.DoubleSide }); } });
+  group.traverse((o) => { if (o.isMesh) { if (!o.geometry.attributes.normal) o.geometry.computeVertexNormals(); else if (!Object.values(heads).includes(o.geometry) && !o.userData.keepNormals) o.geometry.computeVertexNormals(); mats.push([o, o.material]); o.material = new THREE.MeshLambertMaterial({ color: 0xcccccc, side: THREE.DoubleSide }); } });
   scene.add(lights); renderer.render(scene, camera); scene.remove(lights);
   for (const [o, m] of mats) { o.material.dispose(); o.material = m; }
 };
@@ -224,9 +253,34 @@ window.__shade = () => {
 // zebra) is a ridge where the normal turns quickly
 window.__normals = () => {
   const mats = [];
-  group.traverse((o) => { if (o.isMesh) { if (!o.geometry.attributes.normal || !Object.values(heads).includes(o.geometry)) o.geometry.computeVertexNormals(); mats.push([o, o.material]); o.material = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide }); } });
+  group.traverse((o) => { if (o.isMesh) { if (!o.userData.keepNormals && (!o.geometry.attributes.normal || !Object.values(heads).includes(o.geometry))) o.geometry.computeVertexNormals(); mats.push([o, o.material]); o.material = new THREE.MeshNormalMaterial({ side: THREE.DoubleSide }); } });
   renderer.render(scene, camera);
   for (const [o, m] of mats) { o.material.dispose(); o.material = m; }
+};
+// the depth of each pixel's surface, for compositing meshes made elsewhere (tools/cushionray.py):
+// the distance from the camera plane, (d - 5000) x 256 in 24 bits (R high, B low); 0 where empty
+window.__depth = () => {
+  const mats = [];
+  const dm = new THREE.ShaderMaterial({ side: THREE.DoubleSide, blending: THREE.NoBlending,
+    vertexShader: `varying float vD; void main(){ vec4 mv = modelViewMatrix * vec4(position, 1.0); vD = -mv.z; gl_Position = projectionMatrix * mv; }`,
+    fragmentShader: `precision highp float; varying float vD;
+      void main(){ float v = clamp(floor((vD - 5000.0) * 256.0 + 0.5), 1.0, 16777215.0); float r = floor(v / 65536.0); float g = floor((v - r * 65536.0) / 256.0); float b = v - r * 65536.0 - g * 256.0;
+        gl_FragColor = vec4(r / 255.0, g / 255.0, b / 255.0, 1.0); }` });
+  group.traverse((o) => { if (o.isMesh) { mats.push([o, o.material]); o.material = dm; } });
+  const aa = renderer.getContext().getContextAttributes().antialias;
+  const rt = new THREE.WebGLRenderTarget(FRAME.width, FRAME.height, { type: THREE.UnsignedByteType, format: THREE.RGBAFormat, samples: 0, depthBuffer: true });
+  const cc = renderer.getClearColor(new THREE.Color()), ca = renderer.getClearAlpha();
+  renderer.setRenderTarget(rt); renderer.setClearColor(0x000000, 0); renderer.clear(); renderer.render(scene, camera);
+  const buf = new Uint8Array(FRAME.width * FRAME.height * 4);
+  renderer.readRenderTargetPixels(rt, 0, 0, FRAME.width, FRAME.height, buf);
+  renderer.setRenderTarget(null); renderer.setClearColor(cc, ca); rt.dispose();
+  for (const [o, m] of mats) o.material = m;
+  dm.dispose();
+  const out = new Uint8Array(buf.length), W = FRAME.width, H = FRAME.height;
+  for (let y = 0; y < H; y++) out.set(buf.subarray((H - 1 - y) * W * 4, (H - y) * W * 4), y * W * 4);
+  let str = "";
+  for (let k = 0; k < out.length; k += 0x8000) str += String.fromCharCode.apply(null, out.subarray(k, k + 0x8000));
+  return { w: W, h: H, data: btoa(str) };
 };
 window.__ready = true;
 </script>

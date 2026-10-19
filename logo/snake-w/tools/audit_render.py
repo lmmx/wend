@@ -14,6 +14,7 @@ reg = json.load(open("audit/registry.json"))
 views = {"full": [0, 0, 1448, 1086]}
 for f in reg["features"]:
     views[f["id"]] = list(window(f, 30))
+views.update(json.loads(os.environ.get("VIEWS_EXTRA", "{}")))   # more windows: {"name": [x0, y0, x1, y1]}
 look = open(os.environ.get("LOOK", "snakes/w-final.look.json")).read()   # LOOK: a look variant (a render-only experiment)
 name = None
 if spec != "-":
@@ -21,6 +22,10 @@ if spec != "-":
     shutil.copy(spec, f"snakes/{name}")
 rel = os.path.relpath(out, "snakes")
 q = {"look": look, "ss": "2", "heads": "heads-final.json"}
+# EXTRA: a file in snakes/ with scene.js's extra {cut, meshes} (tools/cushions.py): the region's
+# tube is cut out and its meshes put in place (the mesh check below sees the cut tube only)
+if os.environ.get("EXTRA"):
+    q["extra"] = os.environ["EXTRA"]
 col = {"out": f"{rel}/{tag}-colour.png", "params": params, "query": {**q, **({"spec": name} if name else {})}}
 if not name:
     col["page"] = "still.html"
@@ -28,6 +33,8 @@ json.dump([col], open(f"{out}/{tag}-colourjob.json", "w"))
 dq = {"look": look, "heads": "heads-final.json", "modes": "clay,zebra", "bars": "8", "ss": "2", "cs": "2", "views": json.dumps(views)}
 if name:
     dq["spec"] = name
+if os.environ.get("EXTRA"):
+    dq["extra"] = os.environ["EXTRA"]
 json.dump([{"prefix": f"{rel}/{tag}-", "params": params, "query": dq}], open(f"{out}/{tag}-diagjob.json", "w"))
 subprocess.run(["node", "../tools/spline_batch.mjs", f"{rel}/{tag}-colourjob.json"], cwd="snakes", check=True, capture_output=True)
 subprocess.run(["node", "../tools/diag_still.mjs", "--jobs", f"{rel}/{tag}-diagjob.json"], cwd="snakes", check=True, capture_output=True)

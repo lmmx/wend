@@ -153,7 +153,7 @@ def ridges(normals_png):
     """sharp ridges of the surface: how fast the view-space normal turns (ffd-flat.html
     __normals), less its own blur over 4 px, so the smooth turning near a silhouette cancels and a
     fold's thin line remains"""
-    N = np.asarray(Image.open(normals_png).convert("RGB")).astype(float) / 127.5 - 1
+    N = (normals_png if isinstance(normals_png, np.ndarray) else np.asarray(Image.open(normals_png).convert("RGB"))).astype(float) / 127.5 - 1
     N = np.stack([ndimage.gaussian_filter(N[..., k], 0.8) for k in range(3)], -1)
     g = sum(np.hypot(*np.gradient(N[..., k])) for k in range(3))
     return g - ndimage.gaussian_filter(g, 4.0)
@@ -432,7 +432,8 @@ class Scorer:
             self.props[fid] = (float(p.axis_major_length / max(p.axis_minor_length, 1)), float(np.degrees(p.orientation)), float(p.solidity))
 
     def measure(self, png, shade=None, normals=None):
-        im = np.asarray(Image.open(png).convert("RGB"))
+        # each image a path, or the array itself (cushionray.py renders in memory)
+        im = png if isinstance(png, np.ndarray) else np.asarray(Image.open(png).convert("RGB"))
         L = lobes(im)
         res = {}
         for fid in self.feats:
@@ -467,7 +468,7 @@ class Scorer:
               # shadowCard), so a lobe lowered past the feet leaves a pale gap (r3-L13, r5-L13)
               "bottom": int(np.nonzero((blue | yellow).any(1))[0].max()) if (blue | yellow).any() else 0}
         if shade is not None:
-            g = np.asarray(Image.open(shade).convert("L")).astype(float)
+            g = (shade if isinstance(shade, np.ndarray) else np.asarray(Image.open(shade).convert("L"))).astype(float)
             lap = np.abs(filters.laplace(filters.gaussian(g, 1.0)))
             Ks = {fid: r.pop("_K", None) for fid, r in res.items()}
             if normals is not None:

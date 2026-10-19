@@ -235,8 +235,8 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
       if (!c) continue;
       const st = strands[name];
       const part = (keep) => Object.fromEntries(Object.entries(st).map(([k, v]) => [k, Array.isArray(v) ? v.filter((_, i) => keep(st.s[i])) : v]));
-      surfaces[name] = strandSurface(part((x) => x < c[0]), tube);
-      surfaces[name + "_2"] = strandSurface(part((x) => x > c[1]), tube);
+      surfaces[name] = strandSurface(part((x) => x < c[0]), { ...tube, capLen: [1, 0] });
+      surfaces[name + "_2"] = strandSurface(part((x) => x > c[1]), { ...tube, capLen: [0, 1] });
     }
   }
   const spacing = params.a / 2;
@@ -269,9 +269,16 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
     if (key !== name) continue;
     for (const m of extra?.meshes?.[name] || []) {
       const g = new THREE.BufferGeometry();
-      g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(m.positions), 3));
-      g.setAttribute("normal", new THREE.BufferAttribute(new Float32Array(m.normals), 3));
-      g.setIndex(new THREE.BufferAttribute(new Uint32Array(m.indices), 1));
+      // each attribute a list, or little-endian bytes in base64 (`positions64`)
+      const arr = (key, T) => {
+        if (m[key]) return new T(m[key]);
+        const b = atob(m[key + "64"]), u = new Uint8Array(b.length);
+        for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+        return new T(u.buffer);
+      };
+      g.setAttribute("position", new THREE.BufferAttribute(arr("positions", Float32Array), 3));
+      g.setAttribute("normal", new THREE.BufferAttribute(arr("normals", Float32Array), 3));
+      g.setIndex(new THREE.BufferAttribute(arr("indices", Uint32Array), 1));
       group.add(new THREE.Mesh(withAO(g, own), mat));
     }
     if (heads[name]) {

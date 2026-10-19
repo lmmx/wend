@@ -53,6 +53,27 @@
   - zebra blips.
 - `logo/snake-w/snakes/w-neck1.params.json` (a C² cubic neck blend and a nape round-cone on the yellow head; bake `snakes/heads-neck1.json`) removes the neck step that a lowered collar uncovers. It was a head variant in rounds 12–13. Both times its judges found the collar closer, and the second judge named a dark zebra blob under the yellow jaw, which is neck1's head. The variant is off from round 14.
 - Round 13's collar candidate moved the top end 2 px lower (worst arc +15 → +12 px, tilt 6.4 → 5.7°) with a smoother clay crease. The judge found it one step closer, plumper at the top right.
+- Rounds 14–23 accepted r18-L12. The loop paused after round 23, by the owner's decision, for a proof of concept of individually sculptable implicit lobes on the left valley (L04, L05, L06).
+- `logo/snake-w/tools/cushionray.py` holds the curved cushions and a fast renderer to fit them.
+  - Each lobe is a cushion around a cubic Bezier axis, started from the strand's own centreline over the stations that draw the lobe. The nearest point on the axis comes from Newton steps on the cubic. The radius follows a cubic Bernstein profile, the section is elliptical, and the ends are ellipsoidal caps.
+  - A thin bridge carries the strand where its partner hides it. Each lobe blends with the bridge and with its same-strand neighbour; the two snakes stay separate solids.
+  - The fast renderer ray-casts the field in JAX on a view-aligned grid with 3 px samples. It refines each column by regula falsi on the exact field and takes normals by autodiff.
+  - It composites against the fixed scene, rendered once by `ffd-flat.html` (`__depth` is the new depth pass), and runs the existing Scorer on in-memory images.
+  - Against the browser render of the same field on three identical candidates:
+    - pixel disagreement is 12, 0 and 20 px out of 78k;
+    - colour order is swapped on 0, 0 and 8 px;
+    - normals agree to 1.0° median and 1.7° p95.
+  - A candidate costs 0.83 s on the four cores, and a two-sweep fit takes about 14 minutes. The incumbent's flat-renderer fits cost about 3 s a candidate.
+  - `cushionray.py mesh` meshes the same field for `scene.js` `extra`.
+- The fitted cushions on real renders, against the incumbent:
+  - L05 IoU 0.708 → 0.932 (p95 14.5 → 3.0 px);
+  - L04 0.869 → 0.883 (p95 10.9 → 7.2 px);
+  - L06 0.897 → 0.916 (p95 5.0 → 3.0 px);
+  - L03 and L07 unchanged within 0.004.
+- The blind judge rejected the fitted cushions. It found the incumbent closer at L04 (2), L05 (2) and L06 (1), and named a flat yellow bar with a hard edge across L04's top, a pointed L05 apex with a straight left edge under it, and a flattened L06 underside (`poc/cushions/judge-poc-r2.md`; sheets in `progress/cushions/`).
+- The same three L05 edits leave the cushions' neighbours alone:
+  - in the cushions, 0 changed px on L03 and L07, and at most 3 px on L04 / L06;
+  - with the incumbent's handles, 3–25 px on each neighbour.
 
 ## Missing
 
@@ -63,3 +84,10 @@
 - The L13 and L14 dimples remain after six attempts at L13. Each candidate either kept the crease or lengthened it.
 - L05 measures IoU 0.71, the lowest of the lobes. Its two attempts were rejected.
 - neck1's head has a zebra blob under the jaw. Until that is fixed, a lowered collar uncovers the incumbent head's neck step.
+- The cushions break at the L04|L06 junction.
+  - Started from the strand's helix, L04's axis loops down and back, and L06's begins thin at L04's top. The two thin ends fuse into the T the judge saw as a flat bar.
+  - In the reference, L06's fat left end tucks behind L04's top-right in a crevice.
+  - The mask cost cannot see the fusion, because both lobes are yellow. It rewards a pointed L05 that fills the reference outline.
+  - A groove target on the junction's crease left it at 5.5: the T is one cushion's smooth surface, not two meeting.
+  - A start from the reference masks' medial axes made thin sausages: the inscribed radius collapses towards the ends.
+  - Untried: a start from the reference lobe's half-width across its axis, with the hidden ends run on at full radius under the occluding neighbour; an outline-curvature term against the reference's, for the judge's pointed, straight and hard-edged complaints.

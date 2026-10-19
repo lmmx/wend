@@ -1,0 +1,8 @@
+verdict: REJECT
+mapping: X = poc-r2 (curved cushions, candidate), Y = r18-L12 (incumbent)
+judge: one blind Sonnet (xhigh) agent, pair-poc-r2/ only (focus: L04, L05, L06, L04|L06, L04|L05, L05|L06)
+
+Closer: Y (the incumbent) at L04 by 2 ("X's yellow lobe merges at the top into a flat horizontal yellow bar with a hard top edge; a sharp, straight-sided blue triangle sits under it at the right, which reads as a facet"), at L05 by 2 ("X's blue lobe is a narrow teardrop with a sharp apex tucked up under yellow, its left edge a near-straight diagonal, its right edge ~10 px inside the reference; Y's is plump and round like the reference, ~15-20 px too wide on the right") and at L06 by 1 ("in X the yellow band runs flat from the left into the ball with almost no crease, the ball's underside flat with a corner"). Also Y at L12 by 1: outside the region, pixel-identical in both; judge noise. Every other feature: same.
+Severities X / Y: L04 3/1, L05 3/2, L06 3/2.
+Remaining, in Y (the incumbent): L04 15-20 px slimmer than the reference at its lower left; L05 15-20 px too far right, its apex slightly pointed and high; L06's left part a flat band into the ball; L04|L06 the crease shorter and shallower than the reference's deep continuous one.
+Against the numbers (real renders, evaluate.py): L05 IoU 0.708 -> 0.932 and p95 14.5 -> 3.0 px, L04 0.869 -> 0.883 (p95 10.9 -> 7.2, crease 1.44 -> 0.89), L06 0.897 -> 0.916 (5.0 -> 3.0); L03 0.872 -> 0.868, L07 0.874 -> 0.877, L02 and L08 unchanged. The masks agree more, the cushions read worse: a pointed L05 fills the reference's outline, and the fused L04|L06 T reads as a flat bar.

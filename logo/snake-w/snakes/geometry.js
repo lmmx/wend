@@ -394,9 +394,12 @@ export function strandSurface(strand, opts) {
     return lev * dispField(S.disp, S.s[i], Math.atan2(dot(arg, l), dot(arg, d)));
   };
   // cap profiles: index 0 is the snout (blunt, superelliptic), the far end is the tail
+  // opts.capLen scales either cap's length: 0 closes a cut part (scene.js extra.cut) with a flat
+  // disc, inside the region's own surface, where a round cap would poke out
+  const capLen = opts.capLen || [1, 1];
   const caps = [
-    { at: 0, dir: mul(T[0], -1), len: head.snoutLen * S.r[0], q: head.snoutQ, rings: 14 },
-    { at: m - 1, dir: T[m - 1], len: S.r[m - 1], q: 2, rings: 12 },
+    { at: 0, dir: mul(T[0], -1), len: head.snoutLen * S.r[0] * capLen[0], q: head.snoutQ, rings: 14 },
+    { at: m - 1, dir: T[m - 1], len: S.r[m - 1] * capLen[1], q: 2, rings: 12 },
   ];
   const up = [0, 1, 0];
   // the head's cross-section: e2 is world up made perpendicular to the strand, e1 is

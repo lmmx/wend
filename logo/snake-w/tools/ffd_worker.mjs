@@ -68,10 +68,14 @@ for await (const line of rl) {
       writeFileSync(req.ids, Buffer.from(r.data, "base64"));
       Object.assign(reply, { w: r.w, h: r.h });
     } else {
-      Object.assign(reply, await page.evaluate(([s, b]) => window.__run(s, b), [spec, req.box || null]));
+      // extra: { cut, meshes } inline, or a path in snakes/ (tools/cushions.py), as scene.js takes it
+      const extra = typeof req.extra === "string" ? JSON.parse(readFileSync(join(DIR, req.extra), "utf8")) : req.extra || null;
+      Object.assign(reply, await page.evaluate(([s, b, x]) => window.__run(s, b, x), [spec, req.box || null, extra]));
       await page.screenshot({ path: req.out, clip: { x: c[0], y: c[1], width: c[2] - c[0], height: c[3] - c[1] } });
       if (req.shade) { await page.evaluate(() => window.__shade()); await page.screenshot({ path: req.shade, clip: { x: c[0], y: c[1], width: c[2] - c[0], height: c[3] - c[1] } }); }
       if (req.normals) { await page.evaluate(() => window.__normals()); await page.screenshot({ path: req.normals, clip: { x: c[0], y: c[1], width: c[2] - c[0], height: c[3] - c[1] } }); }
+      // depth: the whole frame's depth buffer as raw RGBA bytes (ffd-flat.html __depth)
+      if (req.depth) { const r = await page.evaluate(() => window.__depth()); writeFileSync(req.depth, Buffer.from(r.data, "base64")); Object.assign(reply, { w: r.w, h: r.h }); }
     }
     reply.total_ms = Date.now() - t0;
     console.log(JSON.stringify(reply));

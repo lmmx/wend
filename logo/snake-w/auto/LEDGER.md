@@ -256,6 +256,27 @@ Ranking (top 8):
 
 Outcome: new incumbent r2-L01
 
+## Round r20 (incumbent r18-L12)
+
+Ranking (top 8):
+
+1. L16 score 15.4: IoU 0.86, upper left edge overshoots by 15 px (40 px of outline at 992,385); centroid +1,+0 px
+2. L01 score 5.9: IoU 0.86, upper right edge overshoots by 12 px (40 px of outline at 453,338); centroid -1,+1 px
+3. L09 score 3.6: IoU 0.90, lower right edge falls short by 9 px (40 px of outline at 749,555); centroid +0,-4 px
+4. L03 score 3.6: IoU 0.87, lower left edge overshoots by 8 px (40 px of outline at 471,731); centroid -0,+1 px
+5. L12 score 3.5: IoU 0.88, right edge falls short by 7 px (40 px of outline at 906,755); centroid +0,-3 px
+6. L10 score 3.4: IoU 0.90, upper left edge overshoots by 8 px (40 px of outline at 752,533); centroid -0,-1 px
+7. L02 score 3.3: IoU 0.91, upper right edge overshoots by 8 px (40 px of outline at 497,441); centroid +1,+1 px
+8. L13 score 3.3: IoU 0.74, right edge overshoots by 12 px (40 px of outline at 989,687); centroid +2,-3 px
+
+| target | station run | handle | IoU | worst arc | gates | judge | verdict |
+|---|---|---|---|---|---|---|---|
+| L16 | yellow 1306-1389 | move -3,-5 px, depth -1 px, end a +5,-10 px, end b -6,+19 px, tail radius -51%, tail turn -14 deg, turn -1 deg, length +4%, radius -6%, width +5%, bulge + -4%, bulge - +2%, end a -10%, end b +8% | 0.86 -> 0.89 | +15 -> +6 | pass | REJECT | REJECT |
+| L01 | blue 1344-1437 | move -1,-4 px, depth +2 px, end a +4,-7 px, end b -9,+13 px, tail radius -78%, tail turn -15 deg, turn -1 deg, length +13%, radius -3%, width -2%, bulge + +4%, end a +9%, end b -4% | 0.86 -> 0.90 | +12 -> -8 | pass | REJECT | REJECT |
+| L09 | blue 743-819 | move -1,+2 px, depth -1 px, end a +2,+3 px, end b -2,+3 px, turn -4 deg, radius -3%, bulge + -3%, end a -5%, end b -10% | 0.90 -> 0.91 | -9 -> -9 | fail: L09 (the target) not improved: IoU 0.90 -> 0.91, worst arc -9 -> -9 px | - | REJECT |
+
+Outcome: no correction accepted
+
 ## Round r3 (incumbent r2-L01)
 
 Ranking (top 8):

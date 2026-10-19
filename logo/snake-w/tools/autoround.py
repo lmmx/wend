@@ -160,7 +160,9 @@ def propose(A, S):
         if os.path.exists(f"{R}/{key}/fit.json"):
             continue
         rep = ["--init", seeds[t]["handle"], "--sigma", "0.4", "--crease-tol", "1.15"] if t in seeds and key == t else []
-        run([PY, "tools/lobefit.py", t, inc["spec"], f"{R}/{key}", "--gens", str(A.gens)] + rep, f"{R}/{key}.log", env=ffd_env(pp, hh))
+        # each round's own seed: the fit is deterministic, and the same seed from an unchanged incumbent re-found r19-L01's rejected handle in r20
+        seed = ["--seed", str(int("".join(ch for ch in A.round if ch.isdigit()) or 0))]
+        run([PY, "tools/lobefit.py", t, inc["spec"], f"{R}/{key}", "--gens", str(A.gens)] + seed + rep, f"{R}/{key}.log", env=ffd_env(pp, hh))
     def one(job):
         key, t, pp, hh = job
         fit = json.load(open(f"{R}/{key}/fit.json"))

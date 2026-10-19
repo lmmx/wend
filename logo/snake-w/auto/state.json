@@ -11,16 +11,16 @@
  "tried": {
   "L13": 2,
   "L05": 3,
-  "L09": 1,
+  "L09": 2,
   "L14": 2,
   "L06": 2,
   "L07": 2,
-  "L01": 1,
+  "L01": 2,
   "L12": 1,
   "L15": 2,
   "L04": 2,
   "L08": 2,
-  "L16": 0,
+  "L16": 1,
   "L03": 1,
   "L10": 1,
   "L11": 1,
@@ -267,12 +267,18 @@
     "L16"
    ],
    "verdict": "no correction accepted"
+  },
+  {
+   "round": "r20",
+   "incumbent_before": "r18-L12",
+   "accepted": [],
+   "rejected": [
+    "L16",
+    "L01",
+    "L09"
+   ],
+   "verdict": "no correction accepted"
   }
  ],
- "seeds": {
-  "L16": {
-   "handle": "auto/r19/L16/handle.json",
-   "round": "r19"
-  }
- }
+ "seeds": {}
 }

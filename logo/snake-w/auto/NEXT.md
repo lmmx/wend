@@ -32,3 +32,4 @@
 - c4 (the blue's clearcoat 0, specular 0.2 #4a74c8, roughness 0.5: p95 163): REJECTED by the judge, the blue flat and matte with no crisp highlight (the reference's highlight is small and sharp).
 - d1 (a sharp clearcoat 0.35 / 0.06 over a rougher base): indistinguishable to the judge (7689 px changed).
 - Finding: the material parameters move the blue little; the broad lit zone comes from the lighting (env key / fill / envLevel), which the earlier look work fitted. Not pursued further tonight.
+r20 stopped 08:02 to switch to the look; resumable with propose r20

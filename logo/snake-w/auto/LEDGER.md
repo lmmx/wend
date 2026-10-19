@@ -65,4 +65,25 @@ Ranking (top 8):
 
 Outcome: -
 
-Current incumbent: r2-L01 (auto/r2/spec-r2-L01.json)
+## Round r4 (incumbent r2-L01)
+
+Ranking (top 8):
+
+1. L04 score 21.4: IoU 0.66, upper right edge falls short by 42 px (40 px of outline at 549,602); centroid -5,+14 px
+2. L06 score 19.6: IoU 0.65, left edge overshoots by 22 px (40 px of outline at 572,635); centroid -17,-3 px
+3. L12 score 12.6: IoU 0.74, upper left edge overshoots by 19 px (40 px of outline at 843,671); centroid -8,-7 px
+4. L13 score 12.3: IoU 0.69, bottom edge falls short by 11 px (40 px of outline at 953,766); centroid -0,+0 px
+5. L05 score 11.0: IoU 0.71, bottom edge falls short by 13 px (40 px of outline at 573,760); centroid +4,-7 px
+6. L11 score 10.9: IoU 0.73, right edge falls short by 18 px (40 px of outline at 840,676); centroid -6,-3 px
+7. L03 score 9.4: IoU 0.80, upper left edge falls short by 12 px (40 px of outline at 485,558); centroid -6,+11 px
+8. L08 score 8.8: IoU 0.85, bottom edge overshoots by 7 px (40 px of outline at 690,529); centroid -0,+0 px
+
+| target | station run | handle | IoU | worst arc | gates | judge | verdict |
+|---|---|---|---|---|---|---|---|
+| L04 | yellow 422-444 | move -0,+9 px, depth +8 px, turn -8 deg, length +3%, radius -7%, width -3%, bulge + +6%, bulge - +9%, end a +7%, end b +2% | 0.66 -> 0.85 | -42 -> +11 | pass | ACCEPT | ACCEPT |
+| L12 | yellow 1017-1049 | move +9,+4 px, depth -5 px, turn +7 deg, length +14%, radius -6%, width -8%, bulge + -4%, bulge - -8%, end a -6%, end b +8% | 0.74 -> 0.88 | +19 -> -8 | pass | ACCEPT | ACCEPT |
+| L08 | yellow 647-723 | move +2,-4 px, depth +13 px, turn -1 deg, length +4%, radius -6%, width -4%, bulge + +2%, bulge - -10%, end a +9%, end b -6% | 0.85 -> 0.92 | +7 -> -5 | pass | ACCEPT (neutral) | ACCEPT |
+
+Outcome: new incumbent r4-merged
+
+Current incumbent: r4-merged (auto/r4/spec-r4-merged.json)

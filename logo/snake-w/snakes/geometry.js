@@ -542,6 +542,9 @@ export function sdRoundCone(p, a, b, r1, r2) {
   return (Math.sqrt(x2 * a2 * il2) + y * rr) * il2 - r1;
 }
 const smin = (a, b, k) => { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * k * 0.25; };
+// the cubic smooth minimum: C2 where smin is only C1 (smin's curvature jumps at |a - b| = k, which shows as
+// straight kinks in a zebra render of a blend); its largest rounding is k / 6 where smin's is k / 4
+const smin3 = (a, b, k) => { const h = Math.max(k - Math.abs(a - b), 0) / k; return Math.min(a, b) - h * h * h * k / 6; };
 
 // Surface nets: one vertex per grid cell the surface crosses, at the mean of its edge
 // crossings; one quad per grid edge the surface crosses. Normals from the field's gradient.
@@ -761,6 +764,15 @@ export function headSurface2(strand, h, nk, elev, { k = 12, step = 2.5, dive = 3
     const [a, ra] = chain[i], [b, rb] = chain[i + 1];
     cones.push({ a, b, ra, rb, c: mul(add(a, b), 0.5), R: norm(sub(b, a)) / 2 + Math.max(ra, rb) });
   }
+  // optional nape (necks[i].nape = { a: [t, v, r, z], b: [t, v, r, z] }): one more round-cone in the neck
+  // field, from a to b, each end a sphere in the head frame (t along the head from the rear as a fraction of
+  // its length, v up and z towards the camera in px, radius r in px). It fills the corner where the neck leaves
+  // the head's rear cap, so the cap's outline runs into the neck's tangentially. Absent, nothing changes.
+  if (nk.nape) {
+    const at = ([t, v, , z]) => add(add(F.R0, mul(F.d, t * F.L)), add(mul(F.n, v), [0, 0, z]));
+    const [a, b] = [at(nk.nape.a), at(nk.nape.b)], [ra, rb] = [nk.nape.a[2], nk.nape.b[2]];
+    cones.push({ a, b, ra, rb, c: mul(add(a, b), 0.5), R: norm(sub(b, a)) / 2 + Math.max(ra, rb) });
+  }
   const neckD = (x) => {
     let best = Infinity;
     for (const cn of cones) {
@@ -771,7 +783,10 @@ export function headSurface2(strand, h, nk, elev, { k = 12, step = 2.5, dive = 3
   };
   // `parts` (diagnostics only): mesh the head field or the neck field alone
   const hd = h.field === "sections" ? (x) => headDistanceSections(h, F, x) : (x) => headDistance(h, F, x);
-  const f = parts === "head" ? hd : parts === "neck" ? neckD : (x) => smin(hd(x), neckD(x), k);
+  // optional per-neck blend: nk.blend = "cubic" uses the C2 smooth minimum, with radius nk.k (default k). The head's
+  // section distance is exact only within its band (30), so the blend radius has to stay under that.
+  const cubic = nk.blend === "cubic", kb = cubic ? nk.k ?? k : k;
+  const f = parts === "head" ? hd : parts === "neck" ? neckD : cubic ? (x) => smin3(hd(x), neckD(x), kb) : (x) => smin(hd(x), neckD(x), k);
   const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
   const grow = (c, r) => { for (let q = 0; q < 3; q++) { lo[q] = Math.min(lo[q], c[q] - r - k); hi[q] = Math.max(hi[q], c[q] + r + k); } };
   for (const [c, r] of chain) grow(c, r);

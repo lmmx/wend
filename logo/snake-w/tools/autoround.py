@@ -20,7 +20,8 @@ separate agent that sees only the pair pages.
 
 Only one autoround runs at a time (auto/LOCK holds its pid; a second one exits).
 State: auto/state.json holds:
-  incumbent  {tag, spec, renders, metrics}
+  incumbent  {tag, spec, renders, metrics, params}: params is the scene params file (snakes/) its
+             renders use (the heads and necks; default w-final.params.json)
   tried      {fid: rejected attempts}; the ranking halves a feature's score per rejection
   rounds     the summary of every round
 
@@ -56,9 +57,9 @@ def run(cmd, log):
         subprocess.run(cmd, check=True, stdout=fh, stderr=subprocess.STDOUT)
 
 
-def render_and_measure(tag, spec, rdir, mdir):
+def render_and_measure(tag, spec, rdir, mdir, params="w-final.params.json"):
     log = f"{mdir}/{tag}.log"
-    run([PY, "tools/audit_render.py", tag, spec, rdir], log)
+    run([PY, "tools/audit_render.py", tag, spec, rdir, params], log)
     run([PY, "tools/evaluate.py", f"{rdir}/{tag}-colour.png", "--clay", f"{rdir}/{tag}-clay-full.png", "--folds", f"{rdir}/{tag}-mesh.json",
          "--out", f"{mdir}/metrics-{tag}.json"], log)
     return json.load(open(f"{mdir}/metrics-{tag}.json"))
@@ -107,7 +108,7 @@ def propose(A, S):
         if "handle" not in fit:
             return t, dict(verdict="not controllable", attribution=fit.get("attribution"))
         tag = f"{A.round}-{t}"
-        mc = render_and_measure(tag, f"{R}/{t}/spec.json", f"{R}/renders", R)
+        mc = render_and_measure(tag, f"{R}/{t}/spec.json", f"{R}/renders", R, inc.get("params", "w-final.params.json"))
         return t, dict(tag=tag, fit=fit)
     with ThreadPoolExecutor(2) as ex:
         res = dict(ex.map(one, chosen))
@@ -157,13 +158,13 @@ def merge(A, S):
         path = f"{R}/spec-{tag}.json"
         json.dump(spec, open(path, "w"))
         if len(acc) > 1:
-            mc = render_and_measure(tag, path, f"{R}/renders", R)
+            mc = render_and_measure(tag, path, f"{R}/renders", R, inc.get("params", "w-final.params.json"))
             fails, gains = gates(mc, json.load(open(inc["metrics"])))
             rnd.update(merged=tag, merged_fails=fails, merged_gains=gains)
             if fails:
                 print("merged candidate fails the gates:", fails); rnd["verdict"] = "merged REJECT"
                 S["rounds"].append(rnd); json.dump(S, open(STATE, "w"), indent=1); return
-        S["incumbent"] = dict(tag=tag, spec=path, renders=f"{R}/renders", metrics=f"{R}/metrics-{tag}.json")
+        S["incumbent"] = dict(tag=tag, spec=path, renders=f"{R}/renders", metrics=f"{R}/metrics-{tag}.json", params=inc.get("params", "w-final.params.json"))
         rnd["verdict"] = f"new incumbent {tag}"
     S["rounds"].append(rnd)
     json.dump(S, open(STATE, "w"), indent=1)

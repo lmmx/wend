@@ -1,9 +1,10 @@
 {
  "incumbent": {
-  "tag": "r2-L01",
-  "spec": "auto/r2/spec-r2-L01.json",
-  "renders": "auto/r2/renders",
-  "metrics": "auto/r2/metrics-r2-L01.json"
+  "tag": "r4-merged",
+  "spec": "auto/r4/spec-r4-merged.json",
+  "renders": "auto/r4/renders",
+  "metrics": "auto/r4/metrics-r4-merged.json",
+  "params": "w-final.params.json"
  },
  "tried": {},
  "rounds": [
@@ -41,6 +42,28 @@
     "L02"
    ],
    "note": "tried counts reset after r3: the fitter now carries shape terms (elongation, tilt, solidity) and a colour-boundary corner guard, and tighter handle bounds, which address the judges' rejection causes in rounds 2-3 (merging, thinning, kinks at crossings)"
+  },
+  {
+   "round": "r4",
+   "incumbent_before": "r2-L01",
+   "accepted": [
+    "L04",
+    "L12",
+    "L08"
+   ],
+   "rejected": [],
+   "merged": "r4-merged",
+   "merged_fails": [],
+   "merged_gains": [
+    "L04: severity 5 -> 2, IoU 0.66 -> 0.85",
+    "L06: severity 5 -> 1, IoU 0.65 -> 0.82",
+    "L08: severity 1 -> 0, IoU 0.85 -> 0.92",
+    "L09: severity 2 -> 2, IoU 0.84 -> 0.86",
+    "L11: severity 3 -> 2, IoU 0.73 -> 0.84",
+    "L12: severity 3 -> 1, IoU 0.74 -> 0.88",
+    "L13: severity 2 -> 2, IoU 0.69 -> 0.72"
+   ],
+   "verdict": "new incumbent r4-merged"
   }
  ]
 }

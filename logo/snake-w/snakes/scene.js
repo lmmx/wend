@@ -369,6 +369,16 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
         if (h > 0) bottom[x] = Math.max(bottom[x], iy + Math.sqrt(h));
       }
     }
+    // look.shadowCard.fromMesh: the bottom from the strands' mesh itself (every ring vertex), so the
+    // contact shadow hugs a lobe whose section or displacement handles moved its bottom off the
+    // balls' round profile (the balls' bottom left a pale crescent under such a lobe: r10-L13)
+    if (sc.fromMesh) {
+      bottom.fill(-Infinity);
+      for (const s of Object.values(surfaces)) for (const ring of s.rings) for (const p of ring) {
+        const [ix, iy] = toImage(p, elev), xc = Math.round(ix - x0);
+        for (let x = Math.max(0, xc - 1); x <= Math.min(Wc - 1, xc + 1); x++) bottom[x] = Math.max(bottom[x], iy);
+      }
+    }
     let foot = -Infinity;
     for (let x = 0; x < Wc; x++) if (bottom[x] > -Infinity) foot = Math.max(foot, bottom[x]);
     // the band is strongest around the feet: their nearness to the floor, blurred widely

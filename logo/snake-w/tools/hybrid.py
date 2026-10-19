@@ -11,19 +11,37 @@ S = S_incumbent + alpha w delta.
           unmoved tube exactly
 The tube's continuity, its press and its section are kept: only the vertices move. Output: scene.js
 extra {cut, meshes} for the region (ffd-flat.html, still-spline.html, diag-clay.html).
-Usage (from the logo root): hybrid.py incumbent.json cushions.json rings.json OUT.json --alpha A [--jw J]"""
+The valley is cushionray's (CUSHION_SITE); --base adds the region to an extra already holding another
+(the strand's cut becomes a list of ranges, its meshes one list).
+Usage (from the logo root): hybrid.py incumbent.json cushions.json rings.json OUT.json --alpha A [--jw J] [--base extra.json]"""
 import argparse, base64, json, os, sys
 import numpy as np
 from scipy import ndimage
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
+import jax
 import jax.numpy as jnp
 import cushionray as CR
 from cushions import VIEW, SCR_X, SCR_Y, smoothstep, b64
 import lobekit as K
 
 
-def deform(spec, P, rings, alpha, jw=0.0, clipd=30.0, taper=15.0):
+def merge(base, ex):
+    """two extras' regions in one: each strand's cut a list of ranges, its meshes one list"""
+    out = {"cut": {}, "meshes": {}}
+    for e in (base, ex):
+        for n, c in e.get("cut", {}).items():
+            out["cut"].setdefault(n, []).extend(c if isinstance(c[0], list) else [c])
+        for n, ms in e.get("meshes", {}).items():
+            out["meshes"].setdefault(n, []).extend(ms)
+    out["hybrid"] = [h for e in (base, ex) for h in (e["hybrid"] if isinstance(e.get("hybrid"), list) else [e["hybrid"]] if "hybrid" in e else [])]
+    return out
+
+
+def deform(spec, P, rings, alpha, jw=0.0, clipd=30.0, taper=15.0, xw=0.0, along="tube"):
+    """along "tube": each vertex moves along the tube's own normal; "field": along the cushions'
+    gradient, and its shading normal turns towards the field's by the same weight, so where the
+    tube's rings fold (a dimple) the moved vertices land on one smooth surface"""
     a = np.fromfile(f"{CR.FIXED}/inc-depth.raw", np.uint8).reshape(1086, 1448, 4).astype(np.int64)
     v = a[..., 0] * 65536 + a[..., 1] * 256 + a[..., 2]
     zbuf = np.where(v > 0, CR.DIST0 - (v / 256.0 + 5000.0), -1e9)
@@ -42,7 +60,7 @@ def deform(spec, P, rings, alpha, jw=0.0, clipd=30.0, taper=15.0):
         x, y = R[..., 0], -(R[..., 1] * np.cos(CR.ELEV) - R[..., 2] * np.sin(CR.ELEV))
         xi, yi = np.clip(np.round(x).astype(int), 0, 1447), np.clip(np.round(y).astype(int), 0, 1085)
         vis = ((R @ VIEW) >= zbuf[yi, xi] - 2.5) & ((n @ VIEW) > 0)
-        W = CR.hybrid_weight(name, jw)
+        W = CR.hybrid_weight(name, jw, xw=xw)
         w = vis * ndimage.map_coordinates(W, [y.ravel(), x.ravel()], order=1).reshape(x.shape)
         w = ndimage.gaussian_filter(w.astype(float), (3.0, 2.0), mode=("nearest", "wrap"))
         lobes, pairs = CR.packed(cfg)
@@ -50,9 +68,18 @@ def deform(spec, P, rings, alpha, jw=0.0, clipd=30.0, taper=15.0):
         fc = np.asarray(CR.strand_field(Pt, jnp.full(len(Pt), 1e3, jnp.float32), jnp.zeros(len(Pt), bool), lobes, pairs)).reshape(x.shape)
         d = -alpha * w * np.clip(fc, -clipd, clipd)
         d = ndimage.gaussian_filter(d, (2.5, 2.0), mode=("nearest", "wrap"))
-        d *= (smoothstep(lo, lo + taper, s) * (1 - smoothstep(hi - taper, hi, s)))[:, None]
-        X = R + d[..., None] * n
-        nn = normals(X)
+        tp = (smoothstep(lo, lo + taper, s) * (1 - smoothstep(hi - taper, hi, s)))[:, None]
+        d *= tp
+        if along == "field":
+            g = np.array(jax.grad(lambda Q: CR.strand_field(Q, jnp.full(len(Pt), 1e3, jnp.float32), jnp.zeros(len(Pt), bool), lobes, pairs).sum())(Pt)).reshape(x.shape + (3,))
+            g /= np.linalg.norm(g, axis=-1, keepdims=True) + 1e-12
+            X = R + d[..., None] * g
+            a = np.clip(alpha * tp * ndimage.gaussian_filter(w, (2.5, 2.0), mode=("nearest", "wrap")), 0, 1)[..., None]
+            nn = (1 - a) * normals(X) + a * g
+            nn /= np.linalg.norm(nn, axis=-1, keepdims=True) + 1e-12
+        else:
+            X = R + d[..., None] * n
+            nn = normals(X)
         k = len(sel); idx = np.arange(k * rad).reshape(k, rad)
         a_, b_, c_, e_ = idx[:-1], np.roll(idx, -1, 1)[:-1], idx[1:], np.roll(idx, -1, 1)[1:]
         tri = np.concatenate([np.stack([a_, b_, c_], -1).reshape(-1, 3), np.stack([b_, e_, c_], -1).reshape(-1, 3)])   # facing out (the tube's own winding)
@@ -65,8 +92,11 @@ def deform(spec, P, rings, alpha, jw=0.0, clipd=30.0, taper=15.0):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("spec"); ap.add_argument("cushions"); ap.add_argument("rings"); ap.add_argument("out")
-    ap.add_argument("--alpha", type=float, default=1.0); ap.add_argument("--jw", type=float, default=0.0)
+    ap.add_argument("--alpha", type=float, default=1.0); ap.add_argument("--jw", type=float, default=0.0); ap.add_argument("--base")
+    ap.add_argument("--xw", type=float, default=0.0); ap.add_argument("--along", default="tube", choices=["tube", "field"])
     A = ap.parse_args()
-    ex, info = deform(json.load(open(A.spec)), json.load(open(A.cushions)), json.load(open(A.rings)), A.alpha, A.jw)
-    ex["hybrid"] = dict(alpha=A.alpha, jw=A.jw, cushions=A.cushions)
+    ex, info = deform(json.load(open(A.spec)), json.load(open(A.cushions)), json.load(open(A.rings)), A.alpha, A.jw, xw=A.xw, along=A.along)
+    ex["hybrid"] = dict(alpha=A.alpha, jw=A.jw, xw=A.xw, along=A.along, cushions=A.cushions, site=CR.SITE)
+    if A.base:
+        ex = merge(json.load(open(A.base)), ex)
     json.dump(ex, open(A.out, "w")); print(info)

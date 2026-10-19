@@ -1,17 +1,20 @@
 {
  "incumbent": {
-  "tag": "r26-L15+L14",
+  "tag": "r28-hybR",
   "spec": "auto/r26/spec-r26-L15+L14.json",
-  "renders": "auto/r26/renders",
-  "metrics": "auto/r26/metrics-r26-L15+L14.json",
+  "renders": "auto/r28/renders",
+  "metrics": "auto/r28/metrics-r28-hybR.json",
   "params": "w-final.params.json",
   "heads": "heads-final.json",
   "look": "snakes/w-meshshadow.look.json",
-  "extra": "hybrid-hyb-L456.json",
+  "extra": "hybrid-r28-hybR.json",
   "frozen": [
    "L04",
    "L05",
-   "L06"
+   "L06",
+   "L12",
+   "L13",
+   "L14"
   ]
  },
  "tried": {
@@ -337,6 +340,15 @@
     "L07"
    ],
    "verdict": "new incumbent r26-L15+L14"
+  },
+  {
+   "round": "r28",
+   "incumbent_before": "r26-L15+L14",
+   "accepted": [
+    "hybR"
+   ],
+   "verdict": "new incumbent r28-hybR",
+   "note": "the right valley's hybrid (tools/hybrid.py --along field --xw 1, alpha 1 towards poc/right/fit1-final; CUSHION_SITE=right): blind judge closer at L13 and L14 by 1, the dimple gone; added to the left valley's overlay (one extra, two regions per strand); L12-L14 frozen while it stands"
   }
  ],
  "seeds": {}

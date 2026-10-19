@@ -104,13 +104,13 @@ function build(spec, box, extra) {
     const st = body[name], nk = p.necks[i], i0 = st.s.findIndex((x) => x >= nk.join_s - 2);
     const sl = Object.fromEntries(Object.entries(st).map(([k, v]) => [k, Array.isArray(v) ? v.slice(i0) : v]));
     if (tube.press) { const mj = p.necks[1 - i].join_s; sl.press = sl.mateW.map((w, j) => w * smoothstep(mj, mj + 30, sl.mateS[j])); }
-    // extra.cut (scene.js's hook): the tube left out between the strand's own stations c0..c1; the
-    // region's meshes (extra.meshes) take its place (tools/cushions.py)
-    const c = extra?.cut?.[name];
+    // extra.cut (scene.js's hook): the tube left out between the strand's own stations c0..c1, or
+    // over several such ranges; the regions' meshes (extra.meshes) take their place (tools/hybrid.py)
     const part = (keep) => Object.fromEntries(Object.entries(sl).map(([k, v]) => [k, Array.isArray(v) ? v.filter((_, j) => keep(sl.s[j])) : v]));
-    const S = strandSurface(c ? part((x) => x < c[0]) : sl, c ? { ...tube, capLen: [1, 0] } : tube);
-    surfaces[name] = S;
-    if (c) surfaces[name + "_2"] = strandSurface(part((x) => x > c[1]), { ...tube, capLen: [0, 1] });
+    const segs = cutSegments(extra?.cut?.[name]);
+    segs.forEach(([a, b], si) => {
+    const S = strandSurface(segs.length > 1 ? part((x) => x > a && x < b) : sl, segs.length > 1 ? { ...tube, capLen: [si === 0 ? 1 : 0, si === segs.length - 1 ? 1 : 0] } : tube);
+    surfaces[si ? `${name}_${si + 1}` : name] = S;
     const capN = 13, m = S.centre.pts.length, rings = S.rings.slice(capN, capN + m);
     // surface regularity inside the box, on the camera-facing half of every ring: the second
     // difference of the ring vertices along the strand (3 px apart) and round the ring (2 pi r / 64
@@ -151,14 +151,25 @@ function build(spec, box, extra) {
         }
       }
     }
+    });
   });
   // the floor: the lowest body point (world y), as scene.js sets the ground
   let ground = Infinity;
   for (const S of Object.values(surfaces)) for (const ring of S.rings) for (const p of ring) ground = Math.min(ground, p[1]);
+  // and the regions' meshes in place of the cut tube (a valley's bottom may be the lowest point)
+  for (const list of Object.values(extra?.meshes || {})) for (const m of list) { const P = meshArray(m, "positions", Float32Array); for (let i = 1; i < P.length; i += 3) ground = Math.min(ground, P[i]); }
   kinks.sort((a, b) => a - b);
   const q = (f) => (kinks.length ? kinks[Math.min(kinks.length - 1, Math.floor(f * kinks.length))] : 0);
   return { surfaces, fold_area: Math.round(foldTot), fold_box: Math.round(foldBox), press_box: Math.round(pressBox * 10) / 10,
     kink_max: Math.round(q(1) * 1000) / 1000, kink_995: Math.round(q(0.995) * 1000) / 1000, ground: Math.round(ground * 100) / 100 };
+}
+
+// a strand's parts left after extra.cut: one range [c0, c1] or a list of them -> [[a, b], ...], the
+// stations each remaining part keeps (a < s < b); one part, the whole strand, without a cut
+function cutSegments(c) {
+  if (!c) return [[-Infinity, Infinity]];
+  const cs = (Array.isArray(c[0]) ? [...c] : [c]).sort((p, q) => p[0] - q[0]);
+  return [[-Infinity, cs[0][0]], ...cs.slice(1).map((r, j) => [cs[j][1], r[0]]), [cs[cs.length - 1][1], Infinity]];
 }
 
 function setGroup(meshes) {

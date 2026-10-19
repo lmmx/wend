@@ -21,7 +21,8 @@ loop.
   mesh      the same field on a world grid, marching cubes, Taubin, field normals: scene.js extra
 Usage (from the logo root):
   cushionray.py init incumbent.json params.json
-  cushionray.py fixed incumbent.json params.json        the fixed scene's buffers (poc/fixed)
+  cushionray.py fixed incumbent.json params.json        the fixed scene's buffers (poc/fixed, poc/fixed-right)
+  CUSHION_SITE=right cushionray.py ...                  the right valley (L12, L13, L14); the left by default
   cushionray.py fit incumbent.json params.json OUT [--sweeps 2] [--gens 14] [--order L05,L06,L04] [--procs 4]
   cushionray.py mesh incumbent.json params.json extra.json [--vox 1.25]"""
 import argparse, copy, json, os, sys, time
@@ -42,11 +43,23 @@ from cushions import ELEV, VIEW, SCR_X, SCR_Y, smoothstep, taubin, b64
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
 DIST0 = 6000.0 - 1086 / 2 / np.cos(ELEV) * np.sin(ELEV)   # ffd-flat.html: a surface's distance from the camera = DIST0 - P . VIEW
 COL = {"yellow": (255, 194, 46), "blue": (13, 79, 214)}
-REGION = {"yellow": dict(range=[392, 608], ramp=[8, 14], lobes=["L04", "L06"], pairs=[["L04", "L06"]]),
-          "blue": dict(range=[1010, 1115], ramp=[14, 14], lobes=["L05"], pairs=[])}
-CLIP = [430, 540, 730, 800]
-TARGETS = ["L04", "L05", "L06"]
-FIXED = os.path.join(ROOT, "poc", "fixed")
+# the valley (CUSHION_SITE, read at import so the fit's spawned workers see it too): each strand's
+# region (its own stations, each end where the partner hides the strand: the incumbent's
+# surface-point buffer), the crop, the fixed scene's buffers, and the junctions: across the strands
+# (the hybrid leaves them alone) and along one strand (`jw`)
+SITES = {
+    "left": dict(region={"yellow": dict(range=[392, 608], ramp=[8, 14], lobes=["L04", "L06"], pairs=[["L04", "L06"]]),
+                         "blue": dict(range=[1010, 1115], ramp=[14, 14], lobes=["L05"], pairs=[])},
+                 clip=[430, 540, 730, 800], fixed="fixed", junctions=[("L04", "L05"), ("L05", "L06")], same=[("L04", "L06")]),
+    "right": dict(region={"yellow": dict(range=[965, 1250], ramp=[14, 14], lobes=["L12", "L14"], pairs=[["L12", "L14"]]),
+                          "blue": dict(range=[356, 500], ramp=[14, 14], lobes=["L13"], pairs=[])},
+                  clip=[790, 500, 1080, 800], fixed="fixed-right", junctions=[("L12", "L13"), ("L13", "L14")], same=[("L12", "L14")]),
+}
+SITE = os.environ.get("CUSHION_SITE", "left")
+REGION = SITES[SITE]["region"]
+CLIP = SITES[SITE]["clip"]
+TARGETS = sorted(f for R in REGION.values() for f in R["lobes"])
+FIXED = os.path.join(ROOT, "poc", SITES[SITE]["fixed"])
 M = 16   # samples along a lobe's axis, to start the Newton steps to the nearest point
 
 
@@ -94,23 +107,24 @@ def lobe_f(P, ctrl, rr, ss):
     return (rho - 1.0) * r_ * jnp.minimum(ss[0], ss[1])
 
 
-HYB = {"yellow": ["L04", "L06"], "blue": ["L05"]}
-JUNCTIONS = [("L04", "L05"), ("L05", "L06"), ("L04", "L06")]
+HYB = {n: R["lobes"] for n, R in REGION.items()}
+SAME = SITES[SITE]["same"]
+JUNCTIONS = SITES[SITE]["junctions"] + SAME
 
 
-def hybrid_weight(name, jw=0.0, grow=20, band=8, blur=10.0):
+def hybrid_weight(name, jw=0.0, grow=20, band=8, blur=10.0, xw=0.0):
     """the hybrid's weight over the frame (1448 x 1086) for a strand's region: 1 over its lobes'
     reference masks grown by `grow` px (so an outline may move in or out), 0 in a band over each
-    junction (`jw` over the same-strand L04|L06 one), blurred so the deformation tapers smoothly;
-    no free parameters but jw"""
+    junction (`jw` over the same-strand one, `xw` over those across the strands), blurred so the
+    deformation tapers smoothly; no free parameters but jw and xw"""
     lab = K.LAB
     W = np.zeros(lab.shape, np.float32)
     for fid in HYB[name]:
         W = np.maximum(W, ndimage.binary_dilation(lab == K.FIDS.index(fid) + 1, iterations=grow))
     for a, b in JUNCTIONS:
         A = ndimage.binary_dilation(lab == K.FIDS.index(a) + 1, iterations=band); B = ndimage.binary_dilation(lab == K.FIDS.index(b) + 1, iterations=band)
-        same = (a, b) == ("L04", "L06")
-        W = np.where(A & B, W * (jw if same else 0.0), W)
+        same = (a, b) in SAME
+        W = np.where(A & B, W * (jw if same else xw), W)
     return np.clip(ndimage.gaussian_filter(W, blur), 0, 1).astype(np.float32)
 
 
@@ -629,7 +643,7 @@ def crop_feats():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd"); ap.add_argument("spec"); ap.add_argument("params"); ap.add_argument("out", nargs="?")
-    ap.add_argument("--sweeps", type=int, default=2); ap.add_argument("--gens", type=int, default=14); ap.add_argument("--order", default="L05,L06,L04")
+    ap.add_argument("--sweeps", type=int, default=2); ap.add_argument("--gens", type=int, default=14); ap.add_argument("--order", default={"left": "L05,L06,L04", "right": "L13,L14,L12"}[SITE])
     ap.add_argument("--procs", type=int, default=4); ap.add_argument("--sigma", type=float, default=0.6); ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--vox", type=float, default=1.25)
     # a junction the reference shows as a groove where the fit made a smooth fillet (from the

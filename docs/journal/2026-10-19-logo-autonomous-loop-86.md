@@ -75,6 +75,17 @@
   - in the cushions, 0 changed px on L03 and L07, and at most 3 px on L04 / L06;
   - with the incumbent's handles, 3–25 px on each neighbour.
 
+- Rounds 24-28 continued the loop on the hybrid incumbent: r24-L16+L15 and r26-L15+L14 accepted (the right arm); r25 (L12, L03) and r27 (L16, L13) rejected by the gates, each fit flipping its worst arc's sign at the same size.
+- The right valley's hybrid (round 28) removed L13's dimple, which had resisted eight handle attempts.
+  - `cushionray.py` takes the valley from `CUSHION_SITE` (`left`, `right`: L12, L13, L14, poc/fixed-right).
+  - `hybrid.py --along field` moves each vertex along the cushions' gradient and turns its shading normal towards the field's. Along the tube's own normals the dimple stayed: the rings fold there.
+  - `--xw` weights the cross-strand junctions (1 on the right valley, 0 on the left).
+  - `--base` adds a region to an existing overlay. `scene.js` and `ffd-flat.html` take a list of cut ranges per strand.
+  - The blind judge found it closer at L13 and L14 by 1; L13 IoU 0.743 -> 0.777, L12 0.879 -> 0.893. It named ragged zebra stripes on L13 in place of the pit.
+- Two fixes found on the way:
+  - The floor came from the cut tube only, so a cut valley raised it (4 px with the left overlay, 27 px with the right). It now includes the overlay's meshes.
+  - `ffd-flat.html`'s fold, press and kink measures covered only a cut strand's first part. They now cover every part.
+
 ## Missing
 
 - The collar L01 still rides high: its top end overshoots the reference by 12 px, and it stands about 6° too upright. Its right shoulder is 9–11 px short of the reference's round shoulder.

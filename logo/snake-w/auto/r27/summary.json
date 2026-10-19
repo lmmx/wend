@@ -1,0 +1,254 @@
+{
+ "round": "r27",
+ "incumbent": "r26-L15+L14",
+ "targets": {
+  "L16": {
+   "tag": "r27-L16",
+   "target": "L16",
+   "params": "w-final.params.json",
+   "heads": "heads-final.json",
+   "plan": {
+    "key": "L16",
+    "target": "L16",
+    "edge": "1002,506,35",
+    "controls": "width,bulge_p,bulge_n,ea_x,ea_y",
+    "diagnosis": "L16 slim and tilted steeply, its left flank 10-15 px thin, its top 10-15 px low (critic r25 item 9; r24 judge); evaluator +8 px lower left at 1002,506",
+    "correction": "fill L16's left flank with the side bulges and width, no radius or tip controls (r23's radius made a knob)"
+   },
+   "describe": "end a +3,+6 px, width -5%, bulge + +6%, bulge - -16%",
+   "attribution": {
+    "fid": "L16",
+    "strand": "yellow",
+    "a": 1299.625,
+    "b": 1385.14975,
+    "sc": 1338.8125,
+    "n": 12668,
+    "frac": 1.0,
+    "head_frac": 0.0,
+    "psi_med": 6.352941176470608
+   },
+   "handle": {
+    "v": 3,
+    "fid": "L16",
+    "strand": "yellow",
+    "a": 1299.625,
+    "b": 1385.14975,
+    "ra": 28.0,
+    "rb": 28.0,
+    "open_b": true,
+    "sc": 1338.8125,
+    "anchor": [
+     1033.524798573299,
+     -475.11584834450986,
+     41.302077610237085
+    ],
+    "axis": [
+     0.6844715007903192,
+     -0.7274580768618197,
+     0.04799490612920144
+    ],
+    "p": {
+     "tx": 0.0,
+     "ty": 0.0,
+     "tz": 0.0,
+     "rot": 0.0,
+     "stretch": 0.0,
+     "fat": 0.0,
+     "width": -0.04995899071925237,
+     "bulge_p": 0.059479133844638814,
+     "bulge_n": -0.1630424692514948,
+     "tip_a": 0.0,
+     "tip_b": 0.0,
+     "ea_x": 2.6954305018430893,
+     "ea_y": 5.518953124857802,
+     "eb_x": 0.0,
+     "eb_y": 0.0,
+     "eb_r": 0.0,
+     "eb_rot": 0.0
+    }
+   },
+   "handles": [
+    {
+     "v": 3,
+     "fid": "L16",
+     "strand": "yellow",
+     "a": 1299.625,
+     "b": 1385.14975,
+     "ra": 28.0,
+     "rb": 28.0,
+     "open_b": true,
+     "sc": 1338.8125,
+     "anchor": [
+      1033.524798573299,
+      -475.11584834450986,
+      41.302077610237085
+     ],
+     "axis": [
+      0.6844715007903192,
+      -0.7274580768618197,
+      0.04799490612920144
+     ],
+     "p": {
+      "tx": 0.0,
+      "ty": 0.0,
+      "tz": 0.0,
+      "rot": 0.0,
+      "stretch": 0.0,
+      "fat": 0.0,
+      "width": -0.04995899071925237,
+      "bulge_p": 0.059479133844638814,
+      "bulge_n": -0.1630424692514948,
+      "tip_a": 0.0,
+      "tip_b": 0.0,
+      "ea_x": 2.6954305018430893,
+      "ea_y": 5.518953124857802,
+      "eb_x": 0.0,
+      "eb_y": 0.0,
+      "eb_r": 0.0,
+      "eb_rot": 0.0
+     }
+    }
+   ],
+   "target_before": {
+    "iou": 0.8641624971996117,
+    "arc": 8.179659087172238,
+    "what": "lower left edge overshoots by 8 px (40 px of outline at 1006,499); centroid -0,-1 px"
+   },
+   "target_after": {
+    "iou": 0.8686713715863762,
+    "arc": -11.380955924327607,
+    "what": "lower left edge falls short by 11 px (40 px of outline at 963,470); centroid +2,-0 px"
+   },
+   "gate_fails": [
+    "L16 (the target) not improved: IoU 0.86 -> 0.87, worst arc +8 -> -11 px"
+   ],
+   "gains": [],
+   "verdict_gates": "REJECT"
+  },
+  "L13": {
+   "tag": "r27-L13",
+   "target": "L13",
+   "params": "w-final.params.json",
+   "heads": "heads-final.json",
+   "plan": {
+    "key": "L13",
+    "target": "L13",
+    "edge": "989,687,35",
+    "controls": "width,bulge_p,bulge_n",
+    "diagnosis": "L13 (right valley, blue): the mid-right flank 12-20 px out with a dimple on it, the base 12-15 px high (critic r25 item 1; every judge since r20 names the low dimple)",
+    "correction": "pull in the right flank with the side bulges and width only; no moves (six moved candidates kept or lengthened the crease)"
+   },
+   "describe": "width -9%, bulge + +13%, bulge - -2%",
+   "attribution": {
+    "fid": "L13",
+    "strand": "blue",
+    "a": 405.425,
+    "b": 462.255,
+    "sc": 433.6,
+    "n": 6361,
+    "frac": 1.0,
+    "head_frac": 0.0,
+    "psi_med": -10.588235294117652
+   },
+   "handle": {
+    "v": 3,
+    "fid": "L13",
+    "strand": "blue",
+    "a": 405.425,
+    "b": 462.255,
+    "ra": 28.0,
+    "rb": 28.0,
+    "open_b": false,
+    "sc": 433.6,
+    "anchor": [
+     956.9891527662888,
+     -706.0201248175166,
+     26.016659204869477
+    ],
+    "axis": [
+     -0.05101550379491006,
+     -0.9965313375165835,
+     0.06574733241706925
+    ],
+    "p": {
+     "tx": 0.0,
+     "ty": 0.0,
+     "tz": 0.0,
+     "rot": 0.0,
+     "stretch": 0.0,
+     "fat": 0.0,
+     "width": -0.09109343915410907,
+     "bulge_p": 0.12754724827786817,
+     "bulge_n": -0.016819282719503014,
+     "tip_a": 0.0,
+     "tip_b": 0.0,
+     "ea_x": 0.0,
+     "ea_y": 0.0,
+     "eb_x": 0.0,
+     "eb_y": 0.0,
+     "eb_r": 0.0,
+     "eb_rot": 0.0
+    }
+   },
+   "handles": [
+    {
+     "v": 3,
+     "fid": "L13",
+     "strand": "blue",
+     "a": 405.425,
+     "b": 462.255,
+     "ra": 28.0,
+     "rb": 28.0,
+     "open_b": false,
+     "sc": 433.6,
+     "anchor": [
+      956.9891527662888,
+      -706.0201248175166,
+      26.016659204869477
+     ],
+     "axis": [
+      -0.05101550379491006,
+      -0.9965313375165835,
+      0.06574733241706925
+     ],
+     "p": {
+      "tx": 0.0,
+      "ty": 0.0,
+      "tz": 0.0,
+      "rot": 0.0,
+      "stretch": 0.0,
+      "fat": 0.0,
+      "width": -0.09109343915410907,
+      "bulge_p": 0.12754724827786817,
+      "bulge_n": -0.016819282719503014,
+      "tip_a": 0.0,
+      "tip_b": 0.0,
+      "ea_x": 0.0,
+      "ea_y": 0.0,
+      "eb_x": 0.0,
+      "eb_y": 0.0,
+      "eb_r": 0.0,
+      "eb_rot": 0.0
+     }
+    }
+   ],
+   "target_before": {
+    "iou": 0.7430444087747459,
+    "arc": 12.097376481905236,
+    "what": "right edge overshoots by 12 px (40 px of outline at 988,687); centroid +2,-4 px"
+   },
+   "target_after": {
+    "iou": 0.7283507997793712,
+    "arc": -13.974725588225134,
+    "what": "bottom edge falls short by 14 px (40 px of outline at 953,766); centroid +1,-6 px"
+   },
+   "gate_fails": [
+    "L13 (the target) not improved: IoU 0.74 -> 0.73, worst arc +12 -> -14 px"
+   ],
+   "gains": [
+    "L14: severity 2 -> 1, IoU 0.84 -> 0.85"
+   ],
+   "verdict_gates": "REJECT"
+  }
+ }
+}

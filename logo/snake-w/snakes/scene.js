@@ -174,10 +174,18 @@ function unbake(baked, params, lines) {
 // `body` (optional): { yellow, blue } strands in the shape centrelines() returns them (pts, r,
 // head, s, and mate/mateS/mateW for the press), used instead of the centreline model, so
 // another body representation can be rendered through this scene unchanged
-// `extra` (optional): { cut: { yellow: [s0, s1], blue: [s0, s1] }, meshes: { yellow: [...], blue: [...] } }:
+// `extra` (optional): { cut: { yellow: [s0, s1] or [[s0, s1], ...], blue: ... }, meshes: { yellow: [...], blue: [...] } }:
 // the strand's tube is left out between its own stations s0..s1 (two tube segments remain) and the
 // given meshes ({ positions, normals, indices }) are added with that strand's material and occlusion
 // (tools/beads.py: a lobe-primitive body for one region)
+// an extra mesh's attribute: a list, or little-endian bytes in base64 (`positions64`)
+function meshAttr(m, key, T) {
+  if (m[key]) return new T(m[key]);
+  const b = atob(m[key + "64"]), u = new Uint8Array(b.length);
+  for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
+  return new T(u.buffer);
+}
+
 export function createScene(canvas, params, look = LOOK, { still = false, bakedHeads = null, body = null, extra = null } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: still, alpha: false });
   renderer.toneMapping = { none: THREE.NoToneMapping, neutral: THREE.NeutralToneMapping, agx: THREE.AgXToneMapping, aces: THREE.ACESFilmicToneMapping }[look.toneMapping];
@@ -235,8 +243,12 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
       if (!c) continue;
       const st = strands[name];
       const part = (keep) => Object.fromEntries(Object.entries(st).map(([k, v]) => [k, Array.isArray(v) ? v.filter((_, i) => keep(st.s[i])) : v]));
-      surfaces[name] = strandSurface(part((x) => x < c[0]), { ...tube, capLen: [1, 0] });
-      surfaces[name + "_2"] = strandSurface(part((x) => x > c[1]), { ...tube, capLen: [0, 1] });
+      // one range [s0, s1], or a list of them (several regions on one strand)
+      const cs = (Array.isArray(c[0]) ? [...c] : [c]).sort((p, q) => p[0] - q[0]);
+      const segs = [[-Infinity, cs[0][0]], ...cs.slice(1).map((r, j) => [cs[j][1], r[0]]), [cs[cs.length - 1][1], Infinity]];
+      segs.forEach(([a, b], j) => {
+        surfaces[j ? `${name}_${j + 1}` : name] = strandSurface(part((x) => x > a && x < b), { ...tube, capLen: [j === 0 ? 1 : 0, j === segs.length - 1 ? 1 : 0] });
+      });
     }
   }
   const spacing = params.a / 2;
@@ -251,6 +263,8 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
   for (const [name, h] of Object.entries(heads)) ballList.push(...h.balls.map((b) => [...b, name === "yellow" ? 0 : 1]));
   let ground = Infinity;
   for (const s of Object.values(surfaces)) for (const ring of s.rings) for (const p of ring) ground = Math.min(ground, p[1]);
+  // and extra's meshes in place of the cut tube (a valley's bottom may be the lowest point)
+  for (const list of Object.values(extra?.meshes || {})) for (const m of list) { const P = meshAttr(m, "positions", Float32Array); for (let i = 1; i < P.length; i += 3) ground = Math.min(ground, P[i]); }
 
   const group = new THREE.Group();
   const meshes = {}, headMeshes = {};
@@ -269,13 +283,7 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
     if (key !== name) continue;
     for (const m of extra?.meshes?.[name] || []) {
       const g = new THREE.BufferGeometry();
-      // each attribute a list, or little-endian bytes in base64 (`positions64`)
-      const arr = (key, T) => {
-        if (m[key]) return new T(m[key]);
-        const b = atob(m[key + "64"]), u = new Uint8Array(b.length);
-        for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i);
-        return new T(u.buffer);
-      };
+      const arr = (key, T) => meshAttr(m, key, T);
       g.setAttribute("position", new THREE.BufferAttribute(arr("positions", Float32Array), 3));
       g.setAttribute("normal", new THREE.BufferAttribute(arr("normals", Float32Array), 3));
       g.setIndex(new THREE.BufferAttribute(arr("indices", Uint32Array), 1));

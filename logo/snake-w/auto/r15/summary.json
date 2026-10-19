@@ -1,0 +1,204 @@
+{
+ "round": "r15",
+ "incumbent": "r13-L01",
+ "targets": {
+  "L02": {
+   "tag": "r15-L02",
+   "target": "L02",
+   "params": "w-final.params.json",
+   "heads": "heads-final.json",
+   "describe": "move -7,-0 px, depth +4 px, turn +3 deg, length -5%, width -9%, bulge + +5%, bulge - +9%, end a -8%, end b -8%",
+   "attribution": {
+    "fid": "L02",
+    "strand": "yellow",
+    "a": 209.582,
+    "b": 288.35,
+    "sc": 248.475,
+    "n": 12589,
+    "frac": 1.0,
+    "head_frac": 0.0,
+    "psi_med": -4.941176470588232
+   },
+   "handle": {
+    "v": 2,
+    "fid": "L02",
+    "strand": "yellow",
+    "a": 257.0,
+    "b": 288.35,
+    "ra": 28.0,
+    "rb": 28.0,
+    "sc": 248.475,
+    "anchor": [
+     451.13450245591156,
+     -537.1240392460418,
+     37.51799492790855
+    ],
+    "axis": [
+     -0.592447236329339,
+     -0.8038616078888,
+     0.053035719361213964
+    ],
+    "p": {
+     "tx": -7.413675265499431,
+     "ty": -0.035859916941565345,
+     "tz": 3.7938075612636277,
+     "rot": 3.1788290888458266,
+     "stretch": -0.051573355386426316,
+     "fat": -0.003736489121346944,
+     "width": -0.08833113493970203,
+     "bulge_p": 0.049797060055937016,
+     "bulge_n": 0.08940309899763924,
+     "tip_a": -0.07995815904208695,
+     "tip_b": -0.08189840096928883
+    }
+   },
+   "target_before": {
+    "iou": 0.9083493651404386,
+    "arc": 8.021288122183051,
+    "what": "upper right edge overshoots by 8 px (40 px of outline at 497,441); centroid +1,+1 px"
+   },
+   "target_after": {
+    "iou": 0.918504090377873,
+    "arc": 8.033013249987983,
+    "what": "upper right edge overshoots by 8 px (40 px of outline at 497,441); centroid -1,-0 px"
+   },
+   "gate_fails": [
+    "L02 (the target) not improved: IoU 0.91 -> 0.92, worst arc +8 -> +8 px"
+   ],
+   "gains": [],
+   "verdict_gates": "REJECT"
+  },
+  "L06": {
+   "tag": "r15-L06",
+   "target": "L06",
+   "params": "w-final.params.json",
+   "heads": "heads-final.json",
+   "describe": "move +8,-2 px, depth +14 px, turn +6 deg, length +11%, radius -8%, width -2%, bulge - -8%, end a -8%, end b -12%",
+   "attribution": {
+    "fid": "L06",
+    "strand": "yellow",
+    "a": 510.925,
+    "b": 577.90375,
+    "sc": 523.575,
+    "n": 7196,
+    "frac": 1.0,
+    "head_frac": 0.0,
+    "psi_med": 7.764705882352956
+   },
+   "handle": {
+    "v": 2,
+    "fid": "L06",
+    "strand": "yellow",
+    "a": 510.925,
+    "b": 577.90375,
+    "ra": 28.0,
+    "rb": 28.0,
+    "sc": 523.575,
+    "anchor": [
+     615.5705728158978,
+     -652.1296921543178,
+     31.104526498794826
+    ],
+    "axis": [
+     -0.9584357645282557,
+     -0.2846894703807764,
+     0.018782724175448035
+    ],
+    "p": {
+     "tx": 8.021420052518092,
+     "ty": -2.153697356103738,
+     "tz": 13.830115651272195,
+     "rot": 6.288000776570399,
+     "stretch": 0.10589007661124661,
+     "fat": -0.07537121600838884,
+     "width": -0.020577523476046276,
+     "bulge_p": 0.00041512422787460813,
+     "bulge_n": -0.08160211611883168,
+     "tip_a": -0.08388300002979993,
+     "tip_b": -0.11574333903260488
+    }
+   },
+   "target_before": {
+    "iou": 0.8378177309361439,
+    "arc": -6.078669878571719,
+    "what": "right edge falls short by 6 px (40 px of outline at 678,635); centroid +0,-0 px"
+   },
+   "target_after": {
+    "iou": 0.8967909800520382,
+    "arc": 6.001054784391211,
+    "what": "upper left edge overshoots by 6 px (40 px of outline at 678,589); centroid -0,-1 px"
+   },
+   "gate_fails": [],
+   "gains": [
+    "L06: severity 1 -> 0, IoU 0.84 -> 0.90"
+   ],
+   "verdict_gates": "pass"
+  },
+  "L14": {
+   "tag": "r15-L14",
+   "target": "L14",
+   "params": "w-final.params.json",
+   "heads": "heads-final.json",
+   "describe": "move -4,+4 px, depth -5 px, turn -5 deg, length +2%, radius +1%, width -3%, bulge + +2%, bulge - -10%, end a +9%, end b +4%",
+   "attribution": {
+    "fid": "L14",
+    "strand": "yellow",
+    "a": 1150.775,
+    "b": 1202.6675,
+    "sc": 1180.45,
+    "n": 11756,
+    "frac": 0.9997448762649885,
+    "head_frac": 0.0,
+    "psi_med": -6.35294117647058
+   },
+   "handle": {
+    "v": 2,
+    "fid": "L14",
+    "strand": "yellow",
+    "a": 1150.775,
+    "b": 1202.6675,
+    "ra": 28.0,
+    "rb": 28.0,
+    "sc": 1180.45,
+    "anchor": [
+     973.5829999283873,
+     -626.8910807821021,
+     36.0148187741946
+    ],
+    "axis": [
+     0.6446406598574435,
+     -0.7628272862454015,
+     0.05032843150780758
+    ],
+    "p": {
+     "tx": -3.6356886291523507,
+     "ty": 4.0163131190349155,
+     "tz": -4.815902598797527,
+     "rot": -5.47837346477175,
+     "stretch": 0.017307245525253544,
+     "fat": 0.011406416253806695,
+     "width": -0.02617262180800607,
+     "bulge_p": 0.015332568005082143,
+     "bulge_n": -0.10449562286284092,
+     "tip_a": 0.09097193749336241,
+     "tip_b": 0.04041863240224959
+    }
+   },
+   "target_before": {
+    "iou": 0.8210991090436017,
+    "arc": -11.598232341922612,
+    "what": "left edge falls short by 12 px (40 px of outline at 990,686); centroid -1,-6 px"
+   },
+   "target_after": {
+    "iou": 0.853244290543326,
+    "arc": 10.89867451574284,
+    "what": "upper right edge overshoots by 11 px (40 px of outline at 946,540); centroid -2,-4 px"
+   },
+   "gate_fails": [],
+   "gains": [
+    "L14: severity 2 -> 2, IoU 0.82 -> 0.85"
+   ],
+   "verdict_gates": "pass"
+  }
+ }
+}

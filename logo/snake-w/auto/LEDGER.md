@@ -130,6 +130,27 @@ Ranking (top 8):
 
 Outcome: no correction accepted
 
+## Round r15 (incumbent r13-L01)
+
+Ranking (top 8):
+
+1. L02 score 6.6: IoU 0.91, upper right edge overshoots by 8 px (40 px of outline at 497,441); centroid +1,+1 px
+2. L06 score 6.5: IoU 0.84, right edge falls short by 6 px (40 px of outline at 678,635); centroid +0,-0 px
+3. L14 score 6.1: IoU 0.82, left edge falls short by 12 px (40 px of outline at 990,686); centroid -1,-6 px
+4. L01 score 5.9: IoU 0.86, upper right edge overshoots by 12 px (40 px of outline at 453,338); centroid -1,+1 px
+5. L08 score 4.3: IoU 0.92, lower right edge falls short by 5 px (40 px of outline at 616,532); centroid +1,-0 px
+6. L12 score 3.9: IoU 0.88, right edge falls short by 11 px (40 px of outline at 902,748); centroid -1,-3 px
+7. L05 score 3.7: IoU 0.71, right edge overshoots by 16 px (40 px of outline at 654,696); centroid +9,-7 px
+8. L07 score 3.7: IoU 0.86, upper left edge overshoots by 8 px (40 px of outline at 558,591); centroid -0,-1 px
+
+| target | station run | handle | IoU | worst arc | gates | judge | verdict |
+|---|---|---|---|---|---|---|---|
+| L02 | yellow 210-288 | move -7,-0 px, depth +4 px, turn +3 deg, length -5%, width -9%, bulge + +5%, bulge - +9%, end a -8%, end b -8% | 0.91 -> 0.92 | +8 -> +8 | fail: L02 (the target) not improved: IoU 0.91 -> 0.92, worst arc +8 -> +8 px | - | REJECT |
+| L06 | yellow 511-578 | move +8,-2 px, depth +14 px, turn +6 deg, length +11%, radius -8%, width -2%, bulge - -8%, end a -8%, end b -12% | 0.84 -> 0.90 | -6 -> +6 | pass | ACCEPT | ACCEPT |
+| L14 | yellow 1151-1203 | move -4,+4 px, depth -5 px, turn -5 deg, length +2%, radius +1%, width -3%, bulge + +2%, bulge - -10%, end a +9%, end b +4% | 0.82 -> 0.85 | -12 -> +11 | pass | REJECT | REJECT |
+
+Outcome: new incumbent r15-L06
+
 ## Round r2 (incumbent r1-L13)
 
 Ranking (top 8):
@@ -298,4 +319,4 @@ Ranking (top 8):
 
 Outcome: no correction accepted
 
-Current incumbent: r13-L01 (auto/r13/spec-r13-L01.json)
+Current incumbent: r15-L06 (auto/r15/spec-r15-L06.json)

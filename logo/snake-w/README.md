@@ -11,9 +11,11 @@ latest render in `snakes/stills/final.png`.
   - `still.html`: headless stills.
   - `scene.js`: lights, materials, eyes, shadow.
   - `geometry.js`: centrelines, tubes, heads.
-  - `w-final.params.json`: the current geometry.
-  - `w-final.look.json`: the current look.
-  - `heads-final.json`: baked head meshes.
+  - `w-final.params.json`: the parametric model (necks, heads, camera, tube).
+  - `w-final.spec.json`: the final body, a spline per strand (`strandspline.js`; round 26 of the loop).
+  - `w-final.extra.json`: the final valleys' overlay (`scene.js` extra: both valleys' tubes moved towards fitted cushions, `tools/hybrid.py`; round 28).
+  - `w-final.look.json`: the final look.
+  - `heads-w-final.json`: the heads baked for the final body (`heads-final.json`: the parametric body's, which the fitting tools read).
   - `checkpoints/`: earlier stages.
 - `tools/`: fitting, measuring and rendering scripts.
   - Python: `snakefit.py` and `headmodel.py` hold the model; the rest measure, fit and compare.
@@ -23,9 +25,11 @@ latest render in `snakes/stills/final.png`.
 
     cd logo/snake-w/snakes && python3 -m http.server 8000    # http://localhost:8000/
 
-Three.js r170 loads from jsdelivr (pinned). The page builds in about 2 s with the baked heads,
-and keeps the reference framing at any window size. `?params=`, `?look=` and `?heads=` select
-other files; `?heads=none` meshes the heads in the page (about 20 s).
+Three.js r170 loads from jsdelivr (pinned). The page builds in about 3 s with the baked heads,
+and keeps the reference framing at any window size. `?params=`, `?spec=`, `?extra=`, `?look=` and
+`?heads=` select other files; `?spec=none` falls back to the parametric body and `?heads=none`
+meshes the heads in the page (about 25 s). The geometry is frozen at the loop's round 28
+(`auto/state.json`); `progress/final/` compares it with the reference at use sizes.
 
 ## Stills and baking
 
@@ -33,7 +37,7 @@ Run these from `snakes/`. They need Node with Playwright and a Chromium: `$CHROM
 pre-installed one.
 
     node ../tools/snake_still.mjs out.png w-final.params.json look="$(cat w-final.look.json)" ss=2 heads=heads-final.json
-    node ../tools/bake_heads.mjs w-final.params.json heads-final.json
+    node ../tools/bake_heads.mjs w-final.params.json heads-w-final.json w-final.spec.json
 
 - `ss=2` renders at twice the resolution and lets the browser filter it down.
 - Put `three.module.js` r170 in `vendor/` (next to `tools/`) to render offline.

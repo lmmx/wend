@@ -3,10 +3,10 @@
 # render, measures, gates, sheet, blind pair pages
 # usage: poc/right/after2.sh ROUND TAG CUSHIONS ALPHA XW ALONG RIM
 set -e
-RD=$1; TAG=$2; CUS=$3; AL=$4; XW=$5; ALONG=$6; RIM=$7
+RD=$1; TAG=$2; CUS=$3; AL=$4; XW=$5; ALONG=$6; RIM=$7; MORE=${8:-}
 PY=../snakes-venv/bin/python; SPEC=auto/r26/spec-r26-L15+L14.json; R=auto/$RD; INC=r28-hybR; IR=auto/r28
 mkdir -p $R/renders
-CUSHION_SITE=right $PY tools/hybrid.py $SPEC $CUS poc/right/inc-rings.json snakes/hybrid-$TAG.json --alpha $AL --xw $XW --along $ALONG --rim $RIM --base snakes/hybrid-hyb-L456.json
+CUSHION_SITE=right $PY tools/hybrid.py $SPEC $CUS poc/right/inc-rings.json snakes/hybrid-$TAG.json --alpha $AL --xw $XW --along $ALONG --rim $RIM $MORE --base snakes/hybrid-hyb-L456.json
 $PY - <<PYEOF
 import sys, json; sys.path.insert(0, "tools")
 import autoround as A

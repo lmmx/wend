@@ -38,7 +38,20 @@ def merge(base, ex):
     return out
 
 
-def deform(spec, P, rings, alpha, jw=0.0, clipd=30.0, taper=15.0, xw=0.0, along="tube", rim=0.0):
+def rim_region(fid, away, grow=20, gap=25, blur=8.0):
+    """where the rim may move (hybrid.py --rim-on): the lobe's reference mask grown by `grow` px, its
+    lower half and its right half (from its centroid), at least `gap` px from the `away` lobes'
+    masks, blurred; elsewhere only the camera-facing surface moves"""
+    lab = K.LAB; m = lab == K.FIDS.index(fid) + 1
+    ys, xs = np.nonzero(m); cy, cx = ys.mean(), xs.mean()
+    Y, X = np.mgrid[:lab.shape[0], :lab.shape[1]]
+    M = ndimage.binary_dilation(m, iterations=grow) & ((Y > cy) | (X > cx))
+    for a in away:
+        M &= ndimage.distance_transform_edt(lab != K.FIDS.index(a) + 1) > gap
+    return np.clip(ndimage.gaussian_filter(M.astype(np.float32), blur), 0, 1)
+
+
+def deform(spec, P, rings, alpha, jw=0.0, clipd=30.0, taper=15.0, xw=0.0, along="tube", rim=0.0, rim_on=None, rim_off=()):
     """along "tube": each vertex moves along the tube's own normal; "field": along the cushions'
     gradient, and its shading normal turns towards the field's by the same weight, so where the
     tube's rings fold (a dimple) the moved vertices land on one smooth surface; `rim` (>= 0) also
@@ -62,6 +75,11 @@ def deform(spec, P, rings, alpha, jw=0.0, clipd=30.0, taper=15.0, xw=0.0, along=
         x, y = R[..., 0], -(R[..., 1] * np.cos(CR.ELEV) - R[..., 2] * np.sin(CR.ELEV))
         xi, yi = np.clip(np.round(x).astype(int), 0, 1447), np.clip(np.round(y).astype(int), 0, 1085)
         vis = ((R @ VIEW) >= zbuf[yi, xi] - 2.5 - 40.0 * rim) & ((n @ VIEW) > -rim)
+        if rim_on:
+            # the rim only inside rim_region; elsewhere the camera-facing surface, as with rim 0
+            vis0 = ((R @ VIEW) >= zbuf[yi, xi] - 2.5) & ((n @ VIEW) > 0)
+            Mr = ndimage.map_coordinates(rim_region(rim_on, rim_off), [y.ravel(), x.ravel()], order=1).reshape(x.shape)
+            vis = vis0 + (vis & ~vis0) * Mr
         W = CR.hybrid_weight(name, jw, xw=xw)
         w = vis * ndimage.map_coordinates(W, [y.ravel(), x.ravel()], order=1).reshape(x.shape)
         w = ndimage.gaussian_filter(w.astype(float), (3.0, 2.0), mode=("nearest", "wrap"))
@@ -96,9 +114,10 @@ if __name__ == "__main__":
     ap.add_argument("spec"); ap.add_argument("cushions"); ap.add_argument("rings"); ap.add_argument("out")
     ap.add_argument("--alpha", type=float, default=1.0); ap.add_argument("--jw", type=float, default=0.0); ap.add_argument("--base")
     ap.add_argument("--xw", type=float, default=0.0); ap.add_argument("--along", default="tube", choices=["tube", "field"]); ap.add_argument("--rim", type=float, default=0.0)
+    ap.add_argument("--rim-on"); ap.add_argument("--rim-off", default="")
     A = ap.parse_args()
-    ex, info = deform(json.load(open(A.spec)), json.load(open(A.cushions)), json.load(open(A.rings)), A.alpha, A.jw, xw=A.xw, along=A.along, rim=A.rim)
-    ex["hybrid"] = dict(alpha=A.alpha, jw=A.jw, xw=A.xw, along=A.along, rim=A.rim, cushions=A.cushions, site=CR.SITE)
+    ex, info = deform(json.load(open(A.spec)), json.load(open(A.cushions)), json.load(open(A.rings)), A.alpha, A.jw, xw=A.xw, along=A.along, rim=A.rim, rim_on=A.rim_on, rim_off=[f for f in A.rim_off.split(",") if f])
+    ex["hybrid"] = dict(alpha=A.alpha, jw=A.jw, xw=A.xw, along=A.along, rim=A.rim, rim_on=A.rim_on, rim_off=A.rim_off, cushions=A.cushions, site=CR.SITE)
     if A.base:
         ex = merge(json.load(open(A.base)), ex)
     json.dump(ex, open(A.out, "w")); print(info)

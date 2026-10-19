@@ -95,7 +95,8 @@
   "contact": 0.5,
   "contactFall": 6,
   "contactRange": 10,
-  "top": 600
+  "top": 600,
+  "fromMesh": true
  },
  "background": "#fdfdfb",
  "toneMapping": "aces",

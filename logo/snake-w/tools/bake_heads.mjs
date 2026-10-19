@@ -1,14 +1,21 @@
 // Bake the head-and-neck meshes (the slow part of the build) for a params file, so pages
-// load them instead of meshing the head field. Usage: node bake_heads.mjs params.json out.json
+// load them instead of meshing the head field. Usage: node bake_heads.mjs params.json out.json [spec.json]
+// With a spline spec (strandspline.js), the heads follow its strands, as the pages build them.
 // The output holds, per head, its positions, normals, indices (base64) and AO balls; scene.js
 // uses it when given `bakedHeads`, and checks a hash of what the heads depend on (headKey) so a
 // stale bake is not used.
 import { readFileSync, writeFileSync } from "node:fs";
 const G = await import(new URL("../snakes/geometry.js", import.meta.url));
-const [paramsPath, out] = process.argv.slice(2);
+const [paramsPath, out, specPath] = process.argv.slice(2);
 const text = readFileSync(paramsPath, "utf8"), params = JSON.parse(text);
 const elev = (params.cam.elev * Math.PI) / 180;
-const lines = G.centrelines(params);
+let lines = G.centrelines(params);
+if (specPath) {
+  const { strandsFromSpec } = await import(new URL("../snakes/strandspline.js", import.meta.url));
+  const spec = JSON.parse(readFileSync(specPath, "utf8"));
+  if (spec.tube) params.tube = { ...(params.tube || {}), ...spec.tube };
+  lines = { ...lines, ...strandsFromSpec(spec) };
+}
 const b64 = (a) => Buffer.from(a.buffer, a.byteOffset, a.byteLength).toString("base64");
 const heads = {};
 const t0 = Date.now();

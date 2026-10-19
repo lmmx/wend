@@ -359,7 +359,18 @@
    ],
    "verdict": "incumbent kept (r28-hybR)",
    "note": "the right hybrid from refit cushions with the rim moved: a planar seam at L12|L13"
+  },
+  {
+   "round": "r31",
+   "incumbent_before": "r28-hybR",
+   "accepted": [],
+   "rejected": [
+    "hybR3"
+   ],
+   "verdict": "incumbent kept (r28-hybR); geometry frozen",
+   "note": "the right hybrid's rim moved only over L13's base and right shoulder: indistinguishable to the blind judge. The owner's final bounded experiment: the geometry freezes at r28-hybR for task #32 (preview, animation, derived assets)"
   }
  ],
- "seeds": {}
+ "seeds": {},
+ "frozen_final": true
 }

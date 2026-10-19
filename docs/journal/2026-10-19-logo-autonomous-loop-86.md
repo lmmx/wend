@@ -86,6 +86,16 @@
   - The floor came from the cut tube only, so a cut valley raised it (4 px with the left overlay, 27 px with the right). It now includes the overlay's meshes.
   - `ffd-flat.html`'s fold, press and kink measures covered only a cut strand's first part. They now cover every part.
 
+- Rounds 29-31 accepted nothing.
+  - r29: L15, L01 and L07's handle fits failed the gates.
+  - r30: the right hybrid with the rim moved too (`hybrid.py --rim`) made a planar seam at L12|L13.
+  - r31: the rim moved only over L13's base and right shoulder (`--rim-on L13 --rim-off L12`) was indistinguishable to the blind judge.
+- By the owner's decision the geometry froze at r28-hybR for task #32 (the preview, the animation, the derived assets).
+  - The final files are `snakes/w-final.spec.json`, `w-final.extra.json`, `w-final.look.json` (the mesh-placed shadow) and `heads-w-final.json`.
+  - `bake_heads.mjs` takes a spec and bakes the heads from its strands.
+  - `index.html` loads the final files and builds in 2.9 s, against 24 s when the heads are meshed in the page. It renders pixel-identical to the loop's real render of r28-hybR.
+- `progress/final/use-sizes.png` sets the reference beside the final at 640 to 16 px wide.
+
 ## Missing
 
 - The collar L01 still rides high: its top end overshoots the reference by 12 px, and it stands about 6° too upright. Its right shoulder is 9–11 px short of the reference's round shoulder.

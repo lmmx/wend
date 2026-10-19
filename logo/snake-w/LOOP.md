@@ -12,6 +12,41 @@ The starting point is what already exists:
 - the Three.js renderer;
 - the blind visual judge process.
 
+## Objective and priorities (fixed by the owner; read before every invocation)
+
+**The task is to fit each numbered lobe to its reference anatomy.**
+- **Governing principle:**
+  - The numbered-lobe evaluator determines what is wrong.
+  - The geometry optimiser corrects it.
+  - The visual critic determines whether the sculpture improved.
+  - Appearance diagnostics may inform the work, but must not replace it.
+- **The authoritative ledger** for geometry is the per-feature anatomical discrepancy of L01–L16, H1/H2 and the negative spaces:
+  - per-feature IoU and contour alignment (both ways, worst arc, p95);
+  - extrema, orientation and visible boundaries;
+  - the independent visual severity.
+- **Never use these as a geometry objective, gate or stopping criterion:**
+  - global silhouette IoU;
+  - whole-frame colour difference (`tools/seen.py`, CIEDE2000);
+  - a shading decomposition, or any new aggregate metric.
+
+  They may be reported as context. Do not dismiss a local correction because it barely changes a global score: a genuine improvement to one lobe matters.
+- **Lighting and look work is not part of the loop.** If it seems warranted, propose it to the owner separately, with the reason, and wait for approval. Never suspend the geometry loop for it.
+- **Do not add stopping criteria, global gates or optimisation objectives** that supersede the numbered-feature evaluation without the owner's explicit approval. Do not redefine the goal.
+- **Keep surface quality separate.** Assess clay and zebra surface quality apart from colour and lighting; visible shape and sculptural continuity are first-class targets.
+- **When local improvements plateau:**
+  - diagnose which lobes are stuck and why the current controls cannot fit them;
+  - add the specific missing freedom, or coordinated shape changes across neighbouring lobes;
+  - then resume the same per-lobe loop.
+
+  A plateau is not evidence that the remaining error is lighting.
+- **Report progress** each round as:
+  - the change in the worst lobe's discrepancy;
+  - the number of anatomically faithful features (provisionally IoU ≥ 0.95 where the reference self-split is reliable, p95 contour error ≤ 3 px, no major crossing error, no new crease; a reporting lens to calibrate, not a gate);
+  - the significant shape improvements accepted, with visual comparison sheets;
+  - the remaining errors.
+
+  Rounds completed and global appearance statistics are not progress.
+
 ## Where the state lives (read this first)
 
 **Workspace (WS):** a working copy of `logo/snake-w/`, with the snakes venv beside it. The repository's `logo/snake-w/` holds the same tools, and the `auto/` records are synced into `logo/snake-w/auto/`.

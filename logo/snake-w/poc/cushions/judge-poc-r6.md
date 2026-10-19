@@ -1,0 +1,7 @@
+verdict: REJECT
+mapping: X = r18-L12 (incumbent), Y = poc-r6 (reference-lobe cushions, shape prior, L06's left end tucked 15 px behind L04)
+judge: one blind Sonnet (xhigh) agent, pair-poc-r6/ only (focus: L04, L05, L06, L04|L06, L04|L05, L05|L06)
+
+Closer: X (the incumbent) at L05 by 3 ("Y's blue is a smaller rounder ball, ~15% narrower, with a second small bulge at its lower right; its zebra concentric rings read as a separate sphere"; the reference "a large wide plump cushion that droops down to the floor"), L04 by 2 (Y "slimmer and hooks right at the base; its top bar has a bump; its blue lobe at the lower right a detached ball"), L03, L06, L07 by 1 (a notch at L03; a dent and bump in L06's top contour at its left). On the incumbent: "a little too smooth and blocky": a straight vertical seam at L05's left, L06's bulb flat; L04|L06 "merge into one continuous horizontal band".
+Against the numbers (real renders): L04 IoU 0.869 -> 0.919 (p95 10.9 -> 5.0), L05 0.708 -> 0.905 (14.5 -> 4.5), L06 0.897 -> 0.921 (5.0 -> 4.0), L03 0.872 -> 0.881, L07 0.874 -> 0.883.
+The fourth rejection with the same pattern (poc-r2, r3, r4, r6): the outlines go to the reference, the cushions read as separate balls stuck together. The reference's balloons are pressed against each other: flattened where they touch, so the blue reads as a broad cushion under the yellow, not a sphere. The incumbent's tubes have that press (geometry.js), the cushions do not: two separate solids meeting as a plain union.

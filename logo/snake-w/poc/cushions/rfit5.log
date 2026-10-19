@@ -1,0 +1,101 @@
+crop [430, 540, 730, 800]; targets ['L04', 'L05', 'L06']; guards ['L02', 'L03', 'L07']
+  incumbent: {'L02': (0.87, 6.4, 45.7), 'L03': (0.897, 7.7, -22.1), 'L04': (0.871, 12.0, 14.0), 'L05': (0.706, 15.0, 17.0), 'L06': (0.901, 5.0, 6.4), 'L07': (0.888, 9.1, 43.0)}
+  reference outline turning p97 (rad/px): {'L04': 0.1267, 'L05': 0.1125, 'L06': 0.1174}
+  prior 0.80, continuity 0.00
+  start: J 12.973 (target 11.505 guards 1.468) 13.0s; curv {'L04': 0.1355, 'L05': 0.1152, 'L06': 0.1199} {'L02': (0.87, 6.4, 45.7), 'L03': (0.9, 7.3, -22.1), 'L04': (0.846, 15.5, -17.4), 'L05': (0.833, 10.0, 10.8), 'L06': (0.895, 9.0, 9.9), 'L07': (0.858, 22.9, 43.0)}
+  sweep 0 L05 gen  0 best 11.365 (target 10.248 guards 1.065) sigma 0.57 t 41s
+  sweep 0 L05 gen  1 best 11.365 (target 10.248 guards 1.065) sigma 0.58 t 50s
+  sweep 0 L05 gen  2 best 11.329 (target 10.166 guards 1.019) sigma 0.59 t 59s
+  sweep 0 L05 gen  3 best 11.277 (target 9.939 guards 1.208) sigma 0.57 t 67s
+  sweep 0 L05 gen  4 best 11.277 (target 9.939 guards 1.208) sigma 0.53 t 75s
+  sweep 0 L05 gen  5 best 11.277 (target 9.939 guards 1.208) sigma 0.51 t 83s
+  sweep 0 L05 gen  6 best 11.277 (target 9.939 guards 1.208) sigma 0.49 t 92s
+  sweep 0 L05 gen  7 best 11.277 (target 9.939 guards 1.208) sigma 0.46 t 100s
+  sweep 0 L05 gen  8 best 10.965 (target 9.667 guards 1.170) sigma 0.45 t 108s
+  sweep 0 L05 gen  9 best 10.962 (target 9.657 guards 1.153) sigma 0.44 t 117s
+  sweep 0 L05 gen 10 best 10.832 (target 9.458 guards 1.172) sigma 0.44 t 126s
+  sweep 0 L05 gen 11 best 10.832 (target 9.458 guards 1.172) sigma 0.45 t 134s
+  sweep 0 L05 gen 12 best 10.832 (target 9.458 guards 1.172) sigma 0.44 t 143s
+  sweep 0 L05 gen 13 best 10.832 (target 9.458 guards 1.172) sigma 0.43 t 152s
+  sweep 0 L05: J 10.832; curv {'L04': 0.1379, 'L05': 0.1105, 'L06': 0.1232}; L04|L06 10.0 {'L02': (0.87, 6.4, 45.7), 'L03': (0.9, 7.3, -22.1), 'L04': (0.854, 15.5, -17.4), 'L05': (0.914, 3.2, -3.1), 'L06': (0.905, 8.1, 9.1), 'L07': (0.858, 22.9, 43.0)}
+  sweep 0 L06 gen  0 best 10.860 (target 9.452 guards 1.323) sigma 0.56 t 161s
+  sweep 0 L06 gen  1 best 10.579 (target 8.861 guards 1.649) sigma 0.54 t 169s
+  sweep 0 L06 gen  2 best 10.547 (target 9.161 guards 1.302) sigma 0.53 t 178s
+  sweep 0 L06 gen  3 best 10.483 (target 9.251 guards 1.139) sigma 0.51 t 187s
+  sweep 0 L06 gen  4 best 10.483 (target 9.251 guards 1.139) sigma 0.50 t 195s
+  sweep 0 L06 gen  5 best 10.483 (target 9.251 guards 1.139) sigma 0.49 t 204s
+  sweep 0 L06 gen  6 best 10.483 (target 9.251 guards 1.139) sigma 0.48 t 212s
+  sweep 0 L06 gen  7 best 10.483 (target 9.251 guards 1.139) sigma 0.47 t 221s
+  sweep 0 L06 gen  8 best 10.483 (target 9.251 guards 1.139) sigma 0.46 t 229s
+  sweep 0 L06 gen  9 best 10.443 (target 9.078 guards 1.241) sigma 0.45 t 238s
+  sweep 0 L06 gen 10 best 10.199 (target 8.546 guards 1.542) sigma 0.43 t 246s
+  sweep 0 L06 gen 11 best 10.199 (target 8.546 guards 1.542) sigma 0.42 t 254s
+  sweep 0 L06 gen 12 best 10.199 (target 8.546 guards 1.542) sigma 0.41 t 262s
+  sweep 0 L06 gen 13 best 10.199 (target 8.546 guards 1.542) sigma 0.40 t 272s
+  sweep 0 L06: J 10.199; curv {'L04': 0.138, 'L05': 0.1149, 'L06': 0.115}; L04|L06 11.3 {'L02': (0.87, 6.4, 45.7), 'L03': (0.9, 7.3, -22.1), 'L04': (0.866, 15.2, -17.4), 'L05': (0.926, 3.2, -3.1), 'L06': (0.918, 5.0, 5.0), 'L07': (0.834, 23.9, 43.0)}
+  sweep 0 L04 gen  0 best 9.386 (target 8.121 guards 1.185) sigma 0.57 t 281s
+  sweep 0 L04 gen  1 best 9.211 (target 7.874 guards 1.241) sigma 0.55 t 289s
+  sweep 0 L04 gen  2 best 9.211 (target 7.874 guards 1.241) sigma 0.53 t 298s
+  sweep 0 L04 gen  3 best 9.211 (target 7.874 guards 1.241) sigma 0.51 t 307s
+  sweep 0 L04 gen  4 best 9.211 (target 7.874 guards 1.241) sigma 0.48 t 315s
+  sweep 0 L04 gen  5 best 9.211 (target 7.874 guards 1.241) sigma 0.47 t 323s
+  sweep 0 L04 gen  6 best 9.068 (target 7.659 guards 1.276) sigma 0.47 t 332s
+  sweep 0 L04 gen  7 best 8.983 (target 7.618 guards 1.228) sigma 0.49 t 340s
+  sweep 0 L04 gen  8 best 8.902 (target 7.495 guards 1.255) sigma 0.50 t 349s
+  sweep 0 L04 gen  9 best 8.766 (target 7.303 guards 1.238) sigma 0.51 t 357s
+  sweep 0 L04 gen 10 best 8.766 (target 7.303 guards 1.238) sigma 0.53 t 365s
+  sweep 0 L04 gen 11 best 8.595 (target 7.076 guards 1.214) sigma 0.55 t 373s
+  sweep 0 L04 gen 12 best 8.370 (target 6.917 guards 1.185) sigma 0.56 t 380s
+  sweep 0 L04 gen 13 best 8.015 (target 6.478 guards 1.157) sigma 0.60 t 388s
+  sweep 0 L04: J 8.015; curv {'L04': 0.1332, 'L05': 0.1103, 'L06': 0.1163}; L04|L06 11.5 {'L02': (0.87, 6.4, 45.7), 'L03': (0.9, 6.7, -22.1), 'L04': (0.844, 12.8, -14.6), 'L05': (0.928, 4.0, -3.8), 'L06': (0.916, 5.0, 5.1), 'L07': (0.839, 21.3, 43.0)}
+  sweep 1 L05 gen  0 best 7.757 (target 6.557 guards 1.172) sigma 0.54 t 396s
+  sweep 1 L05 gen  1 best 7.498 (target 6.428 guards 1.012) sigma 0.52 t 408s
+  sweep 1 L05 gen  2 best 7.488 (target 6.230 guards 1.167) sigma 0.51 t 418s
+  sweep 1 L05 gen  3 best 7.488 (target 6.230 guards 1.167) sigma 0.49 t 426s
+  sweep 1 L05 gen  4 best 7.488 (target 6.230 guards 1.167) sigma 0.47 t 434s
+  sweep 1 L05 gen  5 best 7.340 (target 6.032 guards 1.255) sigma 0.43 t 442s
+  sweep 1 L05 gen  6 best 7.340 (target 6.032 guards 1.255) sigma 0.42 t 450s
+  sweep 1 L05 gen  7 best 7.340 (target 6.032 guards 1.255) sigma 0.41 t 458s
+  sweep 1 L05 gen  8 best 7.340 (target 6.032 guards 1.255) sigma 0.39 t 466s
+  sweep 1 L05 gen  9 best 7.168 (target 5.965 guards 1.116) sigma 0.39 t 474s
+  sweep 1 L05 gen 10 best 7.168 (target 5.965 guards 1.116) sigma 0.39 t 482s
+  sweep 1 L05 gen 11 best 7.168 (target 5.965 guards 1.116) sigma 0.40 t 490s
+  sweep 1 L05 gen 12 best 7.168 (target 5.965 guards 1.116) sigma 0.39 t 498s
+  sweep 1 L05 gen 13 best 7.168 (target 5.965 guards 1.116) sigma 0.38 t 506s
+  sweep 1 L05: J 7.168; curv {'L04': 0.1265, 'L05': 0.1032, 'L06': 0.1172}; L04|L06 11.0 {'L02': (0.87, 6.4, 45.7), 'L03': (0.9, 6.7, -22.1), 'L04': (0.846, 12.8, -14.6), 'L05': (0.934, 3.2, -3.4), 'L06': (0.921, 4.2, 4.3), 'L07': (0.839, 21.3, 43.0)}
+  sweep 1 L06 gen  0 best 7.432 (target 6.128 guards 1.252) sigma 0.55 t 514s
+  sweep 1 L06 gen  1 best 7.394 (target 6.237 guards 1.127) sigma 0.51 t 523s
+  sweep 1 L06 gen  2 best 7.298 (target 6.201 guards 1.064) sigma 0.49 t 531s
+  sweep 1 L06 gen  3 best 7.298 (target 6.201 guards 1.064) sigma 0.46 t 539s
+  sweep 1 L06 gen  4 best 7.298 (target 6.201 guards 1.064) sigma 0.46 t 546s
+  sweep 1 L06 gen  5 best 7.298 (target 6.201 guards 1.064) sigma 0.46 t 555s
+  sweep 1 L06 gen  6 best 7.298 (target 6.201 guards 1.064) sigma 0.46 t 562s
+  sweep 1 L06 gen  7 best 7.298 (target 6.201 guards 1.064) sigma 0.44 t 570s
+  sweep 1 L06 gen  8 best 7.298 (target 6.201 guards 1.064) sigma 0.42 t 579s
+  sweep 1 L06 gen  9 best 7.298 (target 6.201 guards 1.064) sigma 0.41 t 587s
+  sweep 1 L06 gen 10 best 7.246 (target 6.085 guards 1.093) sigma 0.40 t 596s
+  sweep 1 L06 gen 11 best 7.246 (target 6.085 guards 1.093) sigma 0.39 t 604s
+  sweep 1 L06 gen 12 best 7.246 (target 6.085 guards 1.093) sigma 0.38 t 613s
+  sweep 1 L06 gen 13 best 7.036 (target 6.026 guards 0.887) sigma 0.37 t 620s
+  sweep 1 L06: J 7.036; curv {'L04': 0.1245, 'L05': 0.1096, 'L06': 0.116}; L04|L06 10.6 {'L02': (0.87, 6.4, 45.7), 'L03': (0.9, 6.7, -22.1), 'L04': (0.848, 12.1, -13.4), 'L05': (0.928, 3.2, -3.9), 'L06': (0.913, 4.5, 5.0), 'L07': (0.852, 18.6, 43.0)}
+  sweep 1 L04 gen  0 best 7.376 (target 6.271 guards 1.054) sigma 0.54 t 629s
+  sweep 1 L04 gen  1 best 6.824 (target 6.021 guards 0.710) sigma 0.52 t 638s
+  sweep 1 L04 gen  2 best 6.793 (target 5.992 guards 0.703) sigma 0.50 t 647s
+  sweep 1 L04 gen  3 best 6.641 (target 5.876 guards 0.711) sigma 0.49 t 655s
+  sweep 1 L04 gen  4 best 6.641 (target 5.876 guards 0.711) sigma 0.49 t 663s
+  sweep 1 L04 gen  5 best 6.641 (target 5.876 guards 0.711) sigma 0.48 t 671s
+  sweep 1 L04 gen  6 best 6.641 (target 5.876 guards 0.711) sigma 0.49 t 679s
+  sweep 1 L04 gen  7 best 6.641 (target 5.876 guards 0.711) sigma 0.50 t 687s
+  sweep 1 L04 gen  8 best 6.641 (target 5.876 guards 0.711) sigma 0.50 t 695s
+  sweep 1 L04 gen  9 best 6.547 (target 5.847 guards 0.559) sigma 0.50 t 703s
+  sweep 1 L04 gen 10 best 6.547 (target 5.847 guards 0.559) sigma 0.48 t 711s
+  sweep 1 L04 gen 11 best 6.438 (target 5.884 guards 0.401) sigma 0.47 t 718s
+  sweep 1 L04 gen 12 best 6.438 (target 5.884 guards 0.401) sigma 0.46 t 726s
+  sweep 1 L04 gen 13 best 6.261 (target 5.812 guards 0.222) sigma 0.46 t 733s
+  sweep 1 L04: J 6.261; curv {'L04': 0.1119, 'L05': 0.1056, 'L06': 0.115}; L04|L06 6.5 {'L02': (0.87, 6.4, 45.7), 'L03': (0.89, 6.7, -22.1), 'L04': (0.856, 8.6, -11.2), 'L05': (0.922, 3.2, -4.3), 'L06': (0.93, 3.8, 3.3), 'L07': (0.87, 13.0, 43.0)}
+    L02: IoU 0.870 -> 0.870, arc +45.7 -> +45.7, p95 6 -> 6
+    L03: IoU 0.897 -> 0.890, arc -22.1 -> -22.1, p95 8 -> 7
+    L04: IoU 0.871 -> 0.856, arc +14.0 -> -11.2, p95 12 -> 9
+    L05: IoU 0.706 -> 0.922, arc +17.0 -> -4.3, p95 15 -> 3
+    L06: IoU 0.901 -> 0.930, arc +6.4 -> +3.3, p95 5 -> 4
+    L07: IoU 0.888 -> 0.870, arc +43.0 -> +43.0, p95 9 -> 13

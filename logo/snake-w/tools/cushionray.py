@@ -194,24 +194,49 @@ def init_medial(spec, P0):
             # the medial axis runs out into the outline's corners, where the inscribed radius falls to
             # nothing: the cushion's axis is its core, where the radius is at least 0.55 x its largest
             core = np.nonzero(r >= 0.55 * r.max())[0]; px, py, r = px[core[0]:core[-1] + 1], py[core[0]:core[-1] + 1], r[core[0]:core[-1] + 1]
-            # run on past either end along its tangent, by 0.6 x the end radius
-            def ext(i, j):
-                tx, ty = px[i] - px[j], py[i] - py[j]; nn = np.hypot(tx, ty) + 1e-9; e = 0.6 * r[i]
-                return px[i] + tx / nn * e, py[i] + ty / nn * e
+            # the radius: the lobe's half-width across its axis, the wider side (the other may be
+            # cut short by a neighbour in front), smoothed along the axis
+            tx_, ty_ = np.gradient(ndimage.gaussian_filter1d(px, 3)), np.gradient(ndimage.gaussian_filter1d(py, 3))
+            nn_ = np.hypot(tx_, ty_) + 1e-9; nx_, ny_ = -ty_ / nn_, tx_ / nn_
+            steps = np.arange(0, 140)
+            def side(sg):
+                qx = np.clip((px[:, None] + sg * nx_[:, None] * steps).astype(int), 0, M_.shape[1] - 1)
+                qy = np.clip((py[:, None] + sg * ny_[:, None] * steps).astype(int), 0, M_.shape[0] - 1)
+                inside = M_[qy, qx]
+                return np.argmin(inside, 1).astype(float)          # the first step outside
+            r = ndimage.gaussian_filter1d(np.maximum(side(1), side(-1)), 4)
+            # the ends: an end whose run-on lands on another feature in the reference is tucked
+            # behind it: run on by 0.9 x its radius, at full radius, set back by half the radius;
+            # an end at the outline stays where it is (the cap rounds it)
+            back = np.zeros(2)
             k_ = min(8, len(px) - 1)
-            (ax, ay), (bx, by) = ext(0, k_), ext(-1, -1 - k_)
-            px = np.r_[ax, px, bx]; py = np.r_[ay, py, by]; r = np.r_[r[0] * 0.8, r, r[-1] * 0.8]
+            ends_ = []
+            for e_, (i, j) in enumerate(((0, k_), (-1, -1 - k_))):
+                tx, ty = px[i] - px[j], py[i] - py[j]; nn = np.hypot(tx, ty) + 1e-9
+                qx, qy = px[i] + tx / nn * 0.9 * r[i], py[i] + ty / nn * 0.9 * r[i]
+                lab = K.LAB[int(np.clip(qy, 0, 1085)), int(np.clip(qx, 0, 1447))]
+                tucked = lab > 0 and lab != K.FIDS.index(L["id"]) + 1
+                ends_.append((qx, qy, tucked))
+            (ax, ay, ta), (bx, by, tb_) = ends_
+            if ta:
+                px = np.r_[ax, px]; py = np.r_[ay, py]; r = np.r_[r[0], r]; back = np.r_[0.5 * r[0], np.zeros(len(px) - 1)]
+            else:
+                back = np.zeros(len(px))
+            if tb_:
+                px = np.r_[px, bx]; py = np.r_[py, by]; r = np.r_[r, r[-1]]; back = np.r_[back, 0.5 * r[-1]]
+            L["tucked"] = [bool(ta), bool(tb_)]
             # depth: the incumbent's visible surface less the radius, where the incumbent shows this strand's colour there
             zz = zf[np.clip(py.astype(int), 0, 1085), np.clip(px.astype(int), 0, 1447)] - r * L["s"][1]
-            good = np.isfinite(zz)
+            good = np.isfinite(zz) & M_[np.clip(py.astype(int), 0, 1085), np.clip(px.astype(int), 0, 1447)]
             zz = np.interp(np.arange(len(zz)), np.nonzero(good)[0], zz[good]) if good.any() else np.zeros_like(zz)
+            zz = zz - back
             X = px[:, None] * SCR_X + py[:, None] * SCR_Y + zz[:, None] * VIEW
             cl = np.r_[0, np.cumsum(np.linalg.norm(np.diff(X, axis=0), axis=1))]; t = cl / cl[-1]
             Bm = np.asarray(bern(jnp.asarray(t, jnp.float32)))
             L["ctrl"] = np.linalg.lstsq(Bm, X, rcond=None)[0].tolist()
-            L["r"] = np.clip(np.linalg.lstsq(Bm, r, rcond=None)[0], 0.5 * r.max(), 1.2 * r.max()).tolist()
+            L["r"] = np.clip(np.linalg.lstsq(Bm, r, rcond=None)[0], 0.6 * r.max(), 1.2 * r.max()).tolist()
             L["k"] = 4.0; L["init"] = "medial"
-            print(L["id"], "axis", len(px), "pts, r", [round(x_, 1) for x_ in L["r"]], flush=True)
+            print(L["id"], "axis", len(px), "pts, r", [round(x_, 1) for x_ in L["r"]], "tucked", L["tucked"], flush=True)
     return P
 
 
@@ -433,11 +458,75 @@ def step(col, zb, a, b, band=4):
     return float(np.median(zb[A]) - np.median(zb[B]))
 
 
+def anchors(spec, P):
+    """where each region's strand comes out from behind its partner: the centreline at the end
+    of the bridge's ramp at either end of the region"""
+    out = {}
+    for name, cfg in P.items():
+        lo, hi = cfg["range"]; ov = cfg.get("overlap", 3.0); ra = cfg.get("ramp", [12, 12])
+        X, _ = S.evaluate(spec[name], np.array([lo + ov + 2 + ra[0], hi - ov - 2 - ra[1]], float))
+        out[name] = X
+    return out
+
+
+def continuity(P, anc):
+    """the strand flows into its region's cushions: the first lobe has an axis end at the region's
+    start, the last at its end (a lone lobe both), else the cut tube pokes out beside the cushion
+    as a stub (poc-r4: a nub by L03, a foot under L04, a bulge on L05)"""
+    pen = 0.0
+    for name, cfg in P.items():
+        a, b = anc[name]; Ls = cfg["lobes"]
+        ends = [np.asarray(L["ctrl"])[[0, 3]] for L in Ls]
+        da = min(np.linalg.norm(ends[0] - a, axis=1)); db = min(np.linalg.norm(ends[-1] - b, axis=1))
+        if len(Ls) == 1:
+            e = ends[0]; da, db = min(np.linalg.norm(e[0] - a) + np.linalg.norm(e[1] - b), np.linalg.norm(e[1] - a) + np.linalg.norm(e[0] - b)) / 2, 0.0
+        pen += 0.08 * (max(0.0, da - 8.0) + max(0.0, db - 8.0))
+    return float(pen)
+
+
+def prior(P):
+    """a cushion's shape prior: its radius profile smooth (no neck between two bulges: the second
+    difference of the four radius controls, against their mean) and its axis not folded (the turn
+    of the control polygon beyond 270 degrees: a helical axis turns a lot); r3 / poc-r3's L05, radii 26 30 70 26 on a V-shaped
+    axis, made a knob the outline measures did not see"""
+    pen = 0.0
+    for cfg in P.values():
+        for L in cfg["lobes"]:
+            r = np.asarray(L["r"]); m = r.mean()
+            pen += 0.5 * (((r[0] - 2 * r[1] + r[2]) / m) ** 2 + ((r[1] - 2 * r[2] + r[3]) / m) ** 2)
+            c = np.asarray(L["ctrl"]); e = np.diff(c, axis=0); e /= np.linalg.norm(e, axis=1, keepdims=True) + 1e-9
+            turn = np.degrees(np.arccos(np.clip((e[:-1] * e[1:]).sum(1), -1, 1))).sum()
+            pen += 0.01 * max(0.0, turn - 270.0)
+    return float(pen)
+
+
+def outline_curv(M, arc=16.0):
+    """the p97 of the outline's turning rate (rad / px, over `arc` px of outline): a pointed apex,
+    a knob or a hard corner turns faster than a cushion's round outline"""
+    from skimage import measure as skm
+    cs = skm.find_contours(np.pad(M, 1).astype(float), 0.5)
+    if not cs:
+        return 0.0
+    c = max(cs, key=len)
+    d = np.r_[0, np.cumsum(np.hypot(*np.diff(c, axis=0).T))]
+    if d[-1] < 4 * arc:
+        return 0.0
+    s_ = np.arange(0, d[-1], 2.0); y_, x_ = np.interp(s_, d, c[:, 0]), np.interp(s_, d, c[:, 1])
+    a = np.unwrap(np.arctan2(np.gradient(y_), np.gradient(x_)))
+    k = int(arc / 2.0)
+    turn = np.abs(np.roll(a, -k) - np.roll(a, k))[k:-k] / arc
+    return float(np.percentile(turn, 97))
+
+
 def _eval(P, junction=None):
     col, sh, nm, zb = _G["ray"].render(P)
     m, ex = _G["sc"].measure(col, sh, nm)
     if junction:
         ex["step"] = step(col, zb, junction[0], junction[1])
+    L = K.lobes(col); x0, y0, x1, y1 = CLIP; ex["curv"] = {}
+    for fid in TARGETS:
+        i = K.FIDS.index(fid); Km = K.match(L[K.FEATS[i]["colour"]], K.LAB[y0:y1, x0:x1] == i + 1)
+        ex["curv"][fid] = outline_curv(Km) if Km is not None else 0.5
     return m, ex
 
 
@@ -458,6 +547,8 @@ def main():
     # and that junction exempt from the guard against sharper junction creases. Cushions meet by
     # interpenetrating, so a groove is a turn of the normal, not a step in depth
     ap.add_argument("--junction")
+    ap.add_argument("--prior", action="store_true", help="the cushions' shape prior (prior())")
+    ap.add_argument("--continuity", action="store_true", help="the strand flows into its region's first and last cushions (continuity())")
     A = ap.parse_args()
     spec = json.load(open(A.spec))
     for n in ("yellow", "blue"):
@@ -510,8 +601,15 @@ def main():
     print(f"crop {CLIP}; targets {TARGETS}; guards {guards}", flush=True)
     print("  incumbent:", {k: (round(v["iou"], 3), round(v["p95"], 1), round(v["arc"], 1)) for k, v in m0.items()}, flush=True)
 
+    x0_, y0_, x1_, y1_ = CLIP
+    cref = {t: outline_curv(K.LAB[y0_:y1_, x0_:x1_] == K.FIDS.index(t) + 1) for t in TARGETS}
+    print("  reference outline turning p97 (rad/px):", {k: round(v, 4) for k, v in cref.items()}, flush=True)
+
     def J(m, ex, x):
         c = sum(cost_t(m[t]) + 0.4 * max(0.0, ex["crease"].get(t, 0.0) - 1.0) + 0.05 * m[t].get("waist", 0.0) for t in TARGETS)
+        # outline curvature (from the judge's "pointed apex", "straight edge with a hard corner",
+        # knobs): turning faster than the reference lobe's own outline
+        c += sum(20.0 * max(0.0, ex.get("curv", {}).get(t, 0.0) - cref[t]) for t in TARGETS)
         pen = 0.0
         for g in guards:
             a, b = m0[g], m[g]
@@ -540,24 +638,31 @@ def main():
         t0 = time.time()
         P = copy.deepcopy(P0)
         m, ex = pool.submit(_eval, P).result()
-        jj, c, pen, _ = J(m, ex, np.zeros(1)); info = dict(m=m, ex=ex, c=c, pen=pen)
-        print(f"  start: J {jj:.3f} (target {c:.3f} guards {pen:.3f}) {time.time() - t0:.1f}s; junctions {ex['junction']}", {k: (round(v["iou"], 3), round(v["p95"], 1), round(v["arc"], 1)) for k, v in m.items()}, flush=True)
+        jj, c, pen, _ = J(m, ex, np.zeros(1))
+        anc = anchors(spec, P)
+        pr0 = (prior(P) if A.prior else 0.0) + (continuity(P, anc) if A.continuity else 0.0)
+        jj += pr0; c += pr0
+        print(f"  prior {prior(P):.2f}, continuity {continuity(P, anc):.2f}", flush=True)
+        info = dict(m=m, ex=ex, c=c, pen=pen)
+        print(f"  start: J {jj:.3f} (target {c:.3f} guards {pen:.3f}) {time.time() - t0:.1f}s; curv {dict((k, round(v, 4)) for k, v in ex['curv'].items())}", {k: (round(v["iou"], 3), round(v["p95"], 1), round(v["arc"], 1)) for k, v in m.items()}, flush=True)
         logl = []
         for sw in range(A.sweeps):
             for fid in A.order.split(","):
                 pf = {(a, b) for cfg in P.values() for a, b, _ in cfg["pairs"] if fid in (a, b)}
                 n = len(CTRL) + len(pf)
                 def f(x, wi, P=P, fid=fid, pf=pf):
-                    m, ex = pool.submit(_eval, apply(P, x, fid, pf)).result()
+                    Q = apply(P, x, fid, pf)
+                    m, ex = pool.submit(_eval, Q).result()
                     j, c, pen, reg = J(m, ex, x)
-                    return j, dict(c=c, pen=pen, reg=reg, m=m, ex=ex)
+                    pr = (prior(Q) if A.prior else 0.0) + (continuity(Q, anc) if A.continuity else 0.0)
+                    return j + pr, dict(c=c + pr, pen=pen, reg=reg, m=m, ex=ex)
                 def lg(g, best, F, sigma, fid=fid, sw=sw):
                     line = f"sweep {sw} {fid} gen {g:2d} best {best[0]:.3f} (target {best[2][1]['c']:.3f} guards {best[2][1]['pen']:.3f}) sigma {sigma:.2f} t {time.time() - t0:.0f}s"
                     logl.append(line); print("  " + line, flush=True)
                 best = cma(f, n, A.sigma, -BOUND * np.ones(n), BOUND * np.ones(n), A.gens, A.procs, A.seed + 7 * sw, lg, np.zeros(n))
                 if best[0] < jj:
                     P = apply(P, best[1], fid, pf); jj, info = best[0], best[2][1]
-                print(f"  sweep {sw} {fid}: J {jj:.3f}; junctions {dict((k, round(v, 1)) for k, v in info['ex']['junction'].items())}", {k: (round(v["iou"], 3), round(v["p95"], 1), round(v["arc"], 1)) for k, v in info["m"].items()}, flush=True)
+                print(f"  sweep {sw} {fid}: J {jj:.3f}; curv {dict((k, round(v, 4)) for k, v in info['ex']['curv'].items())}; L04|L06 {round(info['ex']['junction'].get('L04|L06', 0), 1)}", {k: (round(v["iou"], 3), round(v["p95"], 1), round(v["arc"], 1)) for k, v in info["m"].items()}, flush=True)
                 json.dump(P, open(f"{out}/params.json", "w"), indent=1, default=float)
         json.dump(dict(clip=CLIP, before=m0, after=info["m"], ex_before=ex0, ex_after=info["ex"], J=float(jj), log=logl), open(f"{out}/fit.json", "w"), indent=1, default=float)
         for g in feats:

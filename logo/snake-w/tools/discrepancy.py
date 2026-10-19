@@ -2,7 +2,7 @@
 the evaluate.py match plus the signed contour error along the reference outline (lobekit.arcs),
 which finds a displaced stretch of edge that the IoU averages away. Each row says, in words
 generated from the numbers, where the worst stretch is and which way it is wrong.
-  score = 10 (1 - IoU) + p95 / 8 + |worst arc| / 4 + 1.5 x visual severity
+  score = 10 (1 - IoU) + p95 / 8 + |worst arc| / 4 + VSEV x visual severity (VSEV 3; 1.5 before round 10)
   (px; arc = 40 px of outline; visual severity 0-5: the blind judges' latest severity for the
   incumbent's feature, auto/sev.json, which catches what the masks do not: a lobe that is thin,
   rope-like or creased in the right place)
@@ -16,6 +16,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 from lobekit import LAB, FEATS, FIDS, lobes, match, arcs
 
+# the weight of the blind judges' visual severity: 1.5 for rounds 1-9; 3 from round 10, once the
+# mask errors had converged (most lobe IoUs 0.85-0.92) and the judges' remaining faults (a dimple,
+# a band where a bulb should be, angular shoulders) were what separated the lobes
+VSEV = 3.0
 NAMES = {"N": "top", "S": "bottom", "E": "right", "W": "left", "NE": "upper right", "NW": "upper left", "SE": "lower right", "SW": "lower left"}
 
 
@@ -37,7 +41,7 @@ def rank(png, tried=None, sev=None):
         p95 = float(np.percentile(d, 95))
         ry, rx = np.nonzero(R); ky, kx = np.nonzero(K)
         vs = (sev or {}).get(f["id"], 0)
-        sc = 10 * (1 - iou) + p95 / 8 + abs(A["worst"]) / 4 + 1.5 * vs
+        sc = 10 * (1 - iou) + p95 / 8 + abs(A["worst"]) / 4 + VSEV * vs
         n = (tried or {}).get(f["id"], 0)
         word = "overshoots" if A["worst"] > 0 else "falls short"
         what = f"{NAMES[A['faces']]} edge {word} by {abs(A['worst']):.0f} px (40 px of outline at {A['at'][0]:.0f},{A['at'][1]:.0f}); centroid {kx.mean() - rx.mean():+.0f},{ky.mean() - ry.mean():+.0f} px"

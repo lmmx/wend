@@ -1,20 +1,21 @@
 {
  "incumbent": {
-  "tag": "incms",
-  "spec": "auto/r7/spec-r7-merged.json",
-  "renders": "auto/r10/ms",
-  "metrics": "auto/r10/ms/metrics-incms.json",
+  "tag": "r12-L06",
+  "spec": "auto/r12/spec-r12-L06.json",
+  "renders": "auto/r12/renders",
+  "metrics": "auto/r12/metrics-r12-L06.json",
   "params": "w-final.params.json",
+  "heads": "heads-final.json",
   "look": "snakes/w-meshshadow.look.json"
  },
  "tried": {
-  "L13": 1,
+  "L13": 2,
   "L05": 2,
   "L09": 1,
   "L14": 1,
   "L06": 1,
   "L07": 1,
-  "L01": 1,
+  "L01": 0,
   "L12": 1,
   "L15": 1,
   "L04": 1,
@@ -170,6 +171,19 @@
     "L10"
    ],
    "verdict": "no correction accepted"
+  },
+  {
+   "round": "r12",
+   "incumbent_before": "incms",
+   "accepted": [
+    "L06"
+   ],
+   "rejected": [
+    "L01",
+    "L01+neck1",
+    "L13"
+   ],
+   "verdict": "new incumbent r12-L06"
   }
  ]
 }

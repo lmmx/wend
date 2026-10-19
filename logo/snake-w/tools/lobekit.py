@@ -4,6 +4,8 @@
                error that an IoU averages away
   arcs2()      arcs() both ways, adding the error along the candidate's own outline, which sees a
                thin tip that pokes past the reference's edge (from round 12)
+  waist()      how much more the candidate's width profile along the lobe dips than the
+               reference's: a lobe pinched in one place (from round 13)
   Worker       a persistent flat renderer (tools/ffd_worker.mjs: snakes/ffd-flat.html, the real
                geometry and the baked heads in flat colours, ~0.5 s a render)
   surface_ids  which strand, own station and section angle every pixel shows (ffd-flat.html __ids)
@@ -115,6 +117,31 @@ def arcs2(R, K, length=40):
     if abs(B["worst"]) > abs(A["worst"]):
         A.update(worst=-B["worst"], at=B["at"], faces=B["faces"], faces_deg=B["faces_deg"])
     return A
+
+
+def widths(R, K, nb=10):
+    """the width profiles of R and K across R's principal axis: their extents (px) in nb slices
+    along that axis, between R's 4th and 96th percentiles"""
+    ys, xs = np.nonzero(R); c = np.c_[xs, ys].astype(float); mu = c.mean(0)
+    _, V = np.linalg.eigh(np.cov((c - mu).T)); u, n = V[:, 1], V[:, 0]
+    def tv(M):
+        y, x = np.nonzero(M); q = np.c_[x, y] - mu
+        return q @ u, q @ n
+    tR, vR = tv(R); tK, vK = tv(K)
+    e = np.linspace(*np.percentile(tR, [4, 96]), nb + 1)
+    w = lambda t, v, a, b: float(np.ptp(v[(t >= a) & (t < b)])) if ((t >= a) & (t < b)).any() else 0.0
+    return np.array([w(tR, vR, a, b) for a, b in zip(e, e[1:])]), np.array([w(tK, vK, a, b) for a, b in zip(e, e[1:])])
+
+
+def waist(R, K, nb=10):
+    """how much more K's width profile dips than R's (px): the largest, over the interior slices,
+    of (the mean of the two neighbouring widths - the width), K's less R's. The blind judges reject
+    a lobe that is pinched in one place even when its outline error falls (r12-L01: the collar's
+    top overshoot went 15 -> 11 px by thinning its upper half, a dip of 8.5 px here; the
+    incumbent's 0.5)"""
+    wR, wK = widths(R, K, nb)
+    dip = lambda w: 0.5 * (w[:-2] + w[2:]) - w[1:-1]
+    return float(max(0.0, np.max(dip(wK) - dip(wR))))
 
 
 class Worker:
@@ -286,7 +313,7 @@ def corners(b, y, thr=55.0, k=5):
 
 class Scorer:
     """per-feature measurements of a flat render on a crop: the evaluate.py lobe split and match,
-    IoU, boundary distances, centroid, arcs (both ways, arcs2); silhouette IoU, negative-space
+    IoU, boundary distances, centroid, arcs (both ways, arcs2), waist; silhouette IoU, negative-space
     intrusion, clay crease"""
 
     def __init__(self, clip, feats):
@@ -315,7 +342,7 @@ class Scorer:
             R, bR, dR, c = self.ref[fid]
             K = match(L[c], R)
             if K is None:
-                res[fid] = dict(iou=0.0, p95=99.0, mean=99.0, dx=50.0, dy=50.0, arc=-30.0, arc_mean=30.0, elong=1.0, elong_ref=1.0, tilt=45.0, solid=0.5, solid_ref=0.95); continue
+                res[fid] = dict(iou=0.0, p95=99.0, mean=99.0, dx=50.0, dy=50.0, arc=-30.0, arc_mean=30.0, elong=1.0, elong_ref=1.0, tilt=45.0, solid=0.5, solid_ref=0.95, waist=30.0); continue
             bK = boundary(K); dK = ndimage.distance_transform_edt(~bK)
             d = np.r_[dK[bR], dR[bK]]
             ry, rx = np.nonzero(R); ky, kx = np.nonzero(K)
@@ -324,7 +351,8 @@ class Scorer:
             res[fid] = dict(iou=float((K & R).sum() / (K | R).sum()), p95=float(np.percentile(d, 95)), mean=float(d.mean()),
                             dx=float(kx.mean() - rx.mean()), dy=float(ky.mean() - ry.mean()), arc=A["worst"], arc_mean=A["mean_abs"],
                             elong=float(pk.axis_major_length / max(pk.axis_minor_length, 1)), elong_ref=pr[0],
-                            tilt=float((np.degrees(pk.orientation) - pr[1] + 90) % 180 - 90), solid=float(pk.solidity), solid_ref=pr[2])
+                            tilt=float((np.degrees(pk.orientation) - pr[1] + 90) % 180 - 90), solid=float(pk.solidity), solid_ref=pr[2],
+                            waist=waist(R, K))
             if shade is not None:
                 res[fid]["_K"] = K
         blue, yellow = colour_masks(im)

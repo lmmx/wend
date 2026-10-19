@@ -5,9 +5,10 @@ of the necks), and fit the controls by CMA-ES on flat renders of the real geomet
   cost   the target's (1 - IoU) + mean boundary distance / 8 + |worst contour arc| / 15 (both
          ways from round 12, lobekit.arcs2) + p95 / 40 + |centroid offset| / 30, plus its shape
          against the reference lobe's: 0.5 |elongation difference| + |tilt| / 20 x min(1,
-         elongation - 1) (|tilt| / 40 before round 12) + 4 x the solidity shortfall (cost_t)
+         elongation - 1) (|tilt| / 40 before round 12) + 4 x the solidity shortfall + the waist
+         (lobekit.waist: a dip in the width profile beyond the reference's) / 10 (cost_t)
   guards every other feature inside the crop may not lose IoU (> 0.005), p95 (> 1 px), its
-         worst arc (> 2 px) or solidity (> 0.01); the crop's silhouette and negative spaces, the local fold area, the
+         worst arc (> 2 px), solidity (> 0.01) or waist (> 2 px); the crop's silhouette and negative spaces, the local fold area, the
          clay crease (target and guards) and the press depth (the deepest overlap of the two tubes
          before the press flattens them, inside the crop: a deeper press dents the partner) may
          not get worse than the incumbent's
@@ -71,10 +72,11 @@ def cost_t(m):
     measure: elongation, orientation and solidity (area / convex hull, the cushion's convexity).
     From round 12 the orientation term is |tilt| / 20 scaled by how elongated the reference lobe is
     (min(1, elongation - 1)): a long lobe's tilt is what the eye reads (the blue collar L01, 6
-    degrees too upright at elongation 2.4), a round lobe's principal axis is ill-defined"""
+    degrees too upright at elongation 2.4), a round lobe's principal axis is ill-defined. From round
+    13, + the waist (lobekit.waist, px) / 10: a lobe may not take its outline error by pinching"""
     return ((1 - m["iou"]) + m["mean"] / 8 + abs(m["arc"]) / 15 + m["p95"] / 40 + np.hypot(m["dx"], m["dy"]) / 30
             + 0.5 * abs(m["elong"] - m["elong_ref"]) + abs(m["tilt"]) / 20 * min(1.0, max(0.0, m["elong_ref"] - 1.0))
-            + 4 * max(0.0, m["solid_ref"] - m["solid"]))
+            + 4 * max(0.0, m["solid_ref"] - m["solid"]) + m.get("waist", 0.0) / 10)
 
 
 def main():
@@ -136,7 +138,7 @@ def main():
             for g in guards:
                 a, b = m0[g], m[g]
                 pen += 5 * max(0.0, a["iou"] - b["iou"] - 0.005) + 0.04 * max(0.0, b["p95"] - a["p95"] - 1) + 0.05 * max(0.0, abs(b["arc"]) - abs(a["arc"]) - 2)
-                pen += 4 * max(0.0, a["solid"] - b["solid"] - 0.01)
+                pen += 4 * max(0.0, a["solid"] - b["solid"] - 0.01) + 0.05 * max(0.0, b.get("waist", 0.0) - a.get("waist", 0.0) - 2)
             pen += 6 * max(0.0, ex0["sil"] - ex["sil"] - 0.002)
             for k, v in ex["intr"].items():
                 pen += 6 * max(0.0, v - ex0["intr"].get(k, 0) - 0.003)

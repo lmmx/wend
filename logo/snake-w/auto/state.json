@@ -15,12 +15,12 @@
   "L14": 1,
   "L06": 1,
   "L07": 1,
-  "L01": 0,
+  "L01": 1,
   "L12": 1,
   "L15": 2,
-  "L04": 1,
+  "L04": 2,
   "L08": 1,
-  "L16": 1,
+  "L16": 2,
   "L03": 1,
   "L10": 1,
   "L11": 1
@@ -198,6 +198,17 @@
     "L15"
    ],
    "verdict": "new incumbent r13-L01"
+  },
+  {
+   "round": "r14",
+   "incumbent_before": "r13-L01",
+   "accepted": [],
+   "rejected": [
+    "L01",
+    "L04",
+    "L16"
+   ],
+   "verdict": "no correction accepted"
   }
  ]
 }

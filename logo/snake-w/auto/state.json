@@ -289,6 +289,16 @@
     "L01w"
    ],
    "verdict": "no correction accepted"
+  },
+  {
+   "round": "r23",
+   "incumbent_before": "r18-L12",
+   "accepted": [],
+   "rejected": [
+    "L15+L16",
+    "L07+L08"
+   ],
+   "verdict": "no correction accepted"
   }
  ],
  "seeds": {}

@@ -166,5 +166,47 @@
   "round": "r22",
   "candidate": "r22-L13+L14",
   "note": "the right edge a flat vertical cut under the yellow"
+ },
+ {
+  "where": "L15",
+  "cause": "crossing_notch",
+  "round": "r23",
+  "candidate": "r23-L15+L16",
+  "note": "a step / shoulder on the right edge where it tucks under the yellow"
+ },
+ {
+  "where": "L16",
+  "cause": "crease",
+  "round": "r23",
+  "candidate": "r23-L15+L16",
+  "note": "a bulbous knob at the upper-left end with a crease line beneath it"
+ },
+ {
+  "where": "L15|L16",
+  "cause": "junction_pinch",
+  "round": "r23",
+  "candidate": "r23-L15+L16",
+  "note": "the pinch and zebra kink at the lower-right tuck"
+ },
+ {
+  "where": "L08",
+  "cause": "flat_top",
+  "round": "r23",
+  "candidate": "r23-L07+L08",
+  "note": "boxier: straight vertical left flank, flat top, sharp corners"
+ },
+ {
+  "where": "L06|L07",
+  "cause": "junction_pinch",
+  "round": "r23",
+  "candidate": "r23-L07+L08",
+  "note": "a dark notch and fragmented zebra on L07's lower seam with L06"
+ },
+ {
+  "where": "L06",
+  "cause": "crossing_notch",
+  "round": "r23",
+  "candidate": "r23-L07+L08",
+  "note": "a small kink in the blue/yellow boundary of the top seam"
  }
 ]

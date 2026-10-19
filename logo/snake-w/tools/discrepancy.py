@@ -11,7 +11,7 @@ generated from the numbers, where the worst stretch is and which way it is wrong
   a feature of the incumbent), until an accepted round corrects that feature (`addressed`).
 The heads (H1, H2) are listed but not ranked (their geometry is fixed in this loop).
 Usage (from the logo root): discrepancy.py colour.png OUT.json [--tried state.json] [--sev sev.json] [--owner owner.json]
-  --tried: features with rejected attempts on the current incumbent are ranked x 0.5 per attempt"""
+  --tried: features with rejected attempts are ranked x TRIED per attempt (0.8; 0.5 to round 20)"""
 import json, os, sys
 import numpy as np
 from PIL import Image
@@ -23,6 +23,10 @@ from lobekit import LAB, FEATS, FIDS, lobes, match, arcs2
 # mask errors had converged (most lobe IoUs 0.85-0.92) and the judges' remaining faults (a dimple,
 # a band where a bulb should be, angular shoulders) were what separated the lobes
 VSEV = 3.0
+# each rejected attempt scales a feature's score by TRIED: 0.5 until round 20, which after two
+# rejections sank the worst lobes (L05 IoU 0.71, L13 0.74, L14 0.82) below near-converged ones,
+# so the loop kept polishing L01 and L16; 0.8 from round 21, so the worst unresolved errors lead
+TRIED = 0.8
 NAMES = {"N": "top", "S": "bottom", "E": "right", "W": "left", "NE": "upper right", "NW": "upper left", "SE": "lower right", "SW": "lower left"}
 
 
@@ -54,7 +58,7 @@ def rank(png, tried=None, sev=None, owner=None):
         n = (tried or {}).get(f["id"], 0)
         word = "overshoots" if A["worst"] > 0 else "falls short"
         what = f"{NAMES[A['faces']]} edge {word} by {abs(A['worst']):.0f} px (40 px of outline at {A['at'][0]:.0f},{A['at'][1]:.0f}); centroid {kx.mean() - rx.mean():+.0f},{ky.mean() - ry.mean():+.0f} px"
-        rows.append(dict(id=f["id"], colour=f["colour"], score=float(sc * 0.5 ** n), raw=float(sc), attempts=n, iou=iou, p95=p95,
+        rows.append(dict(id=f["id"], colour=f["colour"], score=float(sc * TRIED ** n), raw=float(sc), attempts=n, iou=iou, p95=p95,
                          arc=A["worst"], arc_mean=A["mean_abs"], arc_at=A["at"], arc_faces=A["faces"],
                          dx=float(kx.mean() - rx.mean()), dy=float(ky.mean() - ry.mean()), what=what, vsev=vs, jsev=js, osev=os_))
     lobes_ = sorted([r for r in rows if r["id"].startswith("L")], key=lambda r: -r["score"])

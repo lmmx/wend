@@ -1,14 +1,16 @@
 {
  "incumbent": {
-  "tag": "r5-L02",
-  "spec": "auto/r5/spec-r5-L02.json",
-  "renders": "auto/r5/renders",
-  "metrics": "auto/r5/metrics-r5-L02.json",
+  "tag": "r6-L03",
+  "spec": "auto/r6/spec-r6-L03.json",
+  "renders": "auto/r6/renders",
+  "metrics": "auto/r6/metrics-r6-L03.json",
   "params": "w-final.params.json"
  },
  "tried": {
   "L13": 1,
-  "L05": 1
+  "L05": 1,
+  "L09": 1,
+  "L14": 1
  },
  "rounds": [
   {
@@ -79,6 +81,18 @@
     "L13"
    ],
    "verdict": "new incumbent r5-L02"
+  },
+  {
+   "round": "r6",
+   "incumbent_before": "r5-L02",
+   "accepted": [
+    "L03"
+   ],
+   "rejected": [
+    "L14",
+    "L09"
+   ],
+   "verdict": "new incumbent r6-L03"
   }
  ]
 }

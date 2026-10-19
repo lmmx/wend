@@ -193,6 +193,27 @@ Ranking (top 8):
 
 Outcome: no correction accepted
 
+## Round r18 (incumbent r15-L06)
+
+Ranking (top 8):
+
+1. L12 score 5.4: IoU 0.88, right edge falls short by 11 px (40 px of outline at 902,748); centroid -1,-3 px
+2. L13 score 4.1: IoU 0.72, right edge overshoots by 12 px (40 px of outline at 988,686); centroid +1,-2 px
+3. L07 score 3.8: IoU 0.87, upper left edge overshoots by 9 px (40 px of outline at 556,594); centroid -2,-0 px
+4. L05 score 3.7: IoU 0.71, right edge overshoots by 17 px (40 px of outline at 654,693); centroid +10,-7 px
+5. L09 score 3.6: IoU 0.90, lower right edge falls short by 9 px (40 px of outline at 749,555); centroid +0,-4 px
+6. L03 score 3.6: IoU 0.87, lower left edge overshoots by 8 px (40 px of outline at 471,731); centroid -0,+1 px
+7. L10 score 3.4: IoU 0.90, upper left edge overshoots by 7 px (40 px of outline at 752,533); centroid -0,-1 px
+8. L02 score 3.3: IoU 0.91, upper right edge overshoots by 8 px (40 px of outline at 497,441); centroid +1,+1 px
+
+| target | station run | handle | IoU | worst arc | gates | judge | verdict |
+|---|---|---|---|---|---|---|---|
+| L12 | yellow 1016-1048 | move +2,-3 px, depth +4 px, end a -4,+4 px, end b -3,+4 px, length +10%, radius -8%, width +7%, bulge + -6%, bulge - -10%, end a +11%, end b +11% | 0.88 -> 0.88 | -11 -> -7 | pass | ACCEPT | ACCEPT |
+| L07 | blue 891-976 | move +3,+2 px, depth -1 px, end a -5,-8 px, end b +1,+4 px, turn -4 deg, length +3%, radius -3%, width -2%, bulge + +9%, bulge - +11%, end a -4% | 0.87 -> 0.89 | +9 -> +7 | fail: L07 (the target) not improved: IoU 0.87 -> 0.89, worst arc +9 -> +7 px | - | REJECT |
+| L05 | blue 1050-1076 | move -17,-0 px, depth -7 px, end a -13,+7 px, end b +3,+7 px, turn -13 deg, length +2%, radius +6%, width +5%, bulge + -15%, bulge - -4%, end a +2%, end b +9% | 0.71 -> 0.92 | +17 -> -3 | pass | REJECT | REJECT |
+
+Outcome: new incumbent r18-L12
+
 ## Round r2 (incumbent r1-L13)
 
 Ranking (top 8):
@@ -361,4 +382,4 @@ Ranking (top 8):
 
 Outcome: no correction accepted
 
-Current incumbent: r15-L06 (auto/r15/spec-r15-L06.json)
+Current incumbent: r18-L12 (auto/r18/spec-r18-L12.json)

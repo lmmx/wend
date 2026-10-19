@@ -21,7 +21,9 @@
                15 move either end on screen on its own (ea_x, ea_y, eb_x, eb_y, px: a bump centred
                on the end, 12 stations into the run and out to the end of its ramp, or out to the
                strand's tail at an open end; a lobe mostly ends where its strand passes under the
-               partner, and the whole-run moves cannot lower one end without the other). The centreline, radius and section moves act on
+               partner, and the whole-run moves cannot lower one end without the other), and from
+               round 19 taper an open end's tail (eb_r, fraction of the radius at the strand's end)
+               and turn it on screen about the run's end (eb_rot, degrees). The centreline, radius and section moves act on
                spline control points, so the strand stays one C2 surface; nothing is cut or added.
   Scorer       per-feature measurements of a flat render on a crop (the evaluate.py lobe split and
                match), with arcs, silhouette, negative-space intrusion and the clay crease
@@ -46,10 +48,10 @@ SCR_X = np.array([1.0, 0.0, 0.0]); SCR_Y = np.array([0.0, -CE, SE])     # image 
 NECK_SAFE = {"yellow": 165.0 + 64, "blue": 198.0 + 64}
 REG, LAB, NEGLAB = load_registry()
 FEATS = REG["features"]; FIDS = [f["id"] for f in FEATS]
-NAMES = ["tx", "ty", "tz", "rot", "stretch", "fat", "width", "bulge_p", "bulge_n", "tip_a", "tip_b", "ea_x", "ea_y", "eb_x", "eb_y"]
-SCALE = np.array([10, 10, 10, 8, 0.1, 0.08, 0.08, 0.1, 0.1, 0.1, 0.1, 8, 8, 8, 8])     # one search unit
-LO = np.array([-25, -25, -25, -20, -0.25, -0.1, -0.1, -0.2, -0.2, -0.15, -0.15, -20, -20, -20, -20])
-HI = np.array([25, 25, 25, 20, 0.25, 0.15, 0.15, 0.2, 0.2, 0.15, 0.15, 20, 20, 20, 20])
+NAMES = ["tx", "ty", "tz", "rot", "stretch", "fat", "width", "bulge_p", "bulge_n", "tip_a", "tip_b", "ea_x", "ea_y", "eb_x", "eb_y", "eb_r", "eb_rot"]
+SCALE = np.array([10, 10, 10, 8, 0.1, 0.08, 0.08, 0.1, 0.1, 0.1, 0.1, 8, 8, 8, 8, 0.3, 15])     # one search unit
+LO = np.array([-25, -25, -25, -20, -0.25, -0.1, -0.1, -0.2, -0.2, -0.15, -0.15, -20, -20, -20, -20, -0.8, -50])
+HI = np.array([25, 25, 25, 20, 0.25, 0.15, 0.15, 0.2, 0.2, 0.15, 0.15, 20, 20, 20, 20, 0.2, 50])
 
 
 def to_screen(P):
@@ -277,14 +279,29 @@ def apply(spec, handles):
         Pn = c + q + p["tx"] * SCR_X + p["ty"] * SCR_Y + p["tz"] * VIEW
         Q = P + W[:, None] * (Pn - P)
         G = greville(S.knots(st["s0"], st["s1"], st["nseg"]), len(P))
+        if h.get("open_b") and p.get("eb_rot", 0.0):
+            # the tail turned on screen (degrees, about the view axis) about its centreline point at
+            # the run's end: a round shoulder where the tail wraps away behind the other head's neck
+            # (the collar L01: a translated tail ends in a flat-topped shoulder, r17)
+            cb = S.evaluate(st, np.array([h["b"]]))[0][0]
+            wt = smoothstep(h["b"] - 12, h["b"] + 12, G)
+            Qr = cb + rodrigues(Q - cb, VIEW, np.radians(p["eb_rot"]))
+            Q = Q + wt[:, None] * (Qr - Q)
         for e in ("a", "b"):
             ex_, ey_ = p.get(f"e{e}_x", 0.0), p.get(f"e{e}_y", 0.0)
             if ex_ or ey_:
                 Q = Q + endbump(G, h, e)[:, None] * (ex_ * SCR_X + ey_ * SCR_Y)
         st["ctrl"] = Q.tolist()
         rc = np.array(st["rctrl"], float)
-        Wr = bump(greville(S.knots(st["s0"], st["s1"], st["rseg"]), len(rc)), h)
-        st["rctrl"] = (rc * (1 + Wr * p["fat"])).tolist()
+        Gr = greville(S.knots(st["s0"], st["s1"], st["rseg"]), len(rc))
+        Wr = bump(Gr, h)
+        rc = rc * (1 + Wr * p["fat"])
+        if h.get("open_b") and p.get("eb_r", 0.0):
+            # the tail's taper: its radius scaled by (1 + eb_r) at the strand's end, from 3 stations
+            # past the run's end; lowering the collar L01's tail brings the tail's end out below
+            # the yellow jaw on the far side of the neck (r16-L01), which a thinner end keeps hidden
+            rc = rc * (1 + p["eb_r"] * smoothstep(h["b"] + 3, st["s1"], Gr))
+        st["rctrl"] = rc.tolist()
         if p["width"]:
             if "sec" not in st:
                 seg = st["nseg"]; st["sec"] = dict(seg=seg, ql=[1.0] * (seg + 3), qd=[1.0] * (seg + 3), psi=[0.0] * (seg + 3))
@@ -311,6 +328,8 @@ def describe(h):
     if abs(p["tz"]) > 0.5: out.append(f"depth {p['tz']:+.0f} px")
     for e in ("a", "b"):
         if abs(p.get(f"e{e}_x", 0.0)) + abs(p.get(f"e{e}_y", 0.0)) > 0.5: out.append(f"end {e} {p[f'e{e}_x']:+.0f},{p[f'e{e}_y']:+.0f} px")
+    if h.get("open_b") and abs(p.get("eb_r", 0.0)) > 0.01: out.append(f"tail radius {p['eb_r']:+.0%}")
+    if h.get("open_b") and abs(p.get("eb_rot", 0.0)) > 0.5: out.append(f"tail turn {p['eb_rot']:+.0f} deg")
     if abs(p["rot"]) > 0.5: out.append(f"turn {p['rot']:+.0f} deg")
     for k, lbl in (("stretch", "length"), ("fat", "radius"), ("width", "width"), ("bulge_p", "bulge +"), ("bulge_n", "bulge -"), ("tip_a", "end a"), ("tip_b", "end b")):
         if abs(p[k]) > 0.01: out.append(f"{lbl} {p[k]:+.0%}")

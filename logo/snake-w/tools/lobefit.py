@@ -19,6 +19,7 @@ renders of the real geometry.
 Writes OUT/handle.json, OUT/spec.json (the incumbent with the handle applied), OUT/fit.json
 (attribution, surrogate before / after per feature, the log).
 Usage (from the logo root): lobefit.py TARGET incumbent.json OUT [--gens 22] [--workers 3] [--seed 0]
+  [--init handle.json --sigma 0.4 --crease-tol 1.15]: a repair fit, from a rejected handle
 The flat renders use the params and head bake that FFD_PARAMS / FFD_HEADS name (the incumbent's,
 or a head variant's: autoround.py sets them)."""
 import argparse, json, os, sys, threading, time
@@ -32,7 +33,7 @@ from evaluate import window
 ROOT = os.path.abspath(os.path.join(HERE, ".."))
 
 
-def cma(f, n, sigma0, lo, hi, gens, workers, seed=0, log=None):
+def cma(f, n, sigma0, lo, hi, gens, workers, seed=0, log=None, m0=None):
     rng = np.random.default_rng(seed)
     lam = 4 + int(3 * np.log(n)); lam += (-lam) % workers
     mu = lam // 2
@@ -41,7 +42,7 @@ def cma(f, n, sigma0, lo, hi, gens, workers, seed=0, log=None):
     c1 = 2 / ((n + 1.3) ** 2 + mueff); cmu = min(1 - c1, 2 * (mueff - 2 + 1 / mueff) / ((n + 2) ** 2 + mueff))
     damps = 1 + 2 * max(0, np.sqrt((mueff - 1) / (n + 1)) - 1) + cs
     chiN = np.sqrt(n) * (1 - 1 / (4 * n) + 1 / (21 * n * n))
-    m = np.zeros(n); sigma = sigma0; C = np.eye(n); pc = np.zeros(n); ps = np.zeros(n); D = np.ones(n); B = np.eye(n)
+    m = np.zeros(n) if m0 is None else np.clip(np.asarray(m0, float), lo, hi); sigma = sigma0; C = np.eye(n); pc = np.zeros(n); ps = np.zeros(n); D = np.ones(n); B = np.eye(n)
     best = (np.inf, m.copy(), None)
     for g in range(gens):
         Z = rng.standard_normal((lam, n)); Y = (B @ (D[:, None] * Z.T)).T
@@ -87,6 +88,9 @@ def main():
     ap.add_argument("target"); ap.add_argument("spec"); ap.add_argument("out")
     ap.add_argument("--gens", type=int, default=22); ap.add_argument("--workers", type=int, default=3); ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--pad", type=int, default=80)
+    # a repair fit (autoround.py seeds): start from a judged-closer but rejected handle, with a
+    # narrower search and a tighter tolerance on the guards' clay crease
+    ap.add_argument("--init"); ap.add_argument("--sigma", type=float, default=0.8); ap.add_argument("--crease-tol", type=float, default=1.4)
     A = ap.parse_args()
     os.makedirs(A.out, exist_ok=True)
     out = os.path.abspath(A.out)
@@ -151,7 +155,7 @@ def main():
             pen += 0.5 * max(0.0, ex["bottom"] - ex0["bottom"] - 1)
             pen += max(0.0, ex["stray"] - ex0["stray"] - 20) / 100
             for g, cr in ex["crease"].items():
-                pen += 0.5 * max(0.0, cr / max(ex0["crease"].get(g, 0.6), 0.6) - 1.4)
+                pen += 0.5 * max(0.0, cr / max(ex0["crease"].get(g, 0.6), 0.6) - A.crease_tol)
             reg = 0.01 * float(np.sum(np.square(x)))
             return c + pen + reg, c, pen, reg
 
@@ -167,7 +171,12 @@ def main():
             logl.append(line)
             if g % 4 == 0 or g == A.gens - 1:
                 print("  " + line, flush=True)
-        best = cma(f, len(K.NAMES), 0.8, K.LO / K.SCALE, K.HI / K.SCALE, A.gens, A.workers, A.seed, log)
+        m0 = None
+        if A.init:
+            p0 = json.load(open(A.init))["p"]
+            m0 = np.array([p0.get(n, 0.0) for n in K.NAMES]) / K.SCALE
+            print(f"  repair: from {A.init} ({K.describe(dict(h, p={n: float(v) for n, v in zip(K.NAMES, m0 * K.SCALE)}))}), sigma {A.sigma}, crease tolerance {A.crease_tol}", flush=True)
+        best = cma(f, len(K.NAMES), A.sigma, K.LO / K.SCALE, K.HI / K.SCALE, A.gens, A.workers, A.seed, log, m0)
         x = best[1]
         h["p"] = {n: float(v) for n, v in zip(K.NAMES, x * K.SCALE)}
         spec = K.apply(inc, [h])

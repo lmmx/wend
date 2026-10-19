@@ -3,8 +3,8 @@ separate agent that sees only the pair pages.
 
   propose  1. Rank the incumbent's lobes (tools/discrepancy.py, with the judges' and the owner's
               severities: auto/sev.json, auto/owner.json).
-           2. Take up to N targets in rank order such that no target lies inside another's
-              crop (each fit guards its crop).
+           2. Take up to N targets: first the seeded ones (below), then in rank order, such that
+              no target lies inside another's crop (each fit guards its crop).
            3. A target whose crop holds a head with a variant (HEAD_VARIANTS) is fitted twice:
               once with the incumbent's head, and once with the variant's (candidate key
               TARGET+NAME), so that a correction which uncovers that head's neck can bring the
@@ -18,7 +18,11 @@ separate agent that sees only the pair pages.
                 target itself must improve (IoU up 0.02 or the worst contour arc 3 px smaller);
               - build its delta sheet and its blind pair pages, with the X / Y order random and
                 recorded in ROUND/mapping.json.
-  merge    1. Compose the handles of the accepted candidates onto the incumbent (their supports
+  merge    0. --seed FID,...: a rejected candidate that its judge found closer at its target by 2
+              or more, rejected only for a small defect it named, seeds a repair: the next
+              round re-fits that target from its handle (lobefit --init, sigma 0.4, crease
+              tolerance 1.15) and the rejection does not count against the target's rank.
+           1. Compose the handles of the accepted candidates onto the incumbent (their supports
               are disjoint; at most one candidate per target). An accepted head variant's params
               and head bake become the incumbent's. The owner's entries for the accepted targets
               lose one step of severity each, and are addressed at 1.
@@ -32,11 +36,12 @@ State: auto/state.json holds:
              that file's head bake for the flat fits (default heads-final.json), look the look file
              (default snakes/w-final.look.json)
   tried      {fid: rejected attempts}; the ranking halves a feature's score per rejection
+  seeds      {fid: {handle, round}}: repairs for the next round (merge --seed)
   rounds     the summary of every round
 
 Usage (from the logo root):
   autoround.py propose ROUND [--n 3] [--gens 18]
-  autoround.py merge ROUND TAG,TAG,... [--rejected TAG,...]"""
+  autoround.py merge ROUND TAG,TAG,... [--rejected TAG,...] [--seed FID,...]"""
 import argparse, json, os, random, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -130,14 +135,15 @@ def propose(A, S):
     rows = rank(f"{inc['renders']}/{inc['tag']}-colour.png", S["tried"], sev, owner)
     json.dump(rows, open(f"{R}/rank.json", "w"), indent=1)
     open(f"{R}/rank.md", "w").write(f"Incumbent {inc['tag']}\n\n" + table(rows) + "\n")
+    seeds = S.get("seeds", {})
     chosen = []
-    for r in rows:
+    for r in [r for r in rows if r["id"] in seeds] + [r for r in rows if r["id"] not in seeds]:
         if not r["id"].startswith("L") or len(chosen) >= A.n:
             continue
         if any(r["id"] in guards(c) or c in guards(r["id"]) for c in chosen):
             continue
         chosen.append(r["id"])
-    print("targets", chosen, flush=True)
+    print("targets", chosen, "repairs", [t for t in chosen if t in seeds], flush=True)
     # the candidates: (key, target, params, heads), each target with the incumbent's head and
     # with each head variant in its crop that the incumbent does not already use
     ip, ih = inc.get("params", P0), inc.get("heads", H0)
@@ -153,7 +159,8 @@ def propose(A, S):
         # a round interrupted (a container restart) resumes: finished fits and renders are kept
         if os.path.exists(f"{R}/{key}/fit.json"):
             continue
-        run([PY, "tools/lobefit.py", t, inc["spec"], f"{R}/{key}", "--gens", str(A.gens)], f"{R}/{key}.log", env=ffd_env(pp, hh))
+        rep = ["--init", seeds[t]["handle"], "--sigma", "0.4", "--crease-tol", "1.15"] if t in seeds and key == t else []
+        run([PY, "tools/lobefit.py", t, inc["spec"], f"{R}/{key}", "--gens", str(A.gens)] + rep, f"{R}/{key}.log", env=ffd_env(pp, hh))
     def one(job):
         key, t, pp, hh = job
         fit = json.load(open(f"{R}/{key}/fit.json"))
@@ -208,8 +215,14 @@ def merge(A, S):
     if len(var) > 1:
         sys.exit(f"merge: the accepted candidates use different head variants ({acc})")
     # a target's tried count goes up once a round, however many of its candidates were rejected
-    rej = {fid(t) for t in (A.rejected or "").split(",") if t}
-    rej |= {fid(k) for k, s in summ["targets"].items() if s.get("verdict_gates") == "REJECT"}
+    # seeds: this round's repairs are used up; the new ones are recorded and not counted as rejections
+    used = {t for t in S.get("seeds", {}) if t in {fid(k) for k in summ["targets"]}}
+    S["seeds"] = {t: v for t, v in S.get("seeds", {}).items() if t not in used}
+    new = [t for t in (A.seed or "").split(",") if t]
+    for t in new:
+        S["seeds"][t] = dict(handle=f"{R}/{t}/handle.json", round=A.round)
+    rej = {fid(t) for t in (A.rejected or "").split(",") if t} - set(new)
+    rej |= {fid(k) for k, s in summ["targets"].items() if s.get("verdict_gates") == "REJECT"} - set(new)
     for t in rej - {fid(k) for k in acc}:
         S["tried"][t] = S["tried"].get(t, 0) + 1
     rnd = dict(round=A.round, incumbent_before=inc["tag"], accepted=acc, rejected=[t for t in summ["targets"] if t not in acc], verdict="no correction accepted")
@@ -250,7 +263,7 @@ def merge(A, S):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd"); ap.add_argument("round"); ap.add_argument("accepted", nargs="?", default="")
-    ap.add_argument("--n", type=int, default=3); ap.add_argument("--gens", type=int, default=18); ap.add_argument("--rejected")
+    ap.add_argument("--n", type=int, default=3); ap.add_argument("--gens", type=int, default=18); ap.add_argument("--rejected"); ap.add_argument("--seed")
     A = ap.parse_args()
     # one round at a time: a wake-up must not start a round while another is alive
     LOCK = "auto/LOCK"

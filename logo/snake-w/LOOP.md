@@ -54,6 +54,8 @@ The starting point is what already exists:
 - **ACCEPT** when the candidate is closer to the reference at its target (by 1 or more) and introduces no defect of its own.
 - **ACCEPT (neutral)** when the judge finds no difference and no defect anywhere, the gates pass, and the real renders measure a clear gain at the target: IoU up 0.03 or more, or its worst contour arc 5 px smaller. A change too small to see but measurably closer is kept, and later attempts build on it.
 - **REJECT** otherwise.
+- **Repair seed:** when the judge finds a rejected candidate closer at its target by 2 or more and rejects it only for a small defect it names (a seam, a crease), pass `--seed TARGET` to `merge`. The next round re-fits that target first, from the rejected handle (`lobefit --init`, sigma 0.4, the guards' crease tolerance 1.15 instead of 1.4), and the rejection does not count against the target's rank.
+- Read X and Y from `mapping.json` before writing each verdict; the judge's "X" is not always the candidate.
 - Paired verdicts count only beyond about one step: an untouched feature judged one step different is noise.
 - The pair pages carry `page4-focus.png`: the target, and the neighbours whose IoU changed, enlarged. Small corrections (10–15 px) are invisible at the standard tile size. Round 1's first L01 judge said "same" everywhere while the collar had moved 13 px down.
 - After the judges, write `WS/auto/sev.json`: `{feature: severity}`.
@@ -70,7 +72,7 @@ The starting point is what already exists:
    - run `merge` with the accepted tags and `--rejected` with the judge-rejected ones;
    - run `autoledger.py`.
 3. **Select the next targets autonomously.** Run `autoround.py propose r(N+1)` from the new incumbent. The ranking chooses; the user does not. Rejected features are down-weighted automatically.
-4. **Fit geometry directly.** Use the lobe handles: translate, depth, rotate, stretch, radius, width, side bulges, end rounding and, from round 16, end moves, on the strand's own station run. At a lobe whose run ends at its strand's tail (L01, L16), the end-b move carries the whole tail. Use broader composition controls (`tools/twist.py`, regionfit) when an error comes from the arrangement and the same lobe fails twice.
+4. **Fit geometry directly.** Use the lobe handles: translate, depth, rotate, stretch, radius, width, side bulges, end rounding and, from round 16, end moves, on the strand's own station run. At a lobe whose run ends at its strand's tail (L01, L16), the end-b move carries the whole tail, and from round 19 the tail can also taper (`eb_r`) and turn on screen about the run's end (`eb_rot`). Use broader composition controls (`tools/twist.py`, regionfit) when an error comes from the arrangement and the same lobe fails twice.
 5. **Judge actual renders.** Every challenger is compared with the incumbent in matched colour, clay and zebra views, at full frame and per feature, with the metrics and an independent visual judge.
 6. **Accept or reject.** Preserve the accepted best. Reject regressions even when the surrogate cost improves. Record what changed and whether it looks closer to the reference.
 7. **Continue.** Start the next highest-impact correction. Do not stop because a single lobe improved or a local fit failed.

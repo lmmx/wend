@@ -1,12 +1,15 @@
 {
  "incumbent": {
-  "tag": "r4-merged",
-  "spec": "auto/r4/spec-r4-merged.json",
-  "renders": "auto/r4/renders",
-  "metrics": "auto/r4/metrics-r4-merged.json",
+  "tag": "r5-L02",
+  "spec": "auto/r5/spec-r5-L02.json",
+  "renders": "auto/r5/renders",
+  "metrics": "auto/r5/metrics-r5-L02.json",
   "params": "w-final.params.json"
  },
- "tried": {},
+ "tried": {
+  "L13": 1,
+  "L05": 1
+ },
  "rounds": [
   {
    "round": "r1",
@@ -64,6 +67,18 @@
     "L13: severity 2 -> 2, IoU 0.69 -> 0.72"
    ],
    "verdict": "new incumbent r4-merged"
+  },
+  {
+   "round": "r5",
+   "incumbent_before": "r4-merged",
+   "accepted": [
+    "L02"
+   ],
+   "rejected": [
+    "L05",
+    "L13"
+   ],
+   "verdict": "new incumbent r5-L02"
   }
  ]
 }

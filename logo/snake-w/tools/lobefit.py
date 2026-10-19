@@ -134,6 +134,7 @@ def main():
             pen += max(0.0, fold - f0 - 200) / 2000
             pen += max(0.0, ex["press"] - ex0["press"] - 2.0) / 4.0
             pen += 0.08 * max(0.0, ex["corners"] - ex0["corners"] - 1)
+            pen += 0.5 * max(0.0, ex["bottom"] - ex0["bottom"] - 1)
             for g, cr in ex["crease"].items():
                 pen += 0.5 * max(0.0, cr / max(ex0["crease"].get(g, 0.6), 0.6) - 1.4)
             reg = 0.01 * float(np.sum(np.square(x)))

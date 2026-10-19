@@ -307,7 +307,10 @@ class Scorer:
         blue, yellow = colour_masks(im)
         sil = ndimage.binary_fill_holes(morphology.closing(blue | yellow, morphology.disk(4)))
         ex = {"sil": float((sil & self.sil).sum() / (sil | self.sil).sum()), "intr": {k: float(sil[m].mean()) for k, m in self.neg.items()}, "crease": {},
-              "corners": corners(blue, yellow)}
+              "corners": corners(blue, yellow),
+              # the lowest body pixel row in the crop: the floor shadow is painted from the model's lowest feet (scene.js
+              # shadowCard), so a lobe lowered past the feet leaves a pale gap (r3-L13, r5-L13)
+              "bottom": int(np.nonzero((blue | yellow).any(1))[0].max()) if (blue | yellow).any() else 0}
         if shade is not None:
             g = np.asarray(Image.open(shade).convert("L")).astype(float)
             lap = np.abs(filters.laplace(filters.gaussian(g, 1.0)))

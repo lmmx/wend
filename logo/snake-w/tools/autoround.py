@@ -70,6 +70,14 @@ def gates(mc, mb, target=None, rank_c=None, rank_b=None):
     for f in [g["id"] for g in K.FEATS]:
         a, b = mc["features"][f], mb["features"][f]
         dm = a["severity"] - b["severity"]; di = a.get("iou", 0) - b.get("iou", 0)
+        # where the candidate's lobe split is flagged (merged / unstable: the watershed joined two
+        # same-colour lobes, r5-L05's L04 + L06), its IoU measures the split, not the shape: gate on
+        # the reference region's cover by the right colour instead, which needs no split
+        if set(a.get("seg") or []) & {"merged", "unstable"} and (dm >= 2 or di < -0.08):
+            dc = a["cover"]["same"] - b["cover"]["same"]
+            if dc < -0.02:
+                fails.append(f"{f}: split flagged {','.join(a['seg'])}; colour cover {b['cover']['same']:.3f} -> {a['cover']['same']:.3f}")
+            continue
         if dm >= 2 or di < -0.08:
             fails.append(f"{f}: severity {b['severity']} -> {a['severity']}, IoU {b.get('iou', 0):.2f} -> {a.get('iou', 0):.2f}")
         elif dm < 0 or di > 0.02:

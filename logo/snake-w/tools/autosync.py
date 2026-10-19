@@ -16,4 +16,8 @@ for p in keep:
     q = os.path.join(dst, os.path.relpath(p, "auto"))
     os.makedirs(os.path.dirname(q), exist_ok=True)
     shutil.copy(p, q); n += 1
+    # the repository's pre-commit hooks want text files to end in one newline, without trailing blanks
+    t = open(q).read(); u = "\n".join(l.rstrip() for l in t.split("\n")).rstrip("\n") + "\n"
+    if u != t:
+        open(q, "w").write(u)
 print(n, "files ->", dst)

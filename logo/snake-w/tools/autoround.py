@@ -208,7 +208,7 @@ def merge(A, S):
     rej |= {fid(k) for k, s in summ["targets"].items() if s.get("verdict_gates") == "REJECT"}
     for t in rej - {fid(k) for k in acc}:
         S["tried"][t] = S["tried"].get(t, 0) + 1
-    rnd = dict(round=A.round, incumbent_before=inc["tag"], accepted=acc, rejected=[t for t in summ["targets"] if t not in acc])
+    rnd = dict(round=A.round, incumbent_before=inc["tag"], accepted=acc, rejected=[t for t in summ["targets"] if t not in acc], verdict="no correction accepted")
     if acc:
         base = json.load(open(inc["spec"]))
         for n in ("yellow", "blue"):

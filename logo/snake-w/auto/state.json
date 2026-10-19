@@ -8,7 +8,7 @@
   "look": "snakes/w-meshshadow.look.json"
  },
  "tried": {
-  "L13": 0,
+  "L13": 1,
   "L05": 2,
   "L09": 1,
   "L14": 1,
@@ -19,7 +19,9 @@
   "L15": 1,
   "L04": 1,
   "L08": 1,
-  "L16": 1
+  "L16": 1,
+  "L03": 1,
+  "L10": 1
  },
  "rounds": [
   {
@@ -55,7 +57,8 @@
     "L13",
     "L02"
    ],
-   "note": "tried counts reset after r3: the fitter now carries shape terms (elongation, tilt, solidity) and a colour-boundary corner guard, and tighter handle bounds, which address the judges' rejection causes in rounds 2-3 (merging, thinning, kinks at crossings)"
+   "note": "tried counts reset after r3: the fitter now carries shape terms (elongation, tilt, solidity) and a colour-boundary corner guard, and tighter handle bounds, which address the judges' rejection causes in rounds 2-3 (merging, thinning, kinks at crossings)",
+   "verdict": "no correction accepted"
   },
   {
    "round": "r4",
@@ -131,7 +134,8 @@
     "L01",
     "L07",
     "L12"
-   ]
+   ],
+   "verdict": "no correction accepted"
   },
   {
    "round": "r9",
@@ -141,7 +145,8 @@
     "L04",
     "L15",
     "L08"
-   ]
+   ],
+   "verdict": "no correction accepted"
   },
   {
    "round": "r10",
@@ -152,7 +157,19 @@
     "L16",
     "L05"
    ],
-   "note": "incumbent re-rendered with mesh-placed contact shadows (look.shadowCard.fromMesh): same geometry (r7-merged), IoU change < 0.0002; L13 rejected count reset (its pale crescent was the ball-placed shadow)"
+   "note": "incumbent re-rendered with mesh-placed contact shadows (look.shadowCard.fromMesh): same geometry (r7-merged), IoU change < 0.0002; L13 rejected count reset (its pale crescent was the ball-placed shadow)",
+   "verdict": "no correction accepted"
+  },
+  {
+   "round": "r11",
+   "incumbent_before": "incms",
+   "accepted": [],
+   "rejected": [
+    "L13",
+    "L03",
+    "L10"
+   ],
+   "verdict": "no correction accepted"
   }
  ]
 }

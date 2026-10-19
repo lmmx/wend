@@ -87,6 +87,28 @@ Ranking (top 8):
 
 Outcome: new incumbent r12-L06
 
+## Round r13 (incumbent r12-L06)
+
+Ranking (top 8):
+
+1. L01 score 15.4: IoU 0.86, top edge overshoots by 15 px (40 px of outline at 454,336); centroid +2,-3 px
+2. L02 score 6.4: IoU 0.91, upper right edge overshoots by 7 px (40 px of outline at 498,443); centroid +1,+1 px
+3. L11 score 6.2: IoU 0.90, upper left edge overshoots by 6 px (40 px of outline at 779,621); centroid -3,+3 px
+4. L15 score 5.6: IoU 0.85, upper left edge overshoots by 21 px (40 px of outline at 963,461); centroid -2,-3 px
+5. L06 score 5.0: IoU 0.84, right edge falls short by 6 px (40 px of outline at 678,634); centroid +0,-0 px
+6. L16 score 4.7: IoU 0.86, upper left edge overshoots by 15 px (40 px of outline at 992,385); centroid +1,+0 px
+7. L04 score 4.6: IoU 0.86, upper right edge overshoots by 13 px (40 px of outline at 565,744); centroid +2,-2 px
+8. L14 score 4.6: IoU 0.82, left edge falls short by 12 px (40 px of outline at 990,686); centroid -1,-6 px
+
+| target | station run | handle | IoU | worst arc | gates | judge | verdict |
+|---|---|---|---|---|---|---|---|
+| L01 | blue 1340-1438 | move -3,+5 px, depth -5 px, turn +2 deg, length +4%, radius -5%, width -2%, bulge + +13%, bulge - +14%, end a +2% | 0.86 -> 0.86 | +15 -> +12 | pass | ACCEPT | ACCEPT |
+| L01+neck1 | blue 1340-1438 | move -2,+4 px, depth +1 px, turn -4 deg, length -7%, radius -5%, width -7%, bulge + +14%, bulge - +18%, end b +9%, head w-neck1.params.json | 0.86 -> 0.86 | +15 -> +10 | pass | REJECT | REJECT |
+| L11 | blue 539-629 | move +3,+1 px, depth +3 px, turn -9 deg, length -6%, radius -10%, width -6%, bulge + +12%, bulge - -1%, end a +5% | 0.90 -> 0.92 | +6 -> -4 | pass | REJECT | REJECT |
+| L15 | blue 240-316 | move +3,+0 px, depth +16 px, turn -3 deg, radius -2%, width +4%, bulge + +7%, bulge - +2%, end a -15%, end b -5% | 0.85 -> 0.87 | +21 -> +21 | fail: L15 (the target) not improved: IoU 0.85 -> 0.87, worst arc +21 -> +21 px | - | REJECT |
+
+Outcome: new incumbent r13-L01
+
 ## Round r2 (incumbent r1-L13)
 
 Ranking (top 8):
@@ -255,4 +277,4 @@ Ranking (top 8):
 
 Outcome: no correction accepted
 
-Current incumbent: r12-L06 (auto/r12/spec-r12-L06.json)
+Current incumbent: r13-L01 (auto/r13/spec-r13-L01.json)

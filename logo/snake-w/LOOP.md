@@ -25,7 +25,7 @@ The starting point is what already exists:
 
 **`WS/auto/owner.json`** holds what the owner said about features of the incumbent: `{fid: {sev, said, date, addressed}}`.
 - The ranking takes the larger of the judges' and the owner's severity, so a fault the owner names comes back as a target even where the judges rate it low.
-- When a round accepts a correction of that feature, `merge` marks it `addressed` and the ranking stops counting it. Only the owner's words set an entry: add one when the owner says a feature is still wrong.
+- Each accepted correction of that feature takes one step off the owner's severity (`merge`); at 1 the entry is `addressed` and the ranking stops counting it. Only the owner's words set an entry: add one when the owner says a feature is still wrong.
 
 **`WS/auto/rN/`** holds round N:
 - `rank.md` / `rank.json`: the discrepancy ranking of the incumbent;
@@ -41,7 +41,7 @@ The starting point is what already exists:
   - rank the incumbent's lobes;
   - choose non-neighbouring targets;
   - for each target: `lobefit.py` (attribution + CMA-ES on the lobe handle), a real render, `evaluate.py` and the gates;
-  - a target whose crop holds a head with a variant (`HEAD_VARIANTS` in `autoround.py`: H1's `neck1`) gets a second candidate, key `TARGET+neck1`, fitted and rendered with that head. The candidate's tag is `rN-TARGET+neck1`; judge it like any other;
+  - a target whose crop holds a head with a variant (`HEAD_VARIANTS` in `autoround.py`) gets a second candidate, key `TARGET+NAME`, fitted and rendered with that head; judge it like any other. H1's `neck1` was on for rounds 12–13 and is off from round 14: its head has a dark zebra blob under the jaw, which the judges count against every neck1 candidate;
   - build the sheets and the pair pages.
 - **`autoround.py merge rN KEY,KEY [--rejected KEY,KEY]`** composes the accepted handles, renders and gates the result, and updates the incumbent. The keys are the summary's: `L01`, `L01+neck1`.
   - Accept at most one candidate per target: of a target's two candidates, the one its judge prefers, or the plain one when both are equal.

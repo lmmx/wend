@@ -21,7 +21,7 @@ separate agent that sees only the pair pages.
   merge    1. Compose the handles of the accepted candidates onto the incumbent (their supports
               are disjoint; at most one candidate per target). An accepted head variant's params
               and head bake become the incumbent's. The owner's entries for the accepted targets
-              are marked addressed.
+              lose one step of severity each, and are addressed at 1.
            2. Render the result, measure it, and gate it.
            3. If the gates pass, it becomes the incumbent; record the judged rejections.
 
@@ -52,8 +52,12 @@ P0, H0 = "w-final.params.json", "heads-final.json"
 # switch to, as one more freedom. neck1 (snakes/w-neck1.params.json: a C2 cubic neck blend and a
 # nape round-cone on the yellow head; tools/bake_heads.mjs bakes heads-neck1.json) removes the
 # step in the yellow neck that the blue collar L01 uncovers when it comes down (r1-L01's
-# rejection); judged alone (auto/neck1) it was neutral, the collar hiding that step
-HEAD_VARIANTS = {"H1": dict(name="neck1", params="w-neck1.params.json", heads="heads-neck1.json")}
+# rejection); judged alone (auto/neck1) it was neutral, the collar hiding that step. Off from
+# round 14: the judges rejected it with the collar fitted too (r12, r13), the second time for a
+# dark blob that neck1's head has in the zebra under the jaw, so every neck1 candidate carries a
+# defect of its own until that head is fixed
+NECK1 = dict(name="neck1", params="w-neck1.params.json", heads="heads-neck1.json")
+HEAD_VARIANTS = {}
 
 
 def ffd_env(params, heads):
@@ -227,11 +231,16 @@ def merge(A, S):
                 S["rounds"].append(rnd); json.dump(S, open(STATE, "w"), indent=1); return
         S["incumbent"] = dict(tag=tag, spec=path, renders=f"{R}/renders", metrics=f"{R}/metrics-{tag}.json", params=pp, heads=hh, look=inc.get("look"))
         rnd["verdict"] = f"new incumbent {tag}"
+        # an accepted correction of a feature the owner named takes one step off the owner's
+        # severity (a judged step closer leaves it still wrong, less so); at 1 it is addressed
         if os.path.exists(OWNER):
             ow = json.load(open(OWNER))
             for k in acc:
-                if fid(k) in ow and not ow[fid(k)].get("addressed"):
-                    ow[fid(k)]["addressed"] = A.round
+                e = ow.get(fid(k))
+                if e and not e.get("addressed"):
+                    e["sev"] = e["sev"] - 1; e.setdefault("steps", []).append(A.round)
+                    if e["sev"] <= 1:
+                        e["addressed"] = A.round
             json.dump(ow, open(OWNER, "w"), indent=1)
     S["rounds"].append(rnd)
     json.dump(S, open(STATE, "w"), indent=1)

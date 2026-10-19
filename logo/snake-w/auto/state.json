@@ -1,11 +1,14 @@
 {
  "incumbent": {
-  "tag": "r1-L13",
-  "spec": "auto/r1/spec-r1-L13.json",
-  "renders": "auto/r1/renders",
-  "metrics": "auto/r1/metrics-r1-L13.json"
+  "tag": "r2-L01",
+  "spec": "auto/r2/spec-r2-L01.json",
+  "renders": "auto/r2/renders",
+  "metrics": "auto/r2/metrics-r2-L01.json"
  },
- "tried": {},
+ "tried": {
+  "L04": 1,
+  "L12": 1
+ },
  "rounds": [
   {
    "round": "r1",
@@ -18,6 +21,18 @@
     "L01"
    ],
    "verdict": "new incumbent r1-L13"
+  },
+  {
+   "round": "r2",
+   "incumbent_before": "r1-L13",
+   "accepted": [
+    "L01"
+   ],
+   "rejected": [
+    "L04",
+    "L12"
+   ],
+   "verdict": "new incumbent r2-L01"
   }
  ]
 }

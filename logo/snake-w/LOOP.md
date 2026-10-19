@@ -45,6 +45,7 @@ The starting point is what already exists:
 
 **The judge:** one Sonnet (xhigh) agent per candidate, seeing only `pair-<tag>/`. Its prompt is `WS/auto/JUDGE_PROMPT.md` (also in `logo/snake-w/auto/JUDGE_PROMPT.md`), with `{PAGES}` replaced by the absolute path of `pair-<tag>/`. X/Y comes from `mapping.json`. Write the verdict to `judge-<tag>.md`.
 - **ACCEPT** when the candidate is closer to the reference at its target (by 1 or more) and introduces no defect of its own.
+- **ACCEPT (neutral)** when the judge finds no difference and no defect anywhere, the gates pass, and the real renders measure a clear gain at the target: IoU up 0.03 or more, or its worst contour arc 5 px smaller. A change too small to see but measurably closer is kept, and later attempts build on it.
 - **REJECT** otherwise.
 - Paired verdicts count only beyond about one step: an untouched feature judged one step different is noise.
 - The pair pages carry `page4-focus.png`: the target, and the neighbours whose IoU changed, enlarged. Small corrections (10–15 px) are invisible at the standard tile size. Round 1's first L01 judge said "same" everywhere while the collar had moved 13 px down.

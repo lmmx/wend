@@ -5,10 +5,7 @@
   "renders": "auto/r2/renders",
   "metrics": "auto/r2/metrics-r2-L01.json"
  },
- "tried": {
-  "L04": 1,
-  "L12": 1
- },
+ "tried": {},
  "rounds": [
   {
    "round": "r1",
@@ -33,6 +30,17 @@
     "L12"
    ],
    "verdict": "new incumbent r2-L01"
+  },
+  {
+   "round": "r3",
+   "incumbent_before": "r2-L01",
+   "accepted": [],
+   "rejected": [
+    "L06",
+    "L13",
+    "L02"
+   ],
+   "note": "tried counts reset after r3: the fitter now carries shape terms (elongation, tilt, solidity) and a colour-boundary corner guard, and tighter handle bounds, which address the judges' rejection causes in rounds 2-3 (merging, thinning, kinks at crossings)"
   }
  ]
 }

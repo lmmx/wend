@@ -3,9 +3,10 @@ lobe (the surface-point buffer of the incumbent, lobekit.attribute), put a lobe 
 run (lobekit: 11 controls, supports stopping short of the same strand's neighbouring lobes and
 of the necks), and fit the controls by CMA-ES on flat renders of the real geometry.
   cost   the target's (1 - IoU) + mean boundary distance / 8 + |worst contour arc| / 15
-         + p95 / 40 + |centroid offset| / 30
-  guards every other feature inside the crop may not lose IoU (> 0.005), p95 (> 1 px) or its
-         worst arc (> 2 px); the crop's silhouette and negative spaces, the local fold area, the
+         + p95 / 40 + |centroid offset| / 30, plus its shape against the reference lobe's:
+         0.5 |elongation difference| + |tilt| / 40 + 4 x the solidity shortfall (cost_t)
+  guards every other feature inside the crop may not lose IoU (> 0.005), p95 (> 1 px), its
+         worst arc (> 2 px) or solidity (> 0.01); the crop's silhouette and negative spaces, the local fold area, the
          clay crease (target and guards) and the press depth (the deepest overlap of the two tubes
          before the press flattens them, inside the crop: a deeper press dents the partner) may
          not get worse than the incumbent's
@@ -62,7 +63,11 @@ def cma(f, n, sigma0, lo, hi, gens, workers, seed=0, log=None):
 
 
 def cost_t(m):
-    return (1 - m["iou"]) + m["mean"] / 8 + abs(m["arc"]) / 15 + m["p95"] / 40 + np.hypot(m["dx"], m["dy"]) / 30
+    """the target's mask and outline error, plus its shape against the reference lobe's: the blind
+    judges reject lobes that read as bands, wedges or tilted (rounds 1-3), which the shape terms
+    measure: elongation, orientation and solidity (area / convex hull, the cushion's convexity)"""
+    return ((1 - m["iou"]) + m["mean"] / 8 + abs(m["arc"]) / 15 + m["p95"] / 40 + np.hypot(m["dx"], m["dy"]) / 30
+            + 0.5 * abs(m["elong"] - m["elong_ref"]) + abs(m["tilt"]) / 40 + 4 * max(0.0, m["solid_ref"] - m["solid"]))
 
 
 def main():
@@ -114,7 +119,7 @@ def main():
             return m, ex, r["fold_box"]
         m0, ex0, f0 = measure(inc, 0, "inc")
         print(f"{A.target}: {att['strand']} stations {h['a']:.0f}..{h['b']:.0f} (ramps {h['ra']:.0f}, {h['rb']:.0f}; {att['frac']:.0%} of the lobe's pixels in this run, head {att['head_frac']:.0%}); crop {clip}; guards {[f for f in feats if f != A.target]}", flush=True)
-        print("  incumbent:", {k: (round(v["iou"], 3), round(v["arc"], 1)) for k, v in m0.items()}, "sil", round(ex0["sil"], 4), "fold", f0, "press", ex0["press"], flush=True)
+        print("  incumbent:", {k: (round(v["iou"], 3), round(v["arc"], 1)) for k, v in m0.items()}, "sil", round(ex0["sil"], 4), "fold", f0, "press", ex0["press"], "corners", ex0["corners"], flush=True)
         guards = [f for f in feats if f != A.target]
 
         def J(m, ex, fold, x):
@@ -122,11 +127,13 @@ def main():
             for g in guards:
                 a, b = m0[g], m[g]
                 pen += 5 * max(0.0, a["iou"] - b["iou"] - 0.005) + 0.04 * max(0.0, b["p95"] - a["p95"] - 1) + 0.05 * max(0.0, abs(b["arc"]) - abs(a["arc"]) - 2)
+                pen += 4 * max(0.0, a["solid"] - b["solid"] - 0.01)
             pen += 6 * max(0.0, ex0["sil"] - ex["sil"] - 0.002)
             for k, v in ex["intr"].items():
                 pen += 6 * max(0.0, v - ex0["intr"].get(k, 0) - 0.003)
             pen += max(0.0, fold - f0 - 200) / 2000
             pen += max(0.0, ex["press"] - ex0["press"] - 2.0) / 4.0
+            pen += 0.08 * max(0.0, ex["corners"] - ex0["corners"] - 1)
             for g, cr in ex["crease"].items():
                 pen += 0.5 * max(0.0, cr / max(ex0["crease"].get(g, 0.6), 0.6) - 1.4)
             reg = 0.01 * float(np.sum(np.square(x)))

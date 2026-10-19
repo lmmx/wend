@@ -41,8 +41,8 @@ REG, LAB, NEGLAB = load_registry()
 FEATS = REG["features"]; FIDS = [f["id"] for f in FEATS]
 NAMES = ["tx", "ty", "tz", "rot", "stretch", "fat", "width", "bulge_p", "bulge_n", "tip_a", "tip_b"]
 SCALE = np.array([10, 10, 10, 8, 0.1, 0.08, 0.08, 0.1, 0.1, 0.1, 0.1])     # one search unit
-LO = np.array([-30, -30, -30, -25, -0.3, -0.2, -0.2, -0.3, -0.3, -0.2, -0.2])
-HI = np.array([30, 30, 30, 25, 0.3, 0.25, 0.25, 0.3, 0.3, 0.2, 0.2])
+LO = np.array([-25, -25, -25, -20, -0.25, -0.1, -0.1, -0.2, -0.2, -0.15, -0.15])
+HI = np.array([25, 25, 25, 20, 0.25, 0.15, 0.15, 0.2, 0.2, 0.15, 0.15])
 
 
 def to_screen(P):
@@ -241,6 +241,27 @@ def describe(h):
     return ", ".join(out) or "none"
 
 
+def corners(b, y, thr=55.0, k=5):
+    """sharp corners on the colour boundaries of a flat crop (blue and yellow masks): points of the
+    outlines that turn by more than `thr` degrees over +-k px, away from the crop's edge. A kinked
+    crossing, a notch where one strand cuts another, or a pointed tip adds corners (the blind judges
+    rejected r3-L06 and r3-L13 for such defects: 23 -> 30 and 38 -> 41 corners)"""
+    H, W = b.shape; n = 0
+    for m in (b, y):
+        for c in measure.find_contours(np.pad(m, 1).astype(float), 0.5):
+            c = c - 1
+            if len(c) < 30:
+                continue
+            seg = np.r_[0, np.cumsum(np.hypot(*np.diff(c, axis=0).T))]
+            t = np.arange(0, seg[-1], 1.0); c = np.c_[np.interp(t, seg, c[:, 0]), np.interp(t, seg, c[:, 1])]
+            v1 = c[k:-k] - c[:-2 * k]; v2 = c[2 * k:] - c[k:-k]
+            ang = np.degrees(np.abs(np.arctan2(v1[:, 0] * v2[:, 1] - v1[:, 1] * v2[:, 0], (v1 * v2).sum(1))))
+            pts = c[k:-k]
+            inner = (pts[:, 0] > 3) & (pts[:, 0] < H - 4) & (pts[:, 1] > 3) & (pts[:, 1] < W - 4)
+            n += int((ang[inner] > thr).sum())
+    return n
+
+
 class Scorer:
     """per-feature measurements of a flat render on a crop: the evaluate.py lobe split and match,
     IoU, boundary distances, centroid, arcs; silhouette IoU, negative-space intrusion, clay crease"""
@@ -256,6 +277,12 @@ class Scorer:
         neg = NEGLAB[y0:y1, x0:x1]
         self.neg = {n["id"]: neg == int(n["id"][1:]) for n in REG["negatives"] if (neg == int(n["id"][1:])).sum() > 500}
         self.sil = ndimage.binary_fill_holes(morphology.closing(self.lab > 0, morphology.disk(4)))
+        # the reference lobes' shape: elongation, orientation (degrees), solidity (area / convex hull
+        # area: the reference's cushions are near-convex, 0.94-0.96; a band, wedge or notch is less)
+        self.props = {}
+        for fid in feats:
+            p = measure.regionprops(self.ref[fid][0].astype(int))[0]
+            self.props[fid] = (float(p.axis_major_length / max(p.axis_minor_length, 1)), float(np.degrees(p.orientation)), float(p.solidity))
 
     def measure(self, png, shade=None):
         im = np.asarray(Image.open(png).convert("RGB"))
@@ -265,18 +292,22 @@ class Scorer:
             R, bR, dR, c = self.ref[fid]
             K = match(L[c], R)
             if K is None:
-                res[fid] = dict(iou=0.0, p95=99.0, mean=99.0, dx=50.0, dy=50.0, arc=-30.0, arc_mean=30.0); continue
+                res[fid] = dict(iou=0.0, p95=99.0, mean=99.0, dx=50.0, dy=50.0, arc=-30.0, arc_mean=30.0, elong=1.0, elong_ref=1.0, tilt=45.0, solid=0.5, solid_ref=0.95); continue
             bK = boundary(K); dK = ndimage.distance_transform_edt(~bK)
             d = np.r_[dK[bR], dR[bK]]
             ry, rx = np.nonzero(R); ky, kx = np.nonzero(K)
             A = arcs(R, K)
+            pr, pk = self.props[fid], measure.regionprops(K.astype(int))[0]
             res[fid] = dict(iou=float((K & R).sum() / (K | R).sum()), p95=float(np.percentile(d, 95)), mean=float(d.mean()),
-                            dx=float(kx.mean() - rx.mean()), dy=float(ky.mean() - ry.mean()), arc=A["worst"], arc_mean=A["mean_abs"])
+                            dx=float(kx.mean() - rx.mean()), dy=float(ky.mean() - ry.mean()), arc=A["worst"], arc_mean=A["mean_abs"],
+                            elong=float(pk.axis_major_length / max(pk.axis_minor_length, 1)), elong_ref=pr[0],
+                            tilt=float((np.degrees(pk.orientation) - pr[1] + 90) % 180 - 90), solid=float(pk.solidity), solid_ref=pr[2])
             if shade is not None:
                 res[fid]["_K"] = K
         blue, yellow = colour_masks(im)
         sil = ndimage.binary_fill_holes(morphology.closing(blue | yellow, morphology.disk(4)))
-        ex = {"sil": float((sil & self.sil).sum() / (sil | self.sil).sum()), "intr": {k: float(sil[m].mean()) for k, m in self.neg.items()}, "crease": {}}
+        ex = {"sil": float((sil & self.sil).sum() / (sil | self.sil).sum()), "intr": {k: float(sil[m].mean()) for k, m in self.neg.items()}, "crease": {},
+              "corners": corners(blue, yellow)}
         if shade is not None:
             g = np.asarray(Image.open(shade).convert("L")).astype(float)
             lap = np.abs(filters.laplace(filters.gaussian(g, 1.0)))

@@ -96,6 +96,7 @@ function build(spec, box) {
   const tube = { head: { snoutLen: 1, snoutQ: 2, q: 2.4, wide: 1.06, flat: 0.96 }, ...(p.tube || {}), view: VIEW };
   const ce = Math.cos(elev), se = Math.sin(elev);
   let foldTot = 0, foldBox = 0, pressBox = 0;
+  const kinks = [];
   const surfaces = {};
   ["yellow", "blue"].forEach((name, i) => {
     const st = body[name], nk = p.necks[i], i0 = st.s.findIndex((x) => x >= nk.join_s - 2);
@@ -104,6 +105,23 @@ function build(spec, box) {
     const S = strandSurface(sl, tube);
     surfaces[name] = S;
     const capN = 13, m = S.centre.pts.length, rings = S.rings.slice(capN, capN + m);
+    // surface regularity inside the box, on the camera-facing half of every ring: the second
+    // difference of the ring vertices along the strand (3 px apart) and round the ring (2 pi r / 64
+    // apart, less a circle's own 2 sin^2(pi / 64) r); a crease or kink shows as a spike
+    if (box) for (let k = 1; k + 1 < m; k++) {
+      const c = S.centres[capN + k], R = rings[k], A = rings[k - 1], B = rings[k + 1], n = R.length, rr = S.centre.r[k];
+      for (let j = 0; j < n; j++) {
+        const p = R[j];
+        const o = [p[0] - c[0], p[1] - c[1], p[2] - c[2]];
+        if (o[0] * VIEW[0] + o[1] * VIEW[1] + o[2] * VIEW[2] <= 0) continue;
+        const qx = p[0], qy = -(p[1] * ce - p[2] * se);
+        if (qx < box[0] || qx > box[2] || qy < box[1] || qy > box[3]) continue;
+        const a = A[j], b = B[j], l = R[(j + n - 1) % n], r = R[(j + 1) % n];
+        const d1 = Math.hypot(a[0] - 2 * p[0] + b[0], a[1] - 2 * p[1] + b[1], a[2] - 2 * p[2] + b[2]);
+        const d2 = Math.max(0, Math.hypot(l[0] - 2 * p[0] + r[0], l[1] - 2 * p[1] + r[1], l[2] - 2 * p[2] + r[2]) - 2 * Math.sin(Math.PI / n) ** 2 * 2 * rr);
+        kinks.push(Math.max(d1, d2));
+      }
+    }
     // the deepest overlap of the two tubes before the press flattens them (2 r - centre distance
     // to the mate), over the pressed samples inside the box: the fits must not push the strands
     // deeper into each other (a deeper press flattens, so dents, the partner)
@@ -127,7 +145,13 @@ function build(spec, box) {
       }
     }
   });
-  return { surfaces, fold_area: Math.round(foldTot), fold_box: Math.round(foldBox), press_box: Math.round(pressBox * 10) / 10 };
+  // the floor: the lowest body point (world y), as scene.js sets the ground
+  let ground = Infinity;
+  for (const S of Object.values(surfaces)) for (const ring of S.rings) for (const p of ring) ground = Math.min(ground, p[1]);
+  kinks.sort((a, b) => a - b);
+  const q = (f) => (kinks.length ? kinks[Math.min(kinks.length - 1, Math.floor(f * kinks.length))] : 0);
+  return { surfaces, fold_area: Math.round(foldTot), fold_box: Math.round(foldBox), press_box: Math.round(pressBox * 10) / 10,
+    kink_max: Math.round(q(1) * 1000) / 1000, kink_995: Math.round(q(0.995) * 1000) / 1000, ground: Math.round(ground * 100) / 100 };
 }
 
 function setGroup(meshes) {
@@ -145,7 +169,7 @@ window.__run = (spec, box) => {
   for (const [name, g] of Object.entries(heads)) meshes.push(new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: COL[name], side: THREE.DoubleSide })));
   setGroup(meshes);
   renderer.render(scene, camera);
-  return { ms: Math.round(performance.now() - t0), fold_area: built.fold_area, fold_box: built.fold_box, press_box: built.press_box };
+  return { ms: Math.round(performance.now() - t0), fold_area: built.fold_area, fold_box: built.fold_box, press_box: built.press_box, kink_max: built.kink_max, kink_995: built.kink_995, ground: built.ground };
 };
 
 const idMat = (id) => new THREE.ShaderMaterial({

@@ -122,7 +122,7 @@ for key, s in S["targets"].items():
         a, b = (mb["features"][f] if mb else {}), mc["features"][f]
         lines.append(f"| {f} | {a.get('iou', 0):.3f} -> {b['iou']:.3f} | {a.get('sdist', {}).get('p95', 0):.1f} -> {b['sdist']['p95']:.1f} | {a.get('crease') or 0:.2f} -> {b.get('crease') or 0:.2f} | {a.get('severity', '-')} -> {b['severity']} |")
     lines.append("")
-open(f"{out}/report.md", "w").write("\n".join(lines) + "\n")
+open(f"{out}/report.md", "w").write("\n".join(lines).rstrip("\n") + "\n")   # one final newline (the pre-commit hooks)
 if "--cumulative" in sys.argv:
     tags = ["lvt60", "r18-L12", st["incumbent"]["tag"]]
     grid([("colour", [fr(ref)] + [fr(img(t, "colour")) for t in tags]), ("clay", [None] + [fr(img(t, "clay")) for t in tags])],

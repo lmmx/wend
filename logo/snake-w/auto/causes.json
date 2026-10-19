@@ -208,5 +208,26 @@
   "round": "r23",
   "candidate": "r23-L07+L08",
   "note": "a small kink in the blue/yellow boundary of the top seam"
+ },
+ {
+  "where": "L01",
+  "cause": "crease",
+  "round": "r24",
+  "candidate": "r24-L01",
+  "note": "a round knob on top of the lobe beside the head (end b +19,+19, radius +15%)"
+ },
+ {
+  "where": "H1|L01",
+  "cause": "junction_pinch",
+  "round": "r24",
+  "candidate": "r24-L01",
+  "note": "a bulge and zebra kink where the collar meets the neck"
+ },
+ {
+  "where": "L07",
+  "cause": "flat_top",
+  "round": "r24",
+  "candidate": "r24-L07",
+  "note": "more wedge-like: a straight diagonal left edge, a flat upper edge, a harder top-right corner"
  }
 ]

@@ -27,7 +27,7 @@ ref = Image.open("snakes/ref/reference.png").convert("RGB")
 
 
 def find(tag):
-    for d in [f"auto/{x}/renders" for x in sorted(os.listdir("auto")) if x.startswith("r")] + ["auto/r10/ms", "ffd/before"]:
+    for d in [f"auto/{x}/renders" for x in sorted(os.listdir("auto")) if os.path.isdir(f"auto/{x}/renders")] + ["auto/r10/ms", "ffd/before"]:
         if os.path.exists(f"{d}/{tag}-colour.png"):
             return d
     raise FileNotFoundError(tag)

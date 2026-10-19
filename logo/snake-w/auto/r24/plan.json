@@ -1,0 +1,14 @@
+[
+ {"key": "L16+L15", "target": "L16", "joint": "L15", "edge": "978,412,35",
+  "controls": "tx,ty,stretch,ea_x,ea_y,eb_x,eb_y",
+  "diagnosis": "the right arm sits 15-25 px up-left along its axis as one offset (critic items 2-4): L16's top-left a spike 25-30 px above and left of the reference, climbing H2's neck; L15's upper-left end 15-20 px high, its lower-right tip 20 px short; L14's upper-left tip 20 px long",
+  "correction": "slide L16 and L15 down-right along the arm with moves and end moves only (no radius, tip or bulge controls: r23's tail radius -44% made a knob on L16 and a notch on L15); scored at L16's top-left"},
+ {"key": "L07", "target": "L07", "edge": "575,603,30",
+  "controls": "tx,ty,rot,stretch,fat,ea_x,ea_y,eb_x,eb_y",
+  "diagnosis": "L07 about 8% oversized, its lower-left tip 20-25 px past the reference's, its top 8 px high and its lower edge 8-10 px low (critic item 8)",
+  "correction": "pull L07's lower-left end in and up and shrink it slightly; alone (r23's joint fit with L08 made L08 boxy); scored at the lower-left tip"},
+ {"key": "L01", "target": "L01", "edge": "490,405,40",
+  "controls": "fat,width,bulge_p,bulge_n,ea_x,ea_y,eb_x,eb_y",
+  "diagnosis": "L01 (the collar) too thin: its upper-right flank 15-20 px inside the reference's, its mid-left flank 10 px, its lower-left end 10-20 px short (critic item 5; N2 agrees)",
+  "correction": "fatten L01's upper-right flank with the bulges and width, run the lower-left end on; r22's widening alone did not move the flank; scored on the upper-right flank"}
+]

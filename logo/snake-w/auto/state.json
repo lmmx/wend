@@ -1,9 +1,9 @@
 {
  "incumbent": {
-  "tag": "hyb-L456",
-  "spec": "auto/r18/spec-r18-L12.json",
-  "renders": "auto/hyb/renders",
-  "metrics": "auto/hyb/metrics-hyb-L456.json",
+  "tag": "r24-L16+L15",
+  "spec": "auto/r24/spec-r24-L16+L15.json",
+  "renders": "auto/r24/renders",
+  "metrics": "auto/r24/metrics-r24-L16+L15.json",
   "params": "w-final.params.json",
   "heads": "heads-final.json",
   "look": "snakes/w-meshshadow.look.json",
@@ -314,6 +314,18 @@
    ],
    "verdict": "new incumbent hyb-L456",
    "note": "the hybrid valley (tools/hybrid.py, alpha 1 towards poc/cushions r6-final): the incumbent's tube with the L04-L06 region's rings moved towards the fitted cushions; blind judge closer at L06 by 2, L04 and L05 by 1 (auto/hyb/judge-hyb-L456.md). Carried as a fixed overlay (scene.js extra, EXTRA / --extra); L04-L06 frozen while it stands"
+  },
+  {
+   "round": "r24",
+   "incumbent_before": "hyb-L456",
+   "accepted": [
+    "L16+L15"
+   ],
+   "rejected": [
+    "L07",
+    "L01"
+   ],
+   "verdict": "new incumbent r24-L16+L15"
   }
  ],
  "seeds": {}

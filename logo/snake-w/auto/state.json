@@ -15,12 +15,12 @@
   "L14": 2,
   "L06": 2,
   "L07": 1,
-  "L01": 1,
+  "L01": 2,
   "L12": 1,
   "L15": 2,
   "L04": 2,
-  "L08": 1,
-  "L16": 1,
+  "L08": 2,
+  "L16": 2,
   "L03": 1,
   "L10": 1,
   "L11": 1,
@@ -231,6 +231,17 @@
     "L01",
     "L16",
     "L06"
+   ],
+   "verdict": "no correction accepted"
+  },
+  {
+   "round": "r17",
+   "incumbent_before": "r15-L06",
+   "accepted": [],
+   "rejected": [
+    "L16",
+    "L01",
+    "L08"
    ],
    "verdict": "no correction accepted"
   }

@@ -395,6 +395,25 @@ Ranking (top 8):
 | L16 | yellow 1300-1385 | end a +3,+6 px, width -5%, bulge + +6%, bulge - -16% | 0.86 -> 0.87 | +8 -> -11 | fail: L16 (the target) not improved: IoU 0.86 -> 0.87, worst arc +8 -> -11 px | - | - |
 | L13 | blue 405-462 | width -9%, bulge + +13%, bulge - -2% | 0.74 -> 0.73 | +12 -> -14 | fail: L13 (the target) not improved: IoU 0.74 -> 0.73, worst arc +12 -> -14 px | - | - |
 
+## Round r29 (incumbent r28-hybR)
+
+Ranking (top 8):
+
+1. L16 score 8.3: IoU 0.86, lower left edge overshoots by 8 px (40 px of outline at 1006,499); centroid -0,-1 px
+2. L14 score 7.5: IoU 0.84, upper right edge overshoots by 11 px (40 px of outline at 947,539); centroid -1,-4 px
+3. L15 score 7.0: IoU 0.85, upper left edge overshoots by 20 px (40 px of outline at 962,462); centroid -0,-0 px
+4. L13 score 6.1: IoU 0.78, bottom edge falls short by 10 px (40 px of outline at 954,766); centroid +0,-3 px
+5. L01 score 6.1: IoU 0.86, upper right edge overshoots by 12 px (40 px of outline at 453,338); centroid -1,+1 px
+6. L03 score 5.7: IoU 0.88, lower left edge overshoots by 8 px (40 px of outline at 471,731); centroid -0,+1 px
+7. L06 score 5.4: IoU 0.92, upper left edge overshoots by 5 px (40 px of outline at 671,593); centroid +1,-1 px
+8. L10 score 5.4: IoU 0.90, upper left edge overshoots by 8 px (40 px of outline at 752,533); centroid -0,-1 px
+
+| target | station run | handle | IoU | worst arc | gates | judge | verdict |
+|---|---|---|---|---|---|---|---|
+| L15 | blue 241-312 | end a +1,+2 px, end b -3,+2 px, turn +3 deg, bulge - -7% | 0.85 -> 0.86 | +20 -> +20 | fail: L15 (the target) not improved: IoU 0.85 -> 0.86, worst arc +20 -> +20 px | - | - |
+| L01 | blue 1344-1437 | radius +4%, bulge + +17%, bulge - -9% | 0.86 -> 0.85 | +12 -> +13 | fail: L01 (the target) not improved: IoU 0.86 -> 0.85, worst arc +12 -> +13 px | - | - |
+| L07 | blue 891-976 | end a -5,-0 px, end b +4,+6 px, radius -1% | 0.88 -> 0.89 | +9 -> -6 | fail: L07 (the target) not improved: IoU 0.88 -> 0.89, worst arc +9 -> -6 px | - | - |
+
 ## Round r3 (incumbent r2-L01)
 
 Ranking (top 8):

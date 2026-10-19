@@ -1,0 +1,102 @@
+crop [790, 500, 1080, 800]; targets ['L12', 'L13', 'L14']; guards ['L10', 'L11', 'L15', 'L16']
+  incumbent: {'L10': (0.943, 3.0, 51.9), 'L11': (0.9, 5.1, 34.1), 'L12': (0.882, 7.0, 7.0), 'L13': (0.741, 12.0, 12.3), 'L14': (0.835, 11.4, 11.8), 'L15': (0.9, 6.6, -19.1), 'L16': (0.817, 9.0, -40.4)}
+  reference outline turning p97 (rad/px): {'L12': 0.1205, 'L13': 0.1473, 'L14': 0.0817}
+  prior 1.06, continuity 2.23
+  start: J 10.409 (target 9.749 guards 0.660) 12.5s; curv {'L12': 0.1152, 'L13': 0.1473, 'L14': 0.11} {'L10': (0.943, 3.2, 51.9), 'L11': (0.905, 5.1, 34.1), 'L12': (0.899, 6.7, 6.6), 'L13': (0.827, 8.7, 8.6), 'L14': (0.846, 9.2, 9.7), 'L15': (0.896, 7.4, -19.2), 'L16': (0.816, 9.0, -40.4)}
+  sweep 0 L13 gen  0 best 10.626 (target 9.561 guards 0.978) sigma 0.56 t 40s
+  sweep 0 L13 gen  1 best 10.040 (target 9.593 guards 0.415) sigma 0.53 t 52s
+  sweep 0 L13 gen  2 best 10.040 (target 9.593 guards 0.415) sigma 0.51 t 65s
+  sweep 0 L13 gen  3 best 9.820 (target 9.271 guards 0.498) sigma 0.48 t 77s
+  sweep 0 L13 gen  4 best 9.819 (target 9.343 guards 0.421) sigma 0.46 t 89s
+  sweep 0 L13 gen  5 best 9.819 (target 9.343 guards 0.421) sigma 0.45 t 101s
+  sweep 0 L13 gen  6 best 9.819 (target 9.343 guards 0.421) sigma 0.47 t 113s
+  sweep 0 L13 gen  7 best 9.819 (target 9.343 guards 0.421) sigma 0.49 t 125s
+  sweep 0 L13 gen  8 best 9.777 (target 9.293 guards 0.335) sigma 0.50 t 137s
+  sweep 0 L13 gen  9 best 9.777 (target 9.293 guards 0.335) sigma 0.51 t 149s
+  sweep 0 L13 gen 10 best 9.777 (target 9.293 guards 0.335) sigma 0.52 t 160s
+  sweep 0 L13 gen 11 best 9.777 (target 9.293 guards 0.335) sigma 0.52 t 173s
+  sweep 0 L13 gen 12 best 9.777 (target 9.293 guards 0.335) sigma 0.52 t 184s
+  sweep 0 L13 gen 13 best 9.713 (target 9.306 guards 0.256) sigma 0.49 t 195s
+  sweep 0 L13: J 9.713; curv {'L12': 0.1129, 'L13': 0.1481, 'L14': 0.11}; L04|L06 0 {'L10': (0.943, 3.2, 51.9), 'L11': (0.905, 5.1, 34.1), 'L12': (0.899, 6.3, 6.6), 'L13': (0.842, 6.7, -7.2), 'L14': (0.845, 9.2, 9.7), 'L15': (0.896, 7.4, -19.2), 'L16': (0.816, 9.0, -40.4)}
+  sweep 0 L14 gen  0 best 10.117 (target 9.578 guards 0.493) sigma 0.55 t 207s
+  sweep 0 L14 gen  1 best 10.117 (target 9.578 guards 0.493) sigma 0.52 t 219s
+  sweep 0 L14 gen  2 best 10.117 (target 9.578 guards 0.493) sigma 0.50 t 231s
+  sweep 0 L14 gen  3 best 9.990 (target 9.446 guards 0.479) sigma 0.48 t 243s
+  sweep 0 L14 gen  4 best 9.604 (target 9.423 guards 0.121) sigma 0.46 t 254s
+  sweep 0 L14 gen  5 best 9.604 (target 9.423 guards 0.121) sigma 0.43 t 266s
+  sweep 0 L14 gen  6 best 9.604 (target 9.423 guards 0.121) sigma 0.43 t 278s
+  sweep 0 L14 gen  7 best 9.604 (target 9.423 guards 0.121) sigma 0.42 t 289s
+  sweep 0 L14 gen  8 best 9.604 (target 9.423 guards 0.121) sigma 0.41 t 301s
+  sweep 0 L14 gen  9 best 9.382 (target 9.051 guards 0.239) sigma 0.39 t 312s
+  sweep 0 L14 gen 10 best 9.382 (target 9.051 guards 0.239) sigma 0.37 t 324s
+  sweep 0 L14 gen 11 best 9.382 (target 9.051 guards 0.239) sigma 0.35 t 336s
+  sweep 0 L14 gen 12 best 9.382 (target 9.051 guards 0.239) sigma 0.34 t 348s
+  sweep 0 L14 gen 13 best 9.382 (target 9.051 guards 0.239) sigma 0.33 t 359s
+  sweep 0 L14: J 9.382; curv {'L12': 0.1047, 'L13': 0.1473, 'L14': 0.1076}; L04|L06 0 {'L10': (0.943, 3.2, 51.9), 'L11': (0.905, 5.1, 34.1), 'L12': (0.901, 6.3, 6.6), 'L13': (0.84, 6.7, -7.2), 'L14': (0.838, 10.0, -11.8), 'L15': (0.889, 8.5, -19.1), 'L16': (0.816, 9.0, -40.4)}
+  sweep 0 L12 gen  0 best 10.278 (target 9.355 guards 0.886) sigma 0.56 t 371s
+  sweep 0 L12 gen  1 best 10.265 (target 9.382 guards 0.820) sigma 0.53 t 383s
+  sweep 0 L12 gen  2 best 10.265 (target 9.382 guards 0.820) sigma 0.52 t 394s
+  sweep 0 L12 gen  3 best 10.265 (target 9.382 guards 0.820) sigma 0.52 t 407s
+  sweep 0 L12 gen  4 best 10.265 (target 9.382 guards 0.820) sigma 0.52 t 418s
+  sweep 0 L12 gen  5 best 10.265 (target 9.382 guards 0.820) sigma 0.51 t 430s
+  sweep 0 L12 gen  6 best 9.681 (target 9.062 guards 0.522) sigma 0.50 t 442s
+  sweep 0 L12 gen  7 best 9.681 (target 9.062 guards 0.522) sigma 0.49 t 453s
+  sweep 0 L12 gen  8 best 9.681 (target 9.062 guards 0.522) sigma 0.48 t 465s
+  sweep 0 L12 gen  9 best 9.681 (target 9.062 guards 0.522) sigma 0.49 t 477s
+  sweep 0 L12 gen 10 best 9.681 (target 9.062 guards 0.522) sigma 0.48 t 489s
+  sweep 0 L12 gen 11 best 9.681 (target 9.062 guards 0.522) sigma 0.46 t 501s
+  sweep 0 L12 gen 12 best 9.681 (target 9.062 guards 0.522) sigma 0.47 t 512s
+  sweep 0 L12 gen 13 best 9.681 (target 9.062 guards 0.522) sigma 0.47 t 524s
+  sweep 0 L12: J 9.382; curv {'L12': 0.1047, 'L13': 0.1473, 'L14': 0.1076}; L04|L06 0 {'L10': (0.943, 3.2, 51.9), 'L11': (0.905, 5.1, 34.1), 'L12': (0.901, 6.3, 6.6), 'L13': (0.84, 6.7, -7.2), 'L14': (0.838, 10.0, -11.8), 'L15': (0.889, 8.5, -19.1), 'L16': (0.816, 9.0, -40.4)}
+  sweep 1 L13 gen  0 best 9.608 (target 9.160 guards 0.396) sigma 0.56 t 535s
+  sweep 1 L13 gen  1 best 9.608 (target 9.160 guards 0.396) sigma 0.54 t 546s
+  sweep 1 L13 gen  2 best 9.537 (target 8.915 guards 0.556) sigma 0.52 t 559s
+  sweep 1 L13 gen  3 best 9.461 (target 9.235 guards 0.160) sigma 0.50 t 570s
+  sweep 1 L13 gen  4 best 9.461 (target 9.235 guards 0.160) sigma 0.48 t 582s
+  sweep 1 L13 gen  5 best 9.461 (target 9.235 guards 0.160) sigma 0.48 t 593s
+  sweep 1 L13 gen  6 best 9.461 (target 9.235 guards 0.160) sigma 0.47 t 604s
+  sweep 1 L13 gen  7 best 9.427 (target 8.840 guards 0.476) sigma 0.46 t 614s
+  sweep 1 L13 gen  8 best 9.388 (target 8.712 guards 0.556) sigma 0.46 t 626s
+  sweep 1 L13 gen  9 best 9.238 (target 8.907 guards 0.156) sigma 0.46 t 637s
+  sweep 1 L13 gen 10 best 9.198 (target 8.897 guards 0.156) sigma 0.45 t 649s
+  sweep 1 L13 gen 11 best 9.096 (target 8.658 guards 0.316) sigma 0.45 t 661s
+  sweep 1 L13 gen 12 best 9.096 (target 8.658 guards 0.316) sigma 0.47 t 672s
+  sweep 1 L13 gen 13 best 9.096 (target 8.658 guards 0.316) sigma 0.50 t 684s
+  sweep 1 L13: J 9.096; curv {'L12': 0.1043, 'L13': 0.1479, 'L14': 0.1076}; L04|L06 0 {'L10': (0.943, 3.2, 51.9), 'L11': (0.905, 5.1, 34.1), 'L12': (0.903, 6.3, 6.6), 'L13': (0.86, 5.8, -6.0), 'L14': (0.839, 10.0, -11.8), 'L15': (0.889, 8.5, -19.1), 'L16': (0.816, 9.0, -40.4)}
+  sweep 1 L14 gen  0 best 9.092 (target 8.408 guards 0.597) sigma 0.58 t 696s
+  sweep 1 L14 gen  1 best 9.092 (target 8.408 guards 0.597) sigma 0.57 t 707s
+  sweep 1 L14 gen  2 best 9.092 (target 8.408 guards 0.597) sigma 0.54 t 720s
+  sweep 1 L14 gen  3 best 9.092 (target 8.408 guards 0.597) sigma 0.52 t 732s
+  sweep 1 L14 gen  4 best 9.092 (target 8.408 guards 0.597) sigma 0.50 t 744s
+  sweep 1 L14 gen  5 best 9.092 (target 8.408 guards 0.597) sigma 0.49 t 756s
+  sweep 1 L14 gen  6 best 9.092 (target 8.408 guards 0.597) sigma 0.50 t 769s
+  sweep 1 L14 gen  7 best 9.092 (target 8.408 guards 0.597) sigma 0.49 t 780s
+  sweep 1 L14 gen  8 best 9.092 (target 8.408 guards 0.597) sigma 0.47 t 792s
+  sweep 1 L14 gen  9 best 8.951 (target 8.265 guards 0.573) sigma 0.46 t 803s
+  sweep 1 L14 gen 10 best 8.951 (target 8.265 guards 0.573) sigma 0.44 t 814s
+  sweep 1 L14 gen 11 best 8.951 (target 8.265 guards 0.573) sigma 0.44 t 825s
+  sweep 1 L14 gen 12 best 8.951 (target 8.265 guards 0.573) sigma 0.45 t 837s
+  sweep 1 L14 gen 13 best 8.720 (target 8.240 guards 0.333) sigma 0.46 t 849s
+  sweep 1 L14: J 8.720; curv {'L12': 0.1085, 'L13': 0.148, 'L14': 0.11}; L04|L06 0 {'L10': (0.943, 3.2, 51.9), 'L11': (0.905, 5.1, 34.1), 'L12': (0.899, 6.3, 6.6), 'L13': (0.857, 5.8, -6.0), 'L14': (0.844, 9.9, 10.5), 'L15': (0.896, 7.2, -19.1), 'L16': (0.816, 9.0, -40.4)}
+  sweep 1 L12 gen  0 best 9.906 (target 8.873 guards 0.960) sigma 0.55 t 860s
+  sweep 1 L12 gen  1 best 9.490 (target 8.456 guards 0.995) sigma 0.51 t 872s
+  sweep 1 L12 gen  2 best 8.718 (target 8.163 guards 0.522) sigma 0.47 t 884s
+  sweep 1 L12 gen  3 best 8.718 (target 8.163 guards 0.522) sigma 0.46 t 897s
+  sweep 1 L12 gen  4 best 8.718 (target 8.163 guards 0.522) sigma 0.44 t 910s
+  sweep 1 L12 gen  5 best 8.718 (target 8.163 guards 0.522) sigma 0.43 t 922s
+  sweep 1 L12 gen  6 best 8.718 (target 8.163 guards 0.522) sigma 0.43 t 933s
+  sweep 1 L12 gen  7 best 8.718 (target 8.163 guards 0.522) sigma 0.42 t 944s
+  sweep 1 L12 gen  8 best 8.718 (target 8.163 guards 0.522) sigma 0.41 t 956s
+  sweep 1 L12 gen  9 best 8.718 (target 8.163 guards 0.522) sigma 0.41 t 968s
+  sweep 1 L12 gen 10 best 8.718 (target 8.163 guards 0.522) sigma 0.39 t 979s
+  sweep 1 L12 gen 11 best 8.718 (target 8.163 guards 0.522) sigma 0.37 t 990s
+  sweep 1 L12 gen 12 best 8.718 (target 8.163 guards 0.522) sigma 0.35 t 1002s
+  sweep 1 L12 gen 13 best 8.718 (target 8.163 guards 0.522) sigma 0.35 t 1015s
+  sweep 1 L12: J 8.718; curv {'L12': 0.1196, 'L13': 0.1506, 'L14': 0.11}; L04|L06 0 {'L10': (0.943, 3.2, 51.9), 'L11': (0.906, 5.0, 34.1), 'L12': (0.894, 6.1, 6.4), 'L13': (0.851, 5.8, -6.0), 'L14': (0.845, 10.0, 10.6), 'L15': (0.896, 7.2, -19.1), 'L16': (0.816, 9.0, -40.4)}
+    L10: IoU 0.943 -> 0.943, arc +51.9 -> +51.9, p95 3 -> 3
+    L11: IoU 0.900 -> 0.906, arc +34.1 -> +34.1, p95 5 -> 5
+    L12: IoU 0.882 -> 0.894, arc +7.0 -> +6.4, p95 7 -> 6
+    L13: IoU 0.741 -> 0.851, arc +12.3 -> -6.0, p95 12 -> 6
+    L14: IoU 0.835 -> 0.845, arc +11.8 -> +10.6, p95 11 -> 10
+    L15: IoU 0.900 -> 0.896, arc -19.1 -> -19.1, p95 7 -> 7
+    L16: IoU 0.817 -> 0.816, arc -40.4 -> -40.4, p95 9 -> 9

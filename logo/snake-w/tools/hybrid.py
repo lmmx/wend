@@ -38,10 +38,12 @@ def merge(base, ex):
     return out
 
 
-def deform(spec, P, rings, alpha, jw=0.0, clipd=30.0, taper=15.0, xw=0.0, along="tube"):
+def deform(spec, P, rings, alpha, jw=0.0, clipd=30.0, taper=15.0, xw=0.0, along="tube", rim=0.0):
     """along "tube": each vertex moves along the tube's own normal; "field": along the cushions'
     gradient, and its shading normal turns towards the field's by the same weight, so where the
-    tube's rings fold (a dimple) the moved vertices land on one smooth surface"""
+    tube's rings fold (a dimple) the moved vertices land on one smooth surface; `rim` (>= 0) also
+    moves the vertices turned up to that far from the camera (n . view > -rim): the outline is drawn
+    by the rim, which faces sideways"""
     a = np.fromfile(f"{CR.FIXED}/inc-depth.raw", np.uint8).reshape(1086, 1448, 4).astype(np.int64)
     v = a[..., 0] * 65536 + a[..., 1] * 256 + a[..., 2]
     zbuf = np.where(v > 0, CR.DIST0 - (v / 256.0 + 5000.0), -1e9)
@@ -59,7 +61,7 @@ def deform(spec, P, rings, alpha, jw=0.0, clipd=30.0, taper=15.0, xw=0.0, along=
         n = normals(R)
         x, y = R[..., 0], -(R[..., 1] * np.cos(CR.ELEV) - R[..., 2] * np.sin(CR.ELEV))
         xi, yi = np.clip(np.round(x).astype(int), 0, 1447), np.clip(np.round(y).astype(int), 0, 1085)
-        vis = ((R @ VIEW) >= zbuf[yi, xi] - 2.5) & ((n @ VIEW) > 0)
+        vis = ((R @ VIEW) >= zbuf[yi, xi] - 2.5 - 40.0 * rim) & ((n @ VIEW) > -rim)
         W = CR.hybrid_weight(name, jw, xw=xw)
         w = vis * ndimage.map_coordinates(W, [y.ravel(), x.ravel()], order=1).reshape(x.shape)
         w = ndimage.gaussian_filter(w.astype(float), (3.0, 2.0), mode=("nearest", "wrap"))
@@ -93,10 +95,10 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("spec"); ap.add_argument("cushions"); ap.add_argument("rings"); ap.add_argument("out")
     ap.add_argument("--alpha", type=float, default=1.0); ap.add_argument("--jw", type=float, default=0.0); ap.add_argument("--base")
-    ap.add_argument("--xw", type=float, default=0.0); ap.add_argument("--along", default="tube", choices=["tube", "field"])
+    ap.add_argument("--xw", type=float, default=0.0); ap.add_argument("--along", default="tube", choices=["tube", "field"]); ap.add_argument("--rim", type=float, default=0.0)
     A = ap.parse_args()
-    ex, info = deform(json.load(open(A.spec)), json.load(open(A.cushions)), json.load(open(A.rings)), A.alpha, A.jw, xw=A.xw, along=A.along)
-    ex["hybrid"] = dict(alpha=A.alpha, jw=A.jw, xw=A.xw, along=A.along, cushions=A.cushions, site=CR.SITE)
+    ex, info = deform(json.load(open(A.spec)), json.load(open(A.cushions)), json.load(open(A.rings)), A.alpha, A.jw, xw=A.xw, along=A.along, rim=A.rim)
+    ex["hybrid"] = dict(alpha=A.alpha, jw=A.jw, xw=A.xw, along=A.along, rim=A.rim, cushions=A.cushions, site=CR.SITE)
     if A.base:
         ex = merge(json.load(open(A.base)), ex)
     json.dump(ex, open(A.out, "w")); print(info)

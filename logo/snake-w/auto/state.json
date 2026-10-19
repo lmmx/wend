@@ -349,6 +349,16 @@
    ],
    "verdict": "new incumbent r28-hybR",
    "note": "the right valley's hybrid (tools/hybrid.py --along field --xw 1, alpha 1 towards poc/right/fit1-final; CUSHION_SITE=right): blind judge closer at L13 and L14 by 1, the dimple gone; added to the left valley's overlay (one extra, two regions per strand); L12-L14 frozen while it stands"
+  },
+  {
+   "round": "r30",
+   "incumbent_before": "r28-hybR",
+   "accepted": [],
+   "rejected": [
+    "hybR2"
+   ],
+   "verdict": "incumbent kept (r28-hybR)",
+   "note": "the right hybrid from refit cushions with the rim moved: a planar seam at L12|L13"
   }
  ],
  "seeds": {}

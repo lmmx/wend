@@ -1,7 +1,8 @@
 """ATTRIBUTE + OPTIMISE one ranked feature: find the run of its strand that draws the candidate's
 lobe (the surface-point buffer of the incumbent, lobekit.attribute), put a lobe handle on that
-run (lobekit: 11 controls, supports stopping short of the same strand's neighbouring lobes and
-of the necks), and fit the controls by CMA-ES on flat renders of the real geometry.
+run (lobekit: 11 controls, 15 from round 16 with the end moves; supports stopping short of the
+same strand's neighbouring lobes and of the necks), and fit the controls by CMA-ES on flat
+renders of the real geometry.
   cost   the target's (1 - IoU) + mean boundary distance / 8 + |worst contour arc| / 15 (both
          ways from round 12, lobekit.arcs2) + p95 / 40 + |centroid offset| / 30, plus its shape
          against the reference lobe's: 0.5 |elongation difference| + |tilt| / 20 x min(1,

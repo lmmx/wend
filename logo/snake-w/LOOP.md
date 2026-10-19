@@ -70,7 +70,7 @@ The starting point is what already exists:
    - run `merge` with the accepted tags and `--rejected` with the judge-rejected ones;
    - run `autoledger.py`.
 3. **Select the next targets autonomously.** Run `autoround.py propose r(N+1)` from the new incumbent. The ranking chooses; the user does not. Rejected features are down-weighted automatically.
-4. **Fit geometry directly.** Use the lobe handles: translate, depth, rotate, stretch, radius, width, side bulges and end rounding, on the strand's own station run. Use broader composition controls (`tools/twist.py`, regionfit) when an error comes from the arrangement and the same lobe fails twice.
+4. **Fit geometry directly.** Use the lobe handles: translate, depth, rotate, stretch, radius, width, side bulges, end rounding and, from round 16, end moves, on the strand's own station run. At a lobe whose run ends at its strand's tail (L01, L16), the end-b move carries the whole tail. Use broader composition controls (`tools/twist.py`, regionfit) when an error comes from the arrangement and the same lobe fails twice.
 5. **Judge actual renders.** Every challenger is compared with the incumbent in matched colour, clay and zebra views, at full frame and per feature, with the metrics and an independent visual judge.
 6. **Accept or reject.** Preserve the accepted best. Reject regressions even when the surrogate cost improves. Record what changed and whether it looks closer to the reference.
 7. **Continue.** Start the next highest-impact correction. Do not stop because a single lobe improved or a local fit failed.

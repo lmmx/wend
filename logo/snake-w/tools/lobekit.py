@@ -16,10 +16,13 @@
                screen plane (tx, ty, px) and in depth (tz, px towards the camera), rotate about
                the view axis (rot, degrees, about the run's middle), stretch along the lobe's axis
                (fraction), fatten (radius, fraction), widen (the section's screen-plane semi-axis,
-               fraction), bulge either side (geometry.js displacement at psi +-90 degrees) and round
-               either end (displacement round the whole section at the run's ends). The centreline,
-               radius and section moves act on spline control points, so the strand stays one C2
-               surface; nothing is cut or added.
+               fraction), bulge either side (geometry.js displacement at psi +-90 degrees), round
+               either end (displacement round the whole section at the run's ends), and from round
+               15 move either end on screen on its own (ea_x, ea_y, eb_x, eb_y, px: a bump centred
+               on the end, 12 stations into the run and out to the end of its ramp, or out to the
+               strand's tail at an open end; a lobe mostly ends where its strand passes under the
+               partner, and the whole-run moves cannot lower one end without the other). The centreline, radius and section moves act on
+               spline control points, so the strand stays one C2 surface; nothing is cut or added.
   Scorer       per-feature measurements of a flat render on a crop (the evaluate.py lobe split and
                match), with arcs, silhouette, negative-space intrusion and the clay crease
 Used by tools/discrepancy.py (detect), tools/lobefit.py (attribute + optimise)."""
@@ -43,10 +46,10 @@ SCR_X = np.array([1.0, 0.0, 0.0]); SCR_Y = np.array([0.0, -CE, SE])     # image 
 NECK_SAFE = {"yellow": 165.0 + 64, "blue": 198.0 + 64}
 REG, LAB, NEGLAB = load_registry()
 FEATS = REG["features"]; FIDS = [f["id"] for f in FEATS]
-NAMES = ["tx", "ty", "tz", "rot", "stretch", "fat", "width", "bulge_p", "bulge_n", "tip_a", "tip_b"]
-SCALE = np.array([10, 10, 10, 8, 0.1, 0.08, 0.08, 0.1, 0.1, 0.1, 0.1])     # one search unit
-LO = np.array([-25, -25, -25, -20, -0.25, -0.1, -0.1, -0.2, -0.2, -0.15, -0.15])
-HI = np.array([25, 25, 25, 20, 0.25, 0.15, 0.15, 0.2, 0.2, 0.15, 0.15])
+NAMES = ["tx", "ty", "tz", "rot", "stretch", "fat", "width", "bulge_p", "bulge_n", "tip_a", "tip_b", "ea_x", "ea_y", "eb_x", "eb_y"]
+SCALE = np.array([10, 10, 10, 8, 0.1, 0.08, 0.08, 0.1, 0.1, 0.1, 0.1, 8, 8, 8, 8])     # one search unit
+LO = np.array([-25, -25, -25, -20, -0.25, -0.1, -0.1, -0.2, -0.2, -0.15, -0.15, -20, -20, -20, -20])
+HI = np.array([25, 25, 25, 20, 0.25, 0.15, 0.15, 0.2, 0.2, 0.15, 0.15, 20, 20, 20, 20])
 
 
 def to_screen(P):
@@ -221,6 +224,22 @@ def bump(s, h):
     return smoothstep(h["a"] - h["ra"], h["a"], s) * (1 - smoothstep(h["b"], h["b"] + h["rb"], s))
 
 
+def endbump(s, h, e, w=12.0):
+    """the weight of an end move (version 3 handles): 1 at end `e` ("a" or "b") of the run, falling
+    to 0 within `w` stations inside the run (the lobe's body stays put) and by the end of that
+    side's ramp outside it. At an open end (`open_b`: no lobe of the strand beyond, the strand's
+    tail tucking behind the other head) the weight stays 1 out to the tail, so the move carries the
+    whole tail: the blue collar L01's top tip is the blue tail beside the yellow head, which a move
+    of the tail alone lowers (flat probe: cost 2.51 -> 2.24) where a move reaching into the run's
+    middle dropped the collar's shoulder with it (2.51 -> 2.61)"""
+    a, b = h["a"], h["b"]
+    if e == "a":
+        return smoothstep(a - h["ra"], a, s) * (1 - smoothstep(a, a + w, s))
+    if h.get("open_b"):
+        return smoothstep(b - w, b + w, s)
+    return smoothstep(b - w, b, s) * (1 - smoothstep(b, b + h["rb"], s))
+
+
 def rodrigues(V, k, ang):
     return V * np.cos(ang) + np.cross(k, V) * np.sin(ang) + np.outer(V @ k, k) * (1 - np.cos(ang))
 
@@ -240,7 +259,7 @@ def make_handle(spec, att, K, neighbours, ramp=28.0):
     pr = measure.regionprops(K.astype(int))[0]
     th = pr.orientation
     axis = np.sin(th) * SCR_X + np.cos(th) * SCR_Y
-    return dict(v=2, fid=att["fid"], strand=att["strand"], a=float(a), b=float(b), ra=ra, rb=rb, sc=att["sc"],
+    return dict(v=3, fid=att["fid"], strand=att["strand"], a=float(a), b=float(b), ra=ra, rb=rb, open_b=not hi_n, sc=att["sc"],
                 anchor=X[0].tolist(), axis=axis.tolist(), p={n: 0.0 for n in NAMES})
 
 
@@ -256,7 +275,13 @@ def apply(spec, handles):
         q = q + p["stretch"] * np.outer(q @ u, u)
         q = rodrigues(q, VIEW, np.radians(p["rot"]))
         Pn = c + q + p["tx"] * SCR_X + p["ty"] * SCR_Y + p["tz"] * VIEW
-        st["ctrl"] = (P + W[:, None] * (Pn - P)).tolist()
+        Q = P + W[:, None] * (Pn - P)
+        G = greville(S.knots(st["s0"], st["s1"], st["nseg"]), len(P))
+        for e in ("a", "b"):
+            ex_, ey_ = p.get(f"e{e}_x", 0.0), p.get(f"e{e}_y", 0.0)
+            if ex_ or ey_:
+                Q = Q + endbump(G, h, e)[:, None] * (ex_ * SCR_X + ey_ * SCR_Y)
+        st["ctrl"] = Q.tolist()
         rc = np.array(st["rctrl"], float)
         Wr = bump(greville(S.knots(st["s0"], st["s1"], st["rseg"]), len(rc)), h)
         st["rctrl"] = (rc * (1 + Wr * p["fat"])).tolist()
@@ -284,6 +309,8 @@ def describe(h):
     p = h["p"]; out = []
     if abs(p["tx"]) + abs(p["ty"]) > 0.5: out.append(f"move {p['tx']:+.0f},{p['ty']:+.0f} px")
     if abs(p["tz"]) > 0.5: out.append(f"depth {p['tz']:+.0f} px")
+    for e in ("a", "b"):
+        if abs(p.get(f"e{e}_x", 0.0)) + abs(p.get(f"e{e}_y", 0.0)) > 0.5: out.append(f"end {e} {p[f'e{e}_x']:+.0f},{p[f'e{e}_y']:+.0f} px")
     if abs(p["rot"]) > 0.5: out.append(f"turn {p['rot']:+.0f} deg")
     for k, lbl in (("stretch", "length"), ("fat", "radius"), ("width", "width"), ("bulge_p", "bulge +"), ("bulge_n", "bulge -"), ("tip_a", "end a"), ("tip_b", "end b")):
         if abs(p[k]) > 0.01: out.append(f"{lbl} {p[k]:+.0%}")

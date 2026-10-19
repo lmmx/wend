@@ -19,9 +19,13 @@ The starting point is what already exists:
 - The session that started the loop uses the scratch copy named in `.claude/loop.md`.
 
 **`WS/auto/state.json`** holds:
-- the incumbent: `{tag, spec, renders, metrics}`;
+- the incumbent: `{tag, spec, renders, metrics, params, heads, look}` (the scene params file and its head bake, and the look file, its renders use);
 - `tried`: rejected attempts per feature;
 - `rounds`: every finished round.
+
+**`WS/auto/owner.json`** holds what the owner said about features of the incumbent: `{fid: {sev, said, date, addressed}}`.
+- The ranking takes the larger of the judges' and the owner's severity, so a fault the owner names comes back as a target even where the judges rate it low.
+- When a round accepts a correction of that feature, `merge` marks it `addressed` and the ranking stops counting it. Only the owner's words set an entry: add one when the owner says a feature is still wrong.
 
 **`WS/auto/rN/`** holds round N:
 - `rank.md` / `rank.json`: the discrepancy ranking of the incumbent;
@@ -37,8 +41,11 @@ The starting point is what already exists:
   - rank the incumbent's lobes;
   - choose non-neighbouring targets;
   - for each target: `lobefit.py` (attribution + CMA-ES on the lobe handle), a real render, `evaluate.py` and the gates;
+  - a target whose crop holds a head with a variant (`HEAD_VARIANTS` in `autoround.py`: H1's `neck1`) gets a second candidate, key `TARGET+neck1`, fitted and rendered with that head. The candidate's tag is `rN-TARGET+neck1`; judge it like any other;
   - build the sheets and the pair pages.
-- **`autoround.py merge rN TAG,TAG [--rejected T,T]`** composes the accepted handles, renders and gates the result, and updates the incumbent.
+- **`autoround.py merge rN KEY,KEY [--rejected KEY,KEY]`** composes the accepted handles, renders and gates the result, and updates the incumbent. The keys are the summary's: `L01`, `L01+neck1`.
+  - Accept at most one candidate per target: of a target's two candidates, the one its judge prefers, or the plain one when both are equal.
+  - An accepted head variant's params and head bake become the incumbent's.
 - **`autoledger.py`** rewrites `WS/auto/LEDGER.md`.
 - **`lobemap.py spec out.json out.png`** draws the lobe-to-surface map.
 - **`discrepancy.py colour.png out.json`** produces the ranking.
@@ -52,7 +59,7 @@ The starting point is what already exists:
 - After the judges, write `WS/auto/sev.json`: `{feature: severity}`.
   - For each feature, take the severity the judge gave the version that becomes the incumbent: the candidate's column when it is accepted, the incumbent's column otherwise.
   - Where several judges cover a feature, use the judge of the candidate that changed it.
-  - `discrepancy.py` adds 1.5 × this visual severity to the score, so lobes that look wrong but measure well (thin, rope-like, creased) keep coming back as targets.
+  - `discrepancy.py` adds 3 × this visual severity (1.5 before round 10) to the score, so lobes that look wrong but measure well (thin, rope-like, creased) keep coming back as targets.
 
 ## On every invocation
 

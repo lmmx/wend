@@ -2,6 +2,8 @@
   arcs()       the signed contour error of a candidate lobe along the reference feature's outline
                (+ the candidate overshoots, - it falls short), and its worst stretch: the local
                error that an IoU averages away
+  arcs2()      arcs() both ways, adding the error along the candidate's own outline, which sees a
+               thin tip that pokes past the reference's edge (from round 12)
   Worker       a persistent flat renderer (tools/ffd_worker.mjs: snakes/ffd-flat.html, the real
                geometry and the baked heads in flat colours, ~0.5 s a render)
   surface_ids  which strand, own station and section angle every pixel shows (ffd-flat.html __ids)
@@ -98,7 +100,27 @@ def arcs(R, K, length=40):
                 faces=COMPASS[int(((ang + 22.5) % 360) // 45)], faces_deg=float(ang))
 
 
+def arcs2(R, K, length=40):
+    """arcs() both ways. Along R's outline it finds where K falls short or overshoots R's edge;
+    but where K pokes out past R as a thin tip, the nearest edge of K from R's outline is K's own
+    side, a few px away, so R's side reads the tip as small (the blue collar L01 of r7-merged:
+    its top end rides 18 px above the reference's, which R's side measured as nothing; the error
+    along K's outline is +15 px there). The worst stretch, where it is and its facing are those of
+    the larger side (+ K overshoots, - it falls short); worst_r and worst_k are each side's."""
+    A = arcs(R, K, length)
+    if K is None or A is None:
+        return A
+    B = arcs(K, R, length)
+    A = dict(A, worst_r=A["worst"], worst_k=-B["worst"])
+    if abs(B["worst"]) > abs(A["worst"]):
+        A.update(worst=-B["worst"], at=B["at"], faces=B["faces"], faces_deg=B["faces_deg"])
+    return A
+
+
 class Worker:
+    """ffd_worker.mjs in a subprocess; it renders with the params and head bake that FFD_PARAMS and
+    FFD_HEADS name in the environment (default the final pair), as a head variant's fit sets"""
+
     def __init__(self, wid, root):
         self.wid = wid; self.root = root
         self.p = subprocess.Popen(["node", "../tools/ffd_worker.mjs"], cwd=os.path.join(root, "snakes"), stdin=subprocess.PIPE,
@@ -264,7 +286,8 @@ def corners(b, y, thr=55.0, k=5):
 
 class Scorer:
     """per-feature measurements of a flat render on a crop: the evaluate.py lobe split and match,
-    IoU, boundary distances, centroid, arcs; silhouette IoU, negative-space intrusion, clay crease"""
+    IoU, boundary distances, centroid, arcs (both ways, arcs2); silhouette IoU, negative-space
+    intrusion, clay crease"""
 
     def __init__(self, clip, feats):
         self.clip = clip; x0, y0, x1, y1 = clip
@@ -296,7 +319,7 @@ class Scorer:
             bK = boundary(K); dK = ndimage.distance_transform_edt(~bK)
             d = np.r_[dK[bR], dR[bK]]
             ry, rx = np.nonzero(R); ky, kx = np.nonzero(K)
-            A = arcs(R, K)
+            A = arcs2(R, K)
             pr, pk = self.props[fid], measure.regionprops(K.astype(int))[0]
             res[fid] = dict(iou=float((K & R).sum() / (K | R).sum()), p95=float(np.percentile(d, 95)), mean=float(d.mean()),
                             dx=float(kx.mean() - rx.mean()), dy=float(ky.mean() - ry.mean()), arc=A["worst"], arc_mean=A["mean_abs"],

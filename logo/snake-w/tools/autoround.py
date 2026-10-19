@@ -1,10 +1,15 @@
 """One round of the autonomous correction loop. Everything except the blind judge, which is a
 separate agent that sees only the pair pages.
 
-  propose  1. Rank the incumbent's lobes (tools/discrepancy.py).
+  propose  1. Rank the incumbent's lobes (tools/discrepancy.py, with the judges' and the owner's
+              severities: auto/sev.json, auto/owner.json).
            2. Take up to N targets in rank order such that no target lies inside another's
               crop (each fit guards its crop).
-           3. For each target:
+           3. A target whose crop holds a head with a variant (HEAD_VARIANTS) is fitted twice:
+              once with the incumbent's head, and once with the variant's (candidate key
+              TARGET+NAME), so that a correction which uncovers that head's neck can bring the
+              neck that suits it.
+           4. For each candidate:
               - fit it from the incumbent (tools/lobefit.py);
               - render it for real (tools/audit_render.py);
               - measure it (tools/evaluate.py);
@@ -13,15 +18,18 @@ separate agent that sees only the pair pages.
                 target itself must improve (IoU up 0.02 or the worst contour arc 3 px smaller);
               - build its delta sheet and its blind pair pages, with the X / Y order random and
                 recorded in ROUND/mapping.json.
-  merge    1. Compose the handles of the accepted targets onto the incumbent (their supports
-              are disjoint).
+  merge    1. Compose the handles of the accepted candidates onto the incumbent (their supports
+              are disjoint; at most one candidate per target). An accepted head variant's params
+              and head bake become the incumbent's. The owner's entries for the accepted targets
+              are marked addressed.
            2. Render the result, measure it, and gate it.
            3. If the gates pass, it becomes the incumbent; record the judged rejections.
 
 Only one autoround runs at a time (auto/LOCK holds its pid; a second one exits).
 State: auto/state.json holds:
-  incumbent  {tag, spec, renders, metrics, params, look}: params is the scene params file (snakes/)
-             its renders use (the heads and necks; default w-final.params.json), look the look file
+  incumbent  {tag, spec, renders, metrics, params, heads, look}: params is the scene params file
+             (snakes/) its renders use (the heads and necks; default w-final.params.json), heads
+             that file's head bake for the flat fits (default heads-final.json), look the look file
              (default snakes/w-final.look.json)
   tried      {fid: rejected attempts}; the ranking halves a feature's score per rejection
   rounds     the summary of every round
@@ -38,6 +46,19 @@ from evaluate import window
 
 PY = sys.executable
 STATE = "auto/state.json"
+OWNER = "auto/owner.json"
+P0, H0 = "w-final.params.json", "heads-final.json"
+# head variants: a pre-built alternative head and neck that a correction next to that head may
+# switch to, as one more freedom. neck1 (snakes/w-neck1.params.json: a C2 cubic neck blend and a
+# nape round-cone on the yellow head; tools/bake_heads.mjs bakes heads-neck1.json) removes the
+# step in the yellow neck that the blue collar L01 uncovers when it comes down (r1-L01's
+# rejection); judged alone (auto/neck1) it was neutral, the collar hiding that step
+HEAD_VARIANTS = {"H1": dict(name="neck1", params="w-neck1.params.json", heads="heads-neck1.json")}
+
+
+def ffd_env(params, heads):
+    """the environment for a flat fit (lobefit.py's workers) with this params file and head bake"""
+    return dict(os.environ, FFD_PARAMS=params, FFD_HEADS=heads)
 
 
 def guards(fid, pad=80):
@@ -52,10 +73,10 @@ def guards(fid, pad=80):
     return out
 
 
-def run(cmd, log):
+def run(cmd, log, env=None):
     with open(log, "a") as fh:
-        fh.write("$ " + " ".join(cmd) + "\n"); fh.flush()
-        subprocess.run(cmd, check=True, stdout=fh, stderr=subprocess.STDOUT)
+        fh.write("$ " + (f"FFD_PARAMS={env['FFD_PARAMS']} FFD_HEADS={env['FFD_HEADS']} " if env else "") + " ".join(cmd) + "\n"); fh.flush()
+        subprocess.run(cmd, check=True, stdout=fh, stderr=subprocess.STDOUT, env=env)
 
 
 def render_and_measure(tag, spec, rdir, mdir, params="w-final.params.json", look=None):
@@ -101,7 +122,8 @@ def propose(A, S):
     os.makedirs(f"{R}/renders", exist_ok=True)
     from discrepancy import rank, table
     sev = json.load(open("auto/sev.json")) if os.path.exists("auto/sev.json") else None
-    rows = rank(f"{inc['renders']}/{inc['tag']}-colour.png", S["tried"], sev)
+    owner = json.load(open(OWNER)) if os.path.exists(OWNER) else None
+    rows = rank(f"{inc['renders']}/{inc['tag']}-colour.png", S["tried"], sev, owner)
     json.dump(rows, open(f"{R}/rank.json", "w"), indent=1)
     open(f"{R}/rank.md", "w").write(f"Incumbent {inc['tag']}\n\n" + table(rows) + "\n")
     chosen = []
@@ -112,41 +134,54 @@ def propose(A, S):
             continue
         chosen.append(r["id"])
     print("targets", chosen, flush=True)
-    summary = {"round": A.round, "incumbent": inc["tag"], "targets": {}}
+    # the candidates: (key, target, params, heads), each target with the incumbent's head and
+    # with each head variant in its crop that the incumbent does not already use
+    ip, ih = inc.get("params", P0), inc.get("heads", H0)
+    jobs = []
     for t in chosen:
+        jobs.append((t, t, ip, ih))
+        for h, v in HEAD_VARIANTS.items():
+            if h in guards(t) and v["params"] != ip:
+                jobs.append((f"{t}+{v['name']}", t, v["params"], v["heads"]))
+    print("candidates", [j[0] for j in jobs], flush=True)
+    summary = {"round": A.round, "incumbent": inc["tag"], "targets": {}}
+    for key, t, pp, hh in jobs:
         # a round interrupted (a container restart) resumes: finished fits and renders are kept
-        if os.path.exists(f"{R}/{t}/fit.json"):
+        if os.path.exists(f"{R}/{key}/fit.json"):
             continue
-        run([PY, "tools/lobefit.py", t, inc["spec"], f"{R}/{t}", "--gens", str(A.gens)], f"{R}/{t}.log")
-    def one(t):
-        fit = json.load(open(f"{R}/{t}/fit.json"))
+        run([PY, "tools/lobefit.py", t, inc["spec"], f"{R}/{key}", "--gens", str(A.gens)], f"{R}/{key}.log", env=ffd_env(pp, hh))
+    def one(job):
+        key, t, pp, hh = job
+        fit = json.load(open(f"{R}/{key}/fit.json"))
         if "handle" not in fit:
-            return t, dict(verdict="not controllable", attribution=fit.get("attribution"))
-        tag = f"{A.round}-{t}"
-        if os.path.exists(f"{R}/metrics-{tag}.json"):
-            return t, dict(tag=tag, fit=fit)
-        mc = render_and_measure(tag, f"{R}/{t}/spec.json", f"{R}/renders", R, inc.get("params", "w-final.params.json"), inc.get("look"))
-        return t, dict(tag=tag, fit=fit)
+            return key, dict(verdict="not controllable", attribution=fit.get("attribution"))
+        tag = f"{A.round}-{key}"
+        if not os.path.exists(f"{R}/metrics-{tag}.json"):
+            render_and_measure(tag, f"{R}/{key}/spec.json", f"{R}/renders", R, pp, inc.get("look"))
+        return key, dict(tag=tag, fit=fit, target=t, params=pp, heads=hh)
     with ThreadPoolExecutor(2) as ex:
-        res = dict(ex.map(one, chosen))
+        res = dict(ex.map(one, jobs))
     mb = json.load(open(inc["metrics"]))
     mapping = {}
     from discrepancy import rank as rk
-    for t, r in res.items():
+    for key, r in res.items():
         if "tag" not in r:
-            summary["targets"][t] = r; continue
+            summary["targets"][key] = r; continue
+        t = r["target"]
         tag = r["tag"]; mc = json.load(open(f"{R}/metrics-{tag}.json"))
         rc = rk(f"{R}/renders/{tag}-colour.png"); json.dump(rc, open(f"{R}/rank-{tag}.json", "w"), indent=1)
         fails, gains = gates(mc, mb, t, rc, rows)
+        hv = f", head {r['params']}" if r["params"] != ip else ""
         run([PY, "tools/delta_sheet.py", inc["renders"], inc["tag"], f"{R}/renders", tag, f"{R}/delta-{tag}.png",
-             f"{tag}: {t} handle ({r['fit']['describe']}) against {inc['tag']}"], f"{R}/{t}.log")
+             f"{tag}: {t} handle ({r['fit']['describe']}{hv}) against {inc['tag']}"], f"{R}/{key}.log")
         xy = [inc["tag"], tag]; random.shuffle(xy)
         mapping[tag] = {"X": xy[0], "Y": xy[1]}
         src = {inc["tag"]: inc["renders"], tag: f"{R}/renders"}
         foc = [t] + sorted(f for f in guards(t) if abs(next(x for x in rc if x["id"] == f)["iou"] - next(x for x in rows if x["id"] == f)["iou"]) >= 0.02)
-        run([PY, "tools/pair_pages.py", src[xy[0]], xy[0], src[xy[1]], xy[1], f"{R}/pair-{tag}", "--focus", ",".join(foc[:3])], f"{R}/{t}.log")
+        run([PY, "tools/pair_pages.py", src[xy[0]], xy[0], src[xy[1]], xy[1], f"{R}/pair-{tag}", "--focus", ",".join(foc[:3])], f"{R}/{key}.log")
         rt = next(x for x in rc if x["id"] == t); rb = next(x for x in rows if x["id"] == t)
-        summary["targets"][t] = dict(tag=tag, describe=r["fit"]["describe"], attribution=r["fit"]["attribution"], handle=r["fit"]["handle"],
+        summary["targets"][key] = dict(tag=tag, target=t, params=r["params"], heads=r["heads"],
+                                     describe=r["fit"]["describe"] + hv, attribution=r["fit"]["attribution"], handle=r["fit"]["handle"],
                                      target_before=dict(iou=rb["iou"], arc=rb["arc"], what=rb["what"]), target_after=dict(iou=rt["iou"], arc=rt["arc"], what=rt["what"]),
                                      gate_fails=fails, gains=gains, verdict_gates="REJECT" if fails else "pass")
     json.dump(mapping, open(f"{R}/mapping.json", "w"), indent=1)
@@ -159,12 +194,20 @@ def merge(A, S):
     inc = S["incumbent"]; R = f"auto/{A.round}"
     summ = json.load(open(f"{R}/summary.json"))
     acc = [t for t in A.accepted.split(",") if t]
-    for t in (A.rejected or "").split(","):
-        if t:
-            S["tried"][t] = S["tried"].get(t, 0) + 1
-    for t, s in summ["targets"].items():
-        if s.get("verdict_gates") == "REJECT":
-            S["tried"][t] = S["tried"].get(t, 0) + 1
+    fid = lambda key: summ["targets"].get(key, {}).get("target", key.split("+")[0])
+    if len({fid(k) for k in acc}) < len(acc):
+        sys.exit(f"merge: at most one accepted candidate per target ({acc})")
+    # the head: the incumbent's, or the one head variant among the accepted (a plain candidate
+    # composes with it; the composite's render is gated)
+    ip = inc.get("params", P0)
+    var = {(summ["targets"][k].get("params", ip), summ["targets"][k].get("heads", inc.get("heads", H0))) for k in acc} - {(ip, inc.get("heads", H0))}
+    if len(var) > 1:
+        sys.exit(f"merge: the accepted candidates use different head variants ({acc})")
+    # a target's tried count goes up once a round, however many of its candidates were rejected
+    rej = {fid(t) for t in (A.rejected or "").split(",") if t}
+    rej |= {fid(k) for k, s in summ["targets"].items() if s.get("verdict_gates") == "REJECT"}
+    for t in rej - {fid(k) for k in acc}:
+        S["tried"][t] = S["tried"].get(t, 0) + 1
     rnd = dict(round=A.round, incumbent_before=inc["tag"], accepted=acc, rejected=[t for t in summ["targets"] if t not in acc])
     if acc:
         base = json.load(open(inc["spec"]))
@@ -172,17 +215,24 @@ def merge(A, S):
             base[n].setdefault("disp", [])
         spec = K.apply(base, [summ["targets"][t]["handle"] for t in acc])
         tag = f"{A.round}-merged" if len(acc) > 1 else summ["targets"][acc[0]]["tag"]
+        pp, hh = next(iter(var)) if var else (ip, inc.get("heads", H0))
         path = f"{R}/spec-{tag}.json"
         json.dump(spec, open(path, "w"))
         if len(acc) > 1:
-            mc = render_and_measure(tag, path, f"{R}/renders", R, inc.get("params", "w-final.params.json"), inc.get("look"))
+            mc = render_and_measure(tag, path, f"{R}/renders", R, pp, inc.get("look"))
             fails, gains = gates(mc, json.load(open(inc["metrics"])))
             rnd.update(merged=tag, merged_fails=fails, merged_gains=gains)
             if fails:
                 print("merged candidate fails the gates:", fails); rnd["verdict"] = "merged REJECT"
                 S["rounds"].append(rnd); json.dump(S, open(STATE, "w"), indent=1); return
-        S["incumbent"] = dict(tag=tag, spec=path, renders=f"{R}/renders", metrics=f"{R}/metrics-{tag}.json", params=inc.get("params", "w-final.params.json"), look=inc.get("look"))
+        S["incumbent"] = dict(tag=tag, spec=path, renders=f"{R}/renders", metrics=f"{R}/metrics-{tag}.json", params=pp, heads=hh, look=inc.get("look"))
         rnd["verdict"] = f"new incumbent {tag}"
+        if os.path.exists(OWNER):
+            ow = json.load(open(OWNER))
+            for k in acc:
+                if fid(k) in ow and not ow[fid(k)].get("addressed"):
+                    ow[fid(k)]["addressed"] = A.round
+            json.dump(ow, open(OWNER, "w"), indent=1)
     S["rounds"].append(rnd)
     json.dump(S, open(STATE, "w"), indent=1)
     print(rnd)

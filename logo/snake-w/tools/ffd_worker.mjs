@@ -40,7 +40,9 @@ await ctx.route("**/*", (r) => {
 });
 const page = await ctx.newPage();
 page.on("pageerror", (e) => console.error("pageerror", e.message));
-await page.goto("http://wend.local/ffd-flat.html");
+// FFD_PARAMS / FFD_HEADS (env): the params file and head bake (in snakes/) of a neck variant
+const PARAMS = process.env.FFD_PARAMS || "w-final.params.json", HEADS = process.env.FFD_HEADS || "heads-final.json";
+await page.goto(`http://wend.local/ffd-flat.html?${new URLSearchParams({ params: PARAMS, heads: HEADS })}`);
 await page.waitForFunction(() => window.__ready === true, null, { timeout: 60000 });
 const rl = readline.createInterface({ input: process.stdin });
 for await (const line of rl) {
@@ -55,7 +57,7 @@ for await (const line of rl) {
       const key = `/ffd-override-${req.id}.json`;
       overrides.set(key, JSON.stringify(spec));
       const p2 = await ctx.newPage();
-      const qs = new URLSearchParams({ params: "w-final.params.json", look, ss: "1", heads: "heads-final.json", spec: key.slice(1) });
+      const qs = new URLSearchParams({ params: PARAMS, look, ss: "1", heads: HEADS, spec: key.slice(1) });
       await p2.goto(`http://wend.local/still-spline.html?${qs}`);
       await p2.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
       await p2.screenshot({ path: req.out, clip: { x: c[0], y: c[1], width: c[2] - c[0], height: c[3] - c[1] } });

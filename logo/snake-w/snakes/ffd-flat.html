@@ -6,22 +6,24 @@
 <canvas id="c" width="1448" height="1086"></canvas>
 <script type="module">
 // A fast surrogate of still-spline.html for the displacement-field and lobe-handle fits: the same
-// camera, spec, strand slicing, press and strandSurface, and the baked heads (heads-final.json,
-// fixed: the fits leave the necks alone), but flat colours and no ambient occlusion, eyes or
-// shadow, so a build takes tens of ms instead of 20 s. window.__run(spec) rebuilds the body from
-// a spec object and renders; it returns the local fold areas (whole body, and inside the box)
-// measured on the rings as the scene builds them. window.__ids(spec, clip) renders, without
-// antialiasing, which surface point each pixel shows: R = 1 yellow / 2 blue strand, 3 / 4 yellow
-// / blue head, G, B = the strand's own station x 40 (16 bits), A = the section angle psi (the
-// frame of geometry.js dispField: 0 towards the camera-facing depth axis, +-90 degrees along the
-// screen-plane lateral axis), (psi + pi) / 2 pi; returns the clip's RGBA bytes, base64, rows from
-// the top.
+// camera, spec, strand slicing, press and strandSurface, and the baked heads (heads-final.json
+// unless ?heads= names another bake; fixed: the fits leave the necks alone), but flat colours and
+// no ambient occlusion, eyes or shadow, so a build takes tens of ms instead of 20 s.
+// window.__run(spec) rebuilds the body from a spec object and renders; it returns the local fold
+// areas (whole body, and inside the box) measured on the rings as the scene builds them.
+// window.__ids(spec, clip) renders, without antialiasing, which surface point each pixel shows: R =
+// 1 yellow / 2 blue strand, 3 / 4 yellow / blue head, G, B = the strand's own station x 40 (16
+// bits), A = the section angle psi (the frame of geometry.js dispField: 0 towards the camera-facing
+// depth axis, +-90 degrees along the screen-plane lateral axis), (psi + pi) / 2 pi; returns the
+// clip's RGBA bytes, base64, rows from the top.
 import * as THREE from "three";
 import { strandSurface, smoothstep } from "./geometry.js";
 import { strandsFromSpec } from "./strandspline.js";
 const FRAME = { width: 1448, height: 1086 };
-const params = await (await fetch("w-final.params.json")).json();
-const look = JSON.parse(new URLSearchParams(location.search).get("look") || "{}");
+// ?params= and ?heads= choose the parametric body and its baked heads (default the final pair)
+const Q = new URLSearchParams(location.search);
+const params = await (await fetch(Q.get("params") || "w-final.params.json")).json();
+const look = JSON.parse(Q.get("look") || "{}");
 const COL = { yellow: look.yellow || "#ffc22e", blue: look.blue || "#0d4fd6" };
 const canvas = document.getElementById("c");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, preserveDrawingBuffer: true, alpha: false });
@@ -40,7 +42,7 @@ let group = null, built = null;
 // the baked heads (fixed), as flat meshes
 const heads = {};
 {
-  const baked = await (await fetch("heads-final.json")).json();
+  const baked = await (await fetch(Q.get("heads") || "heads-final.json")).json();
   const dec = (s, T) => new T(Uint8Array.from(atob(s), (ch) => ch.charCodeAt(0)).buffer);
   for (const [k, h] of Object.entries(baked.heads)) {
     const g = new THREE.BufferGeometry();

@@ -2,9 +2,10 @@
 lobe (the surface-point buffer of the incumbent, lobekit.attribute), put a lobe handle on that
 run (lobekit: 11 controls, supports stopping short of the same strand's neighbouring lobes and
 of the necks), and fit the controls by CMA-ES on flat renders of the real geometry.
-  cost   the target's (1 - IoU) + mean boundary distance / 8 + |worst contour arc| / 15
-         + p95 / 40 + |centroid offset| / 30, plus its shape against the reference lobe's:
-         0.5 |elongation difference| + |tilt| / 40 + 4 x the solidity shortfall (cost_t)
+  cost   the target's (1 - IoU) + mean boundary distance / 8 + |worst contour arc| / 15 (both
+         ways from round 12, lobekit.arcs2) + p95 / 40 + |centroid offset| / 30, plus its shape
+         against the reference lobe's: 0.5 |elongation difference| + |tilt| / 20 x min(1,
+         elongation - 1) (|tilt| / 40 before round 12) + 4 x the solidity shortfall (cost_t)
   guards every other feature inside the crop may not lose IoU (> 0.005), p95 (> 1 px), its
          worst arc (> 2 px) or solidity (> 0.01); the crop's silhouette and negative spaces, the local fold area, the
          clay crease (target and guards) and the press depth (the deepest overlap of the two tubes
@@ -13,7 +14,9 @@ of the necks), and fit the controls by CMA-ES on flat renders of the real geomet
   reg    0.01 x the squared controls in search units (lobekit.SCALE: 10 px, 8 deg, 0.1)
 Writes OUT/handle.json, OUT/spec.json (the incumbent with the handle applied), OUT/fit.json
 (attribution, surrogate before / after per feature, the log).
-Usage (from the logo root): lobefit.py TARGET incumbent.json OUT [--gens 22] [--workers 3] [--seed 0]"""
+Usage (from the logo root): lobefit.py TARGET incumbent.json OUT [--gens 22] [--workers 3] [--seed 0]
+The flat renders use the params and head bake that FFD_PARAMS / FFD_HEADS name (the incumbent's,
+or a head variant's: autoround.py sets them)."""
 import argparse, json, os, sys, threading, time
 import numpy as np
 from PIL import Image
@@ -65,9 +68,13 @@ def cma(f, n, sigma0, lo, hi, gens, workers, seed=0, log=None):
 def cost_t(m):
     """the target's mask and outline error, plus its shape against the reference lobe's: the blind
     judges reject lobes that read as bands, wedges or tilted (rounds 1-3), which the shape terms
-    measure: elongation, orientation and solidity (area / convex hull, the cushion's convexity)"""
+    measure: elongation, orientation and solidity (area / convex hull, the cushion's convexity).
+    From round 12 the orientation term is |tilt| / 20 scaled by how elongated the reference lobe is
+    (min(1, elongation - 1)): a long lobe's tilt is what the eye reads (the blue collar L01, 6
+    degrees too upright at elongation 2.4), a round lobe's principal axis is ill-defined"""
     return ((1 - m["iou"]) + m["mean"] / 8 + abs(m["arc"]) / 15 + m["p95"] / 40 + np.hypot(m["dx"], m["dy"]) / 30
-            + 0.5 * abs(m["elong"] - m["elong_ref"]) + abs(m["tilt"]) / 40 + 4 * max(0.0, m["solid_ref"] - m["solid"]))
+            + 0.5 * abs(m["elong"] - m["elong_ref"]) + abs(m["tilt"]) / 20 * min(1.0, max(0.0, m["elong_ref"] - 1.0))
+            + 4 * max(0.0, m["solid_ref"] - m["solid"]))
 
 
 def main():

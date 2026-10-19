@@ -10,12 +10,12 @@
  },
  "tried": {
   "L13": 2,
-  "L05": 2,
+  "L05": 3,
   "L09": 1,
   "L14": 2,
   "L06": 2,
   "L07": 2,
-  "L01": 0,
+  "L01": 1,
   "L12": 1,
   "L15": 2,
   "L04": 2,
@@ -256,12 +256,23 @@
     "L05"
    ],
    "verdict": "new incumbent r18-L12"
+  },
+  {
+   "round": "r19",
+   "incumbent_before": "r18-L12",
+   "accepted": [],
+   "rejected": [
+    "L05",
+    "L01",
+    "L16"
+   ],
+   "verdict": "no correction accepted"
   }
  ],
  "seeds": {
-  "L05": {
-   "handle": "auto/r18/L05/handle.json",
-   "round": "r18"
+  "L16": {
+   "handle": "auto/r19/L16/handle.json",
+   "round": "r19"
   }
  }
 }

@@ -1,0 +1,227 @@
+{
+ "round": "r19",
+ "incumbent": "r18-L12",
+ "targets": {
+  "L05": {
+   "tag": "r19-L05",
+   "target": "L05",
+   "params": "w-final.params.json",
+   "heads": "heads-final.json",
+   "describe": "move -19,+1 px, depth -4 px, end a -11,+12 px, end b +10,+9 px, turn -18 deg, length +2%, radius +7%, width -1%, bulge + -13%, bulge - -5%, end a -2%, end b -1%",
+   "attribution": {
+    "fid": "L05",
+    "strand": "blue",
+    "a": 1050.40175,
+    "b": 1076.1,
+    "sc": 1065.775,
+    "n": 5870,
+    "frac": 1.0,
+    "head_frac": 0.0,
+    "psi_med": -14.823529411764724
+   },
+   "handle": {
+    "v": 3,
+    "fid": "L05",
+    "strand": "blue",
+    "a": 1050.40175,
+    "b": 1076.1,
+    "ra": 28.0,
+    "rb": 28.0,
+    "open_b": false,
+    "sc": 1065.775,
+    "anchor": [
+     584.4070568979981,
+     -703.4399494057901,
+     40.21167823450969
+    ],
+    "axis": [
+     0.9997506034254884,
+     -0.022283838421127165,
+     0.0014702025686951627
+    ],
+    "p": {
+     "tx": -18.565307979249322,
+     "ty": 0.7170546172018644,
+     "tz": -3.77904294519798,
+     "rot": -17.59912178654997,
+     "stretch": 0.02168928211322005,
+     "fat": 0.0680070359129734,
+     "width": -0.01281630791790941,
+     "bulge_p": -0.13402207110682815,
+     "bulge_n": -0.0516780092345317,
+     "tip_a": -0.017991337171319295,
+     "tip_b": -0.013677753577749164,
+     "ea_x": -10.86405983368596,
+     "ea_y": 12.212504128177477,
+     "eb_x": 10.146512809953329,
+     "eb_y": 8.832729202829565,
+     "eb_r": -0.03833131602111997,
+     "eb_rot": 5.812749939195222
+    }
+   },
+   "target_before": {
+    "iou": 0.7077372262773722,
+    "arc": 16.719219406928914,
+    "what": "right edge overshoots by 17 px (40 px of outline at 654,693); centroid +10,-7 px"
+   },
+   "target_after": {
+    "iou": 0.9419289681871739,
+    "arc": -2.850809551355896,
+    "what": "top edge falls short by 3 px (40 px of outline at 610,686); centroid -0,-0 px"
+   },
+   "gate_fails": [],
+   "gains": [
+    "L04: severity 2 -> 1, IoU 0.87 -> 0.91",
+    "L05: severity 2 -> 0, IoU 0.71 -> 0.94"
+   ],
+   "verdict_gates": "pass"
+  },
+  "L01": {
+   "tag": "r19-L01",
+   "target": "L01",
+   "params": "w-final.params.json",
+   "heads": "heads-final.json",
+   "describe": "move -1,-4 px, depth +2 px, end a +4,-7 px, end b -9,+13 px, tail radius -78%, tail turn -15 deg, turn -1 deg, length +13%, radius -3%, width -2%, bulge + +4%, end a +9%, end b -4%",
+   "attribution": {
+    "fid": "L01",
+    "strand": "blue",
+    "a": 1343.66775,
+    "b": 1437.254,
+    "sc": 1384.05,
+    "n": 13058,
+    "frac": 1.0,
+    "head_frac": 0.0,
+    "psi_med": -2.117647058823536
+   },
+   "handle": {
+    "v": 3,
+    "fid": "L01",
+    "strand": "blue",
+    "a": 1343.66775,
+    "b": 1437.254,
+    "ra": 28.0,
+    "rb": 28.0,
+    "open_b": true,
+    "sc": 1384.05,
+    "anchor": [
+     433.5491321130997,
+     -456.57055342944057,
+     32.840053466420684
+    ],
+    "axis": [
+     -0.5292066655699836,
+     -0.846652284062026,
+     0.055858884779898484
+    ],
+    "p": {
+     "tx": -0.7339853179391904,
+     "ty": -4.073847845979778,
+     "tz": 1.7133193113764285,
+     "rot": -1.3228511841853814,
+     "stretch": 0.12898058962102837,
+     "fat": -0.02719268623972381,
+     "width": -0.01632230503605266,
+     "bulge_p": 0.03879136268845007,
+     "bulge_n": 0.00813481247530605,
+     "tip_a": 0.08972735785395247,
+     "tip_b": -0.03722303920306018,
+     "ea_x": 3.7690793189556904,
+     "ea_y": -6.891563611342079,
+     "eb_x": -8.600985383103668,
+     "eb_y": 13.375172334225104,
+     "eb_r": -0.7833355129380019,
+     "eb_rot": -15.209774184723699
+    }
+   },
+   "target_before": {
+    "iou": 0.8607188703465982,
+    "arc": 12.148341387769287,
+    "what": "upper right edge overshoots by 12 px (40 px of outline at 453,338); centroid -1,+1 px"
+   },
+   "target_after": {
+    "iou": 0.9032327431725324,
+    "arc": -8.072279822810193,
+    "what": "right edge falls short by 8 px (40 px of outline at 500,410); centroid -2,+0 px"
+   },
+   "gate_fails": [],
+   "gains": [
+    "L01: severity 2 -> 1, IoU 0.86 -> 0.90"
+   ],
+   "verdict_gates": "pass"
+  },
+  "L16": {
+   "tag": "r19-L16",
+   "target": "L16",
+   "params": "w-final.params.json",
+   "heads": "heads-final.json",
+   "describe": "move -3,-2 px, depth -4 px, end a +8,-9 px, end b -6,+20 px, tail radius -34%, tail turn -11 deg, turn -4 deg, length +2%, radius -6%, width +8%, bulge + -3%, bulge - -4%, end a -8%, end b +12%",
+   "attribution": {
+    "fid": "L16",
+    "strand": "yellow",
+    "a": 1305.95,
+    "b": 1388.94275,
+    "sc": 1339.5875,
+    "n": 13144,
+    "frac": 1.0,
+    "head_frac": 0.0,
+    "psi_med": 3.5294117647058556
+   },
+   "handle": {
+    "v": 3,
+    "fid": "L16",
+    "strand": "yellow",
+    "a": 1305.95,
+    "b": 1388.94275,
+    "ra": 28.0,
+    "rb": 28.0,
+    "open_b": true,
+    "sc": 1339.5875,
+    "anchor": [
+     1034.2344222023144,
+     -478.17426629552773,
+     41.445067547719944
+    ],
+    "axis": [
+     0.6752177695383442,
+     -0.736018288865216,
+     0.048559676230210444
+    ],
+    "p": {
+     "tx": -3.338394963308083,
+     "ty": -2.020847497318516,
+     "tz": -4.357971156119399,
+     "rot": -3.5148733467924904,
+     "stretch": 0.023231810551423756,
+     "fat": -0.06222310157125642,
+     "width": 0.07624060338941292,
+     "bulge_p": -0.025310722630516563,
+     "bulge_n": -0.03782789799090183,
+     "tip_a": -0.08168023859128082,
+     "tip_b": 0.12470203113864367,
+     "ea_x": 7.789240758210976,
+     "ea_y": -9.122810248048713,
+     "eb_x": -5.9595929579647375,
+     "eb_y": 20.0,
+     "eb_r": -0.3418971295346109,
+     "eb_rot": -11.124874430534796
+    }
+   },
+   "target_before": {
+    "iou": 0.856549008168028,
+    "arc": 15.213423759621033,
+    "what": "upper left edge overshoots by 15 px (40 px of outline at 992,385); centroid +1,+0 px"
+   },
+   "target_after": {
+    "iou": 0.894520234738206,
+    "arc": 5.880136191942798,
+    "what": "lower left edge overshoots by 6 px (40 px of outline at 997,500); centroid -0,+0 px"
+   },
+   "gate_fails": [],
+   "gains": [
+    "L16: severity 1 -> 1, IoU 0.86 -> 0.89",
+    "H2: severity 1 -> 0, IoU 0.95 -> 0.95"
+   ],
+   "verdict_gates": "pass"
+  }
+ }
+}

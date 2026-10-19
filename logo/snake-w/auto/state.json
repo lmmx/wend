@@ -1,14 +1,15 @@
 {
  "incumbent": {
-  "tag": "r7-merged",
+  "tag": "incms",
   "spec": "auto/r7/spec-r7-merged.json",
-  "renders": "auto/r7/renders",
-  "metrics": "auto/r7/metrics-r7-merged.json",
-  "params": "w-final.params.json"
+  "renders": "auto/r10/ms",
+  "metrics": "auto/r10/ms/metrics-incms.json",
+  "params": "w-final.params.json",
+  "look": "snakes/w-meshshadow.look.json"
  },
  "tried": {
-  "L13": 1,
-  "L05": 1,
+  "L13": 0,
+  "L05": 2,
   "L09": 1,
   "L14": 1,
   "L06": 1,
@@ -17,7 +18,8 @@
   "L12": 1,
   "L15": 1,
   "L04": 1,
-  "L08": 1
+  "L08": 1,
+  "L16": 1
  },
  "rounds": [
   {
@@ -140,6 +142,17 @@
     "L15",
     "L08"
    ]
+  },
+  {
+   "round": "r10",
+   "incumbent_before": "r7-merged",
+   "accepted": [],
+   "rejected": [
+    "L13",
+    "L16",
+    "L05"
+   ],
+   "note": "incumbent re-rendered with mesh-placed contact shadows (look.shadowCard.fromMesh): same geometry (r7-merged), IoU change < 0.0002; L13 rejected count reset (its pale crescent was the ball-placed shadow)"
   }
  ]
 }

@@ -98,6 +98,8 @@ def main():
     # the critics' structured causes (auto/causes.json, autoround.py): a failure named on this
     # target, its neighbours or their junctions tightens the guard for exactly that failure
     ap.add_argument("--causes")
+    # the incumbent's fixed overlay (scene.js extra, a file in snakes/: the hybrid valley), on every flat render
+    ap.add_argument("--extra")
     A = ap.parse_args()
     os.makedirs(A.out, exist_ok=True)
     out = os.path.abspath(A.out)
@@ -108,7 +110,7 @@ def main():
     try:
         # ---- attribute: the incumbent's surface-point buffer and lobes (flat, whole frame)
         sid, st, psi = K.surface_ids(W[0], inc, f"{out}/ids.raw")
-        W[0].call(spec_obj=inc, out=f"{out}/inc-flat.png", clip=[0, 0, 1448, 1086])
+        W[0].call(spec_obj=inc, out=f"{out}/inc-flat.png", clip=[0, 0, 1448, 1086], extra=A.extra)
         Lc = K.lobes(np.asarray(Image.open(f"{out}/inc-flat.png").convert("RGB")))
         att = K.attribute(sid, st, psi, Lc, A.target)
         if "error" in att:
@@ -156,7 +158,7 @@ def main():
         def measure(spec, wi, tag):
             w = W[wi % len(W)]
             p, s, nm = f"{out}/w{w.wid}-{tag}.png", f"{out}/w{w.wid}-{tag}-shade.png", f"{out}/w{w.wid}-{tag}-normals.png"
-            r = w.call(spec_obj=spec, out=p, clip=clip, box=clip, shade=s, normals=nm)
+            r = w.call(spec_obj=spec, out=p, clip=clip, box=clip, shade=s, normals=nm, extra=A.extra)
             m, ex = sc.measure(p, s, nm)
             ex["press"] = r.get("press_box", 0.0)
             return m, ex, r["fold_box"]

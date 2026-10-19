@@ -36,3 +36,4 @@ r20 stopped 08:02 to switch to the look; resumable with propose r20
 r21 stopped 08:20: score-driven targets (L16 again after three junction pinches); the loop now starts each round from a visual diagnosis
 r23 closed 09:35: nothing accepted (L15+L16: a knob on L16, a notch on L15; L07+L08: L08 boxier, an L06|L07 pinch)
 PAUSED after r23 (the owner's decision, 2026-10-19): do not start r24. The machine runs the implicit-cushion proof of concept on the left valley (tools/cushions.py, tools/cushionfit.py, workspace poc/) until its verdict.
+RESUMED: incumbent hyb-L456 (the hybrid valley, overlay snakes/hybrid-hyb-L456.json, L04-L06 frozen); r24 next

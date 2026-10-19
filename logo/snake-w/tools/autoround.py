@@ -90,11 +90,12 @@ def run(cmd, log, env=None):
         subprocess.run(cmd, check=True, stdout=fh, stderr=subprocess.STDOUT, env=env)
 
 
-def render_and_measure(tag, spec, rdir, mdir, params="w-final.params.json", look=None):
+def render_and_measure(tag, spec, rdir, mdir, params="w-final.params.json", look=None, extra=None):
     log = f"{mdir}/{tag}.log"
-    env = dict(os.environ, **({"LOOK": look} if look else {}))
+    # extra: the incumbent's fixed overlay (scene.js extra, a file in snakes/: the hybrid valley, tools/hybrid.py)
+    env = dict(os.environ, **({"LOOK": look} if look else {}), **({"EXTRA": extra} if extra else {}))
     with open(log, "a") as fh:
-        fh.write(f"$ LOOK={look or '-'} audit_render.py {tag} {spec} {rdir} {params}\n"); fh.flush()
+        fh.write(f"$ LOOK={look or '-'} EXTRA={extra or '-'} audit_render.py {tag} {spec} {rdir} {params}\n"); fh.flush()
         subprocess.run([PY, "tools/audit_render.py", tag, spec, rdir, params], check=True, stdout=fh, stderr=subprocess.STDOUT, env=env)
     run([PY, "tools/evaluate.py", f"{rdir}/{tag}-colour.png", "--clay", f"{rdir}/{tag}-clay-full.png", "--folds", f"{rdir}/{tag}-mesh.json",
          "--out", f"{mdir}/metrics-{tag}.json"], log)
@@ -141,7 +142,8 @@ def propose(A, S):
     plan = json.load(open(A.plan)) if A.plan else None
     chosen = [] if not plan else [p_["target"] for p_ in plan]
     for r in ([] if plan else [r for r in rows if r["id"] in seeds] + [r for r in rows if r["id"] not in seeds]):
-        if not r["id"].startswith("L") or len(chosen) >= A.n:
+        # features under the incumbent's fixed overlay (the hybrid valley) are not targets while it stands
+        if not r["id"].startswith("L") or len(chosen) >= A.n or r["id"] in inc.get("frozen", []):
             continue
         if any(r["id"] in guards(c) or c in guards(r["id"]) for c in chosen):
             continue
@@ -168,7 +170,7 @@ def propose(A, S):
         if os.path.exists(f"{R}/{key}/fit.json"):
             continue
         rep = ["--init", seeds[t]["handle"], "--sigma", "0.4", "--crease-tol", "1.15"] if t in seeds and key == t and not plan else []
-        rep += ["--causes", "auto/causes.json"]
+        rep += ["--causes", "auto/causes.json"] + (["--extra", inc["extra"]] if inc.get("extra") else [])
         if key in pe:
             rep += sum(([f"--{k}", str(pe[key][k])] for k in ("controls", "joint", "edge") if pe[key].get(k)), [])
         # each round's own seed: the fit is deterministic, and the same seed from an unchanged incumbent re-found r19-L01's rejected handle in r20
@@ -181,7 +183,7 @@ def propose(A, S):
             return key, dict(verdict="not controllable", attribution=fit.get("attribution"))
         tag = f"{A.round}-{key}"
         if not os.path.exists(f"{R}/metrics-{tag}.json"):
-            render_and_measure(tag, f"{R}/{key}/spec.json", f"{R}/renders", R, pp, inc.get("look"))
+            render_and_measure(tag, f"{R}/{key}/spec.json", f"{R}/renders", R, pp, inc.get("look"), inc.get("extra"))
         return key, dict(tag=tag, fit=fit, target=t, params=pp, heads=hh, plan=pe.get(key))
     with ThreadPoolExecutor(2) as ex:
         res = dict(ex.map(one, jobs))
@@ -253,13 +255,14 @@ def merge(A, S):
         path = f"{R}/spec-{tag}.json"
         json.dump(spec, open(path, "w"))
         if len(acc) > 1:
-            mc = render_and_measure(tag, path, f"{R}/renders", R, pp, inc.get("look"))
+            mc = render_and_measure(tag, path, f"{R}/renders", R, pp, inc.get("look"), inc.get("extra"))
             fails, gains = gates(mc, json.load(open(inc["metrics"])))
             rnd.update(merged=tag, merged_fails=fails, merged_gains=gains)
             if fails:
                 print("merged candidate fails the gates:", fails); rnd["verdict"] = "merged REJECT"
                 S["rounds"].append(rnd); json.dump(S, open(STATE, "w"), indent=1); return
-        S["incumbent"] = dict(tag=tag, spec=path, renders=f"{R}/renders", metrics=f"{R}/metrics-{tag}.json", params=pp, heads=hh, look=inc.get("look"))
+        S["incumbent"] = dict(tag=tag, spec=path, renders=f"{R}/renders", metrics=f"{R}/metrics-{tag}.json", params=pp, heads=hh, look=inc.get("look"),
+                              **{k: inc[k] for k in ("extra", "frozen") if k in inc})
         rnd["verdict"] = f"new incumbent {tag}"
         # an accepted correction of a feature the owner named takes one step off the owner's
         # severity (a judged step closer leaves it still wrong, less so); at 1 it is addressed

@@ -110,12 +110,17 @@ def propose(A, S):
     print("targets", chosen, flush=True)
     summary = {"round": A.round, "incumbent": inc["tag"], "targets": {}}
     for t in chosen:
+        # a round interrupted (a container restart) resumes: finished fits and renders are kept
+        if os.path.exists(f"{R}/{t}/fit.json"):
+            continue
         run([PY, "tools/lobefit.py", t, inc["spec"], f"{R}/{t}", "--gens", str(A.gens)], f"{R}/{t}.log")
     def one(t):
         fit = json.load(open(f"{R}/{t}/fit.json"))
         if "handle" not in fit:
             return t, dict(verdict="not controllable", attribution=fit.get("attribution"))
         tag = f"{A.round}-{t}"
+        if os.path.exists(f"{R}/metrics-{tag}.json"):
+            return t, dict(tag=tag, fit=fit)
         mc = render_and_measure(tag, f"{R}/{t}/spec.json", f"{R}/renders", R, inc.get("params", "w-final.params.json"))
         return t, dict(tag=tag, fit=fit)
     with ThreadPoolExecutor(2) as ex:

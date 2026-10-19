@@ -97,3 +97,7 @@ The starting point is what already exists:
   - The target is sustained, autonomous, measurable improvement of the entire sculpture, not a perfect optimisation score or a collection of individually fixed dimples.
   - Continue until the reference is convincingly reproduced, the available approaches have demonstrably plateaued, or an operational limit prevents further progress.
   - If blocked, report the specific obstacle and preserve resumable state rather than declaring artistic success.
+
+## After a container restart
+
+Background jobs die; the workspace (scratchpad) survives. `autoround.py propose rN` resumes an interrupted round: it keeps finished fits (`rN/<target>/fit.json`) and renders (`rN/metrics-<tag>.json`). Remove a stale `auto/LOCK` whose pid is not an `autoround.py` process, then rerun the same `propose rN`.

@@ -123,7 +123,9 @@ def main():
         guards = [f for f in feats if f != A.target]
 
         def J(m, ex, fold, x):
-            c = cost_t(m[A.target]); pen = 0.0
+            # the target's own clay crease counts too: the judges' most repeated shared fault is a
+            # pinch or dimple inside a lobe (L13 / L14, L08), which no mask measure sees
+            c = cost_t(m[A.target]) + 0.4 * max(0.0, ex["crease"].get(A.target, 0.0) - 1.0); pen = 0.0
             for g in guards:
                 a, b = m0[g], m[g]
                 pen += 5 * max(0.0, a["iou"] - b["iou"] - 0.005) + 0.04 * max(0.0, b["p95"] - a["p95"] - 1) + 0.05 * max(0.0, abs(b["arc"]) - abs(a["arc"]) - 2)

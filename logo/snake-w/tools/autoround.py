@@ -40,7 +40,9 @@ State: auto/state.json holds:
   rounds     the summary of every round
 
 Usage (from the logo root):
-  autoround.py propose ROUND [--n 3] [--gens 18]
+  autoround.py propose ROUND [--n 3] [--gens 18] [--plan plan.json]
+    --plan: the round's corrections from its visual diagnosis, [{key, target, joint?, controls?,
+    edge? "x,y,r", diagnosis, correction}]; replaces the ranked choice of targets
   autoround.py merge ROUND TAG,TAG,... [--rejected TAG,...] [--seed FID,...]"""
 import argparse, json, os, random, subprocess, sys
 from concurrent.futures import ThreadPoolExecutor
@@ -136,8 +138,9 @@ def propose(A, S):
     json.dump(rows, open(f"{R}/rank.json", "w"), indent=1)
     open(f"{R}/rank.md", "w").write(f"Incumbent {inc['tag']}\n\n" + table(rows) + "\n")
     seeds = S.get("seeds", {})
-    chosen = []
-    for r in [r for r in rows if r["id"] in seeds] + [r for r in rows if r["id"] not in seeds]:
+    plan = json.load(open(A.plan)) if A.plan else None
+    chosen = [] if not plan else [p_["target"] for p_ in plan]
+    for r in ([] if plan else [r for r in rows if r["id"] in seeds] + [r for r in rows if r["id"] not in seeds]):
         if not r["id"].startswith("L") or len(chosen) >= A.n:
             continue
         if any(r["id"] in guards(c) or c in guards(r["id"]) for c in chosen):
@@ -148,18 +151,26 @@ def propose(A, S):
     # with each head variant in its crop that the incumbent does not already use
     ip, ih = inc.get("params", P0), inc.get("heads", H0)
     jobs = []
-    for t in chosen:
+    for t in ([] if plan else chosen):
         jobs.append((t, t, ip, ih))
         for h, v in HEAD_VARIANTS.items():
             if h in guards(t) and v["params"] != ip:
                 jobs.append((f"{t}+{v['name']}", t, v["params"], v["heads"]))
+    # a planned round (the round's visual diagnosis, LOOP.md): one job per planned correction,
+    # with the controls, joint neighbour and diagnosed location it names
+    pe = {}
+    for p_ in plan or []:
+        jobs.append((p_["key"], p_["target"], ip, ih)); pe[p_["key"]] = p_
     print("candidates", [j[0] for j in jobs], flush=True)
     summary = {"round": A.round, "incumbent": inc["tag"], "targets": {}}
     for key, t, pp, hh in jobs:
         # a round interrupted (a container restart) resumes: finished fits and renders are kept
         if os.path.exists(f"{R}/{key}/fit.json"):
             continue
-        rep = ["--init", seeds[t]["handle"], "--sigma", "0.4", "--crease-tol", "1.15"] if t in seeds and key == t else []
+        rep = ["--init", seeds[t]["handle"], "--sigma", "0.4", "--crease-tol", "1.15"] if t in seeds and key == t and not plan else []
+        rep += ["--causes", "auto/causes.json"]
+        if key in pe:
+            rep += sum(([f"--{k}", str(pe[key][k])] for k in ("controls", "joint", "edge") if pe[key].get(k)), [])
         # each round's own seed: the fit is deterministic, and the same seed from an unchanged incumbent re-found r19-L01's rejected handle in r20
         seed = ["--seed", str(int("".join(ch for ch in A.round if ch.isdigit()) or 0))]
         run([PY, "tools/lobefit.py", t, inc["spec"], f"{R}/{key}", "--gens", str(A.gens)] + seed + rep, f"{R}/{key}.log", env=ffd_env(pp, hh))
@@ -171,7 +182,7 @@ def propose(A, S):
         tag = f"{A.round}-{key}"
         if not os.path.exists(f"{R}/metrics-{tag}.json"):
             render_and_measure(tag, f"{R}/{key}/spec.json", f"{R}/renders", R, pp, inc.get("look"))
-        return key, dict(tag=tag, fit=fit, target=t, params=pp, heads=hh)
+        return key, dict(tag=tag, fit=fit, target=t, params=pp, heads=hh, plan=pe.get(key))
     with ThreadPoolExecutor(2) as ex:
         res = dict(ex.map(one, jobs))
     mb = json.load(open(inc["metrics"]))
@@ -191,10 +202,14 @@ def propose(A, S):
         mapping[tag] = {"X": xy[0], "Y": xy[1]}
         src = {inc["tag"]: inc["renders"], tag: f"{R}/renders"}
         foc = [t] + sorted(f for f in guards(t) if abs(next(x for x in rc if x["id"] == f)["iou"] - next(x for x in rows if x["id"] == f)["iou"]) >= 0.02)
+        pj = (r.get("plan") or {}).get("joint")
+        if pj:
+            foc = [t, pj, "|".join(sorted((t, pj)))] + [f for f in foc if f not in (t, pj)]
         run([PY, "tools/pair_pages.py", src[xy[0]], xy[0], src[xy[1]], xy[1], f"{R}/pair-{tag}", "--focus", ",".join(foc[:3])], f"{R}/{key}.log")
         rt = next(x for x in rc if x["id"] == t); rb = next(x for x in rows if x["id"] == t)
-        summary["targets"][key] = dict(tag=tag, target=t, params=r["params"], heads=r["heads"],
+        summary["targets"][key] = dict(tag=tag, target=t, params=r["params"], heads=r["heads"], plan=r.get("plan"),
                                      describe=r["fit"]["describe"] + hv, attribution=r["fit"]["attribution"], handle=r["fit"]["handle"],
+                                     handles=r["fit"].get("handles") or [r["fit"]["handle"]],
                                      target_before=dict(iou=rb["iou"], arc=rb["arc"], what=rb["what"]), target_after=dict(iou=rt["iou"], arc=rt["arc"], what=rt["what"]),
                                      gate_fails=fails, gains=gains, verdict_gates="REJECT" if fails else "pass")
     json.dump(mapping, open(f"{R}/mapping.json", "w"), indent=1)
@@ -232,7 +247,7 @@ def merge(A, S):
         base = json.load(open(inc["spec"]))
         for n in ("yellow", "blue"):
             base[n].setdefault("disp", [])
-        spec = K.apply(base, [summ["targets"][t]["handle"] for t in acc])
+        spec = K.apply(base, [hh for t in acc for hh in (summ["targets"][t].get("handles") or [summ["targets"][t]["handle"]])])
         tag = f"{A.round}-merged" if len(acc) > 1 else summ["targets"][acc[0]]["tag"]
         pp, hh = next(iter(var)) if var else (ip, inc.get("heads", H0))
         path = f"{R}/spec-{tag}.json"
@@ -266,6 +281,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser()
     ap.add_argument("cmd"); ap.add_argument("round"); ap.add_argument("accepted", nargs="?", default="")
     ap.add_argument("--n", type=int, default=3); ap.add_argument("--gens", type=int, default=18); ap.add_argument("--rejected"); ap.add_argument("--seed")
+    ap.add_argument("--plan")
     A = ap.parse_args()
     # one round at a time: a wake-up must not start a round while another is alive
     LOCK = "auto/LOCK"

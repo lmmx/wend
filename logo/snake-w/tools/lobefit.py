@@ -91,6 +91,13 @@ def main():
     # a repair fit (autoround.py seeds): start from a judged-closer but rejected handle, with a
     # narrower search and a tighter tolerance on the guards' clay crease
     ap.add_argument("--init"); ap.add_argument("--sigma", type=float, default=0.8); ap.add_argument("--crease-tol", type=float, default=1.4)
+    # a targeted correction (autoround.py --plan, from the round's visual diagnosis): only the
+    # controls the correction calls for; a neighbour fitted jointly (a junction needs both sides);
+    # the contour error at the diagnosed location (x, y, radius in reference px), weighted / 5
+    ap.add_argument("--controls"); ap.add_argument("--joint"); ap.add_argument("--edge")
+    # the critics' structured causes (auto/causes.json, autoround.py): a failure named on this
+    # target, its neighbours or their junctions tightens the guard for exactly that failure
+    ap.add_argument("--causes")
     A = ap.parse_args()
     os.makedirs(A.out, exist_ok=True)
     out = os.path.abspath(A.out)
@@ -116,16 +123,36 @@ def main():
             if "error" not in a2:
                 nbs.append((a2["a"], a2["b"]))
         h = K.make_handle(inc, att, att["K"], nbs)
+        hs = [h]
+        if A.joint:
+            jf = K.FEATS[K.FIDS.index(A.joint)]
+            ja = K.attribute(sid, st, psi, Lc, A.joint)
+            if "error" in ja:
+                print(A.joint, "(joint) not controllable:", ja["error"]); return
+            jn = [(a2["a"], a2["b"]) for g in K.FEATS if g["id"] not in (A.joint, A.target) and g["colour"] == jf["colour"] and g["id"].startswith("L")
+                  for a2 in [K.attribute(sid, st, psi, Lc, g["id"])] if "error" not in a2]
+            if jf["colour"] == tf["colour"]:
+                jn.append((att["a"], att["b"])); nbs.append((ja["a"], ja["b"])); h = K.make_handle(inc, att, att["K"], nbs); hs = [h]
+            hs.append(K.make_handle(inc, ja, ja["K"], jn))
+        sel = A.controls.split(",") if A.controls else list(K.NAMES)
+        cix = [K.NAMES.index(c) for c in sel]
+        tg = [A.target] + ([A.joint] if A.joint else [])
         # ---- the crop and its features
         x0, y0, x1, y1 = window(tf, A.pad)
+        if A.joint:
+            jx = window(jf, A.pad); x0, y0, x1, y1 = min(x0, jx[0]), min(y0, jx[1]), max(x1, jx[2]), max(y1, jx[3])
         clip = [int(x0), int(y0), int(x1), int(y1)]
         feats = []
         for g in K.FEATS:
             bx = g["bbox"]
             ix = max(0, min(bx[2], x1) - max(bx[0], x0)) * max(0, min(bx[3], y1) - max(bx[1], y0))
-            if g["id"] == A.target or ix > 0.3 * (bx[2] - bx[0]) * (bx[3] - bx[1]):
+            if g["id"] in tg or ix > 0.3 * (bx[2] - bx[0]) * (bx[3] - bx[1]):
                 feats.append(g["id"])
-        sc = K.Scorer(clip, feats)
+        edge = None
+        if A.edge:
+            ex_, ey_, er_ = (float(v) for v in A.edge.split(","))
+            edge = (A.target, ex_, ey_, er_)
+        sc = K.Scorer(clip, feats, edge)
         def measure(spec, wi, tag):
             w = W[wi % len(W)]
             p, s = f"{out}/w{w.wid}-{tag}.png", f"{out}/w{w.wid}-{tag}-shade.png"
@@ -136,35 +163,66 @@ def main():
         m0, ex0, f0 = measure(inc, 0, "inc")
         print(f"{A.target}: {att['strand']} stations {h['a']:.0f}..{h['b']:.0f} (ramps {h['ra']:.0f}, {h['rb']:.0f}; {att['frac']:.0%} of the lobe's pixels in this run, head {att['head_frac']:.0%}); crop {clip}; guards {[f for f in feats if f != A.target]}", flush=True)
         print("  incumbent:", {k: (round(v["iou"], 3), round(v["arc"], 1)) for k, v in m0.items()}, "sil", round(ex0["sil"], 4), "fold", f0, "press", ex0["press"], "corners", ex0["corners"], flush=True)
-        guards = [f for f in feats if f != A.target]
+        guards = [f for f in feats if f not in tg]
+        # causes -> guards: {cause: {where}} for the features and junctions in this crop
+        cz = {}
+        for c in (json.load(open(A.causes)) if A.causes and os.path.exists(A.causes) else []):
+            w = c["where"]
+            if all(p_ in feats for p_ in w.split("|")):
+                cz.setdefault(c["cause"], set()).add(w)
+        mass = cz.get("mass_distribution", set()) | cz.get("flat_top", set())
+        if cz:
+            print("  causes on record (guards tightened):", {k: sorted(v) for k, v in cz.items()}, flush=True)
+        if A.controls or A.joint or A.edge:
+            print(f"  targeted: controls {sel}; joint {A.joint or '-'}; edge {A.edge or '-'} (incumbent's error there {m0[A.target].get('edge')}); junctions {list(ex0['junction'])}", flush=True)
 
         def J(m, ex, fold, x):
             # the target's own clay crease counts too: the judges' most repeated shared fault is a
             # pinch or dimple inside a lobe (L13 / L14, L08), which no mask measure sees
-            c = cost_t(m[A.target]) + 0.4 * max(0.0, ex["crease"].get(A.target, 0.0) - 1.0); pen = 0.0
+            c = sum(cost_t(m[t]) + (1.2 if t in cz.get("crease", ()) else 0.4) * max(0.0, ex["crease"].get(t, 0.0) - 1.0)
+                    + (0.2 if t in cz.get("thinning", ()) else 0.0) * m[t].get("waist", 0.0) + (2.0 if t in mass else 0.0) * m[t].get("profile", 0.0) for t in tg); pen = 0.0
+            if edge:
+                c += abs(m[A.target]["edge"] or 0.0) / 5
             for g in guards:
                 a, b = m0[g], m[g]
                 pen += 5 * max(0.0, a["iou"] - b["iou"] - 0.005) + 0.04 * max(0.0, b["p95"] - a["p95"] - 1) + 0.05 * max(0.0, abs(b["arc"]) - abs(a["arc"]) - 2)
-                pen += 4 * max(0.0, a["solid"] - b["solid"] - 0.01) + 0.05 * max(0.0, b.get("waist", 0.0) - a.get("waist", 0.0) - 2)
+                pen += 4 * max(0.0, a["solid"] - b["solid"] - 0.01) + (0.15 if g in cz.get("thinning", ()) else 0.05) * max(0.0, b.get("waist", 0.0) - a.get("waist", 0.0) - (0 if g in cz.get("thinning", ()) else 2))
+                if g in mass:
+                    pen += 2.0 * max(0.0, b.get("profile", 0.0) - a.get("profile", 0.0) - 0.01)
             pen += 6 * max(0.0, ex0["sil"] - ex["sil"] - 0.002)
             for k, v in ex["intr"].items():
                 pen += 6 * max(0.0, v - ex0["intr"].get(k, 0) - 0.003)
             pen += max(0.0, fold - f0 - 200) / 2000
             pen += max(0.0, ex["press"] - ex0["press"] - 2.0) / 4.0
-            pen += 0.08 * max(0.0, ex["corners"] - ex0["corners"] - 1)
+            pen += (0.2 if cz.get("crossing_notch") else 0.08) * max(0.0, ex["corners"] - ex0["corners"] - (0 if cz.get("crossing_notch") else 1))
             pen += 0.5 * max(0.0, ex["bottom"] - ex0["bottom"] - 1)
-            pen += max(0.0, ex["stray"] - ex0["stray"] - 20) / 100
+            pen += max(0.0, ex["stray"] - ex0["stray"] - (0 if cz.get("stray_blob") else 20)) / (30 if cz.get("stray_blob") else 100)
             for g, cr in ex["crease"].items():
-                pen += 0.5 * max(0.0, cr / max(ex0["crease"].get(g, 0.6), 0.6) - A.crease_tol)
+                ct = (1.1, 1.5) if g in cz.get("crease", ()) else (A.crease_tol, 0.5)
+                pen += ct[1] * max(0.0, cr / max(ex0["crease"].get(g, 0.6), 0.6) - ct[0])
+            # junction creases (from round 22): a pinch where two lobes meet
+            for jk, cr in ex["junction"].items():
+                jt = (1.0, 1.5) if jk in cz.get("junction_pinch", ()) else (1.15, 0.5)
+                pen += jt[1] * max(0.0, cr / max(ex0["junction"].get(jk, 0.6), 0.6) - jt[0])
             reg = 0.01 * float(np.sum(np.square(x)))
             return c + pen + reg, c, pen, reg
 
+        def handles(x):
+            out_ = []
+            for k, hk in enumerate(hs):
+                p = {n: 0.0 for n in K.NAMES}
+                for j, c in zip(cix, x[k * len(cix):(k + 1) * len(cix)]):
+                    p[K.NAMES[j]] = float(c * K.SCALE[j])
+                out_.append(dict(hk, p=p))
+            return out_
+
         def f(x, wi):
-            h2 = dict(h, p={n: float(v) for n, v in zip(K.NAMES, x * K.SCALE)})
-            m, ex, fold = measure(K.apply(inc, [h2]), wi, "c")
+            m, ex, fold = measure(K.apply(inc, handles(x)), wi, "c")
             j, c, pen, reg = J(m, ex, fold, x)
             return j, dict(c=c, pen=pen, reg=reg, m=m, ex=ex, fold=fold)
-        j0 = J(m0, ex0, f0, np.zeros(len(K.NAMES)))
+        nx = len(cix) * len(hs)
+        lo_, hi_ = np.tile(K.LO[cix] / K.SCALE[cix], len(hs)), np.tile(K.HI[cix] / K.SCALE[cix], len(hs))
+        j0 = J(m0, ex0, f0, np.zeros(nx))
         t0 = time.time(); logl = []
         def log(g, best, F, sigma):
             line = f"gen {g:2d} best {best[0]:.3f} (target {best[2][1]['c']:.3f} guards {best[2][1]['pen']:.3f} reg {best[2][1]['reg']:.3f}) sigma {sigma:.2f} t {time.time() - t0:.0f}s"
@@ -174,19 +232,21 @@ def main():
         x0 = None
         if A.init:
             p0 = json.load(open(A.init))["p"]
-            x0 = np.array([p0.get(n, 0.0) for n in K.NAMES]) / K.SCALE
-            print(f"  repair: from {A.init} ({K.describe(dict(h, p={n: float(v) for n, v in zip(K.NAMES, x0 * K.SCALE)}))}), sigma {A.sigma}, crease tolerance {A.crease_tol}", flush=True)
-        best = cma(f, len(K.NAMES), A.sigma, K.LO / K.SCALE, K.HI / K.SCALE, A.gens, A.workers, A.seed, log, x0)
+            x0 = np.tile(np.array([p0.get(K.NAMES[j], 0.0) for j in cix]) / K.SCALE[cix], len(hs))
+            print(f"  repair: from {A.init} ({K.describe(handles(x0)[0])}), sigma {A.sigma}, crease tolerance {A.crease_tol}", flush=True)
+        best = cma(f, nx, A.sigma, lo_, hi_, A.gens, A.workers, A.seed, log, x0)
         x = best[1]
-        h["p"] = {n: float(v) for n, v in zip(K.NAMES, x * K.SCALE)}
-        spec = K.apply(inc, [h])
+        hs = handles(x); h = hs[0]
+        spec = K.apply(inc, hs)
         mb, exb, fb = best[2][1]["m"], best[2][1]["ex"], best[2][1]["fold"]
         json.dump(h, open(f"{out}/handle.json", "w"), indent=1)
+        json.dump(hs, open(f"{out}/handles.json", "w"), indent=1)
         json.dump(spec, open(f"{out}/spec.json", "w"))
-        rep = dict(target=A.target, attribution={k: v for k, v in att.items() if k != "K"}, handle=h, describe=K.describe(h), clip=clip, guards=guards,
+        rep = dict(target=A.target, joint=A.joint, controls=sel, edge=A.edge, attribution={k: v for k, v in att.items() if k != "K"}, handle=h, handles=hs,
+                   describe="; ".join(f"{hk['fid']}: {K.describe(hk)}" for hk in hs) if len(hs) > 1 else K.describe(h), clip=clip, guards=guards,
                    J0=j0[0], J=float(best[0]), before=m0, after=mb, ex_before=ex0, ex_after=exb, fold_before=f0, fold_after=fb, log=logl)
         json.dump(rep, open(f"{out}/fit.json", "w"), indent=1, default=float)
-        print(f"  {A.target}: J {j0[0]:.3f} -> {best[0]:.3f}; {K.describe(h)}")
+        print(f"  {A.target}: J {j0[0]:.3f} -> {best[0]:.3f}; {rep['describe']}" + (f"; edge error {m0[A.target]['edge']:+.1f} -> {mb[A.target]['edge']:+.1f} px" if edge else ""))
         for g in feats:
             a, b = m0[g], mb[g]
             print(f"    {g}: IoU {a['iou']:.3f} -> {b['iou']:.3f}, arc {a['arc']:+.1f} -> {b['arc']:+.1f}, p95 {a['p95']:.0f} -> {b['p95']:.0f}")

@@ -71,11 +71,26 @@ for p in range(0, len(feats), 6):
     last = feats[min(p + 5, len(feats) - 1)]["id"]
     page(rows, f"features {feats[p]['id']} .. {last}", f"{out}/page{p // 6 + 1}-{feats[p]['id']}-{last}.png")
 if focus:
+    import numpy as np
+    from skimage import morphology
     rows = []
     for f in [g for g in feats if g["id"] in focus]:
         bx = window(f, 30)
         t = [fit(ref.crop(bx), 520, 640)] + [fit(col[k].crop(bx), 520, 640) for k in "XY"]
         t += [fit(Image.open(f"{src[k][0]}/{src[k][1]}-{m}-{f['id']}.png").convert("RGB"), 520, 640) for m in ("clay", "zebra") for k in "XY"]
         rows.append((f["id"], t))
+    # a junction "A|B": the window round where the two features meet in the reference, cut from
+    # the whole-frame clay and zebra (a pinch between two lobes is at neither lobe's centre)
+    ids = [g["id"] for g in feats]
+    for j in [x for x in focus if "|" in x]:
+        a, b = j.split("|")
+        J = morphology.dilation(lab == ids.index(a) + 1, morphology.disk(4)) & morphology.dilation(lab == ids.index(b) + 1, morphology.disk(4))
+        if J.sum() < 5:
+            continue
+        ys, xs = np.nonzero(J)
+        bx = (max(0, xs.min() - 45), max(0, ys.min() - 45), min(1448, xs.max() + 45), min(1086, ys.max() + 45))
+        t = [fit(ref.crop(bx), 520, 640)] + [fit(col[k].crop(bx), 520, 640) for k in "XY"]
+        t += [fit(whole(m, k).crop(bx), 520, 640) for m in ("clay", "zebra") for k in "XY"]
+        rows.append((j, t))
     page(rows, "enlarged: " + ", ".join(focus), f"{out}/page4-focus.png")
 print("pair pages in", out)

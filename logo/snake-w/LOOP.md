@@ -47,6 +47,27 @@ The starting point is what already exists:
 
   Rounds completed and global appearance statistics are not progress.
 
+## The round: look, describe, act, verify, reassess
+
+The visual diagnosis comes before the optimisation. The optimiser does not generate candidates for the judge to reject afterwards.
+
+1. **LOOK.** `diag_pages.py RENDERS TAG auto/rN/diag` builds pages of the incumbent beside the reference: reference | colour | clay | zebra | overlay. The overlay draws the reference outline in red and the current one in green. The pages cover the whole frame, every feature, every junction between neighbouring features, and the negative spaces. A fresh Sonnet (xhigh) critic inspects them with the diagnosis prompt (the round-22 prompt is in `auto/r22/diagnosis.md`'s header). It ranks the discrepancies that matter. For each it gives:
+   - the feature or junction;
+   - what the reference shows and what the current shows;
+   - the specific error and where on the lobe;
+   - its magnitude, severity and confidence;
+   - the geometric correction, and the neighbours it affects;
+   - coupled problems.
+2. **DESCRIBE.** Check the critic's claims against the evaluator: extents, arcs, tilt, widths. Write `auto/rN/diagnosis.md`. Choose the round's corrections from the ranked discrepancies, not from lobe IDs. Rank by visible impact, measured magnitude, and whether the controls can make the change. A lobe can carry several distinct errors. Junctions and negative spaces count. Take up to three that do not share a crop.
+3. **ACT.** For each chosen correction, write a `plan.json` entry: observed mismatch → desired change → responsible surface → controls → expected neighbour effects. The entry holds `target`, `joint` (a coupled neighbour fitted together), `controls` (only those the correction calls for) and `edge` ("x,y,r": the diagnosed location, weighted in the fit). Run `autoround.py propose rN --plan auto/rN/plan.json`.
+   - If the change cannot be expressed by the handles, name the missing freedom and add it. Do not search the same space with another seed.
+   - A failure that has repeated is evidence. Change the correction: fit it jointly with a neighbour, change the controls, or defer it.
+4. **VERIFY.** Real colour, clay and zebra renders, then all features measured. The blind pair judge sees the targets and the targeted junction enlarged. It says which is closer, and what still differs in the closer one: outline, mass distribution or junction curvature. Accept only if the target improves without a new junction artefact or other defect.
+5. **REASSESS.**
+   - **Ledger:** fill in the round's rows of `auto/DISCREPANCIES.md` (feature | observed error | reference target | planned correction | attempted change | visual result | verdict | remaining error).
+   - **Causes:** record every rejection's defect in `auto/causes.json` as a structured cause (`junction_pinch`, `crease`, `thinning`, `stray_blob`, `crossing_notch`, `mass_distribution`, `flat_top`) at its feature or junction. Every later fit whose crop holds that feature or junction tightens the guard for exactly that cause (`lobefit --causes`).
+   - **Next round:** rebuild the diagnosis pages from the new incumbent, and diagnose again.
+
 ## Where the state lives (read this first)
 
 **Workspace (WS):** a working copy of `logo/snake-w/`, with the snakes venv beside it. The repository's `logo/snake-w/` holds the same tools, and the `auto/` records are synced into `logo/snake-w/auto/`.

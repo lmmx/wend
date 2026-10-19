@@ -1,0 +1,18 @@
+[
+ {"where": "L15|L16", "cause": "junction_pinch", "round": "r16", "candidate": "r16-L16", "note": "a sharper dark pinch at L16's lower right, a knotted zebra swirl"},
+ {"where": "L15|L16", "cause": "junction_pinch", "round": "r17", "candidate": "r17-L16", "note": "a small notch on the right edge and a dark crease at the lower right in clay"},
+ {"where": "L15|L16", "cause": "junction_pinch", "round": "r20", "candidate": "r20-L16", "note": "a notch where L15 meets L16, broken stripes in zebra"},
+ {"where": "L16", "cause": "flat_top", "round": "r16", "candidate": "r16-L16", "note": "flatter and more slanted along its top edge"},
+ {"where": "L01", "cause": "thinning", "round": "r12", "candidate": "r12-L01", "note": "thinner and pinched in its upper half, a notch at the head"},
+ {"where": "L01", "cause": "stray_blob", "round": "r16", "candidate": "r16-L01", "note": "the blue tail's end out past the far side of the yellow neck, under the jaw"},
+ {"where": "L01", "cause": "flat_top", "round": "r17", "candidate": "r17-L01", "note": "a flat-topped shoulder at the top right, paler, facing the light"},
+ {"where": "L01", "cause": "mass_distribution", "round": "r19", "candidate": "r19-L01", "note": "a slimmer diagonal band, paler; the reference's collar is a fat cushion bulging right"},
+ {"where": "L05", "cause": "crossing_notch", "round": "r18", "candidate": "r18-L05", "note": "a torn zebra seam where L05 emerges from under the yellow"},
+ {"where": "L05", "cause": "crease", "round": "r19", "candidate": "r19-L05", "note": "a vertical crease on its left and a notch across its top right"},
+ {"where": "L06", "cause": "crease", "round": "r18", "candidate": "r18-L05", "note": "a sharper crease along the underside of L06"},
+ {"where": "L06", "cause": "mass_distribution", "round": "r16", "candidate": "r16-L06", "note": "flatter and wedge-like, the lower right tucked in"},
+ {"where": "L04", "cause": "crossing_notch", "round": "r14", "candidate": "r14-L04", "note": "a notch on the upper-left flank, broken zebra stripe"},
+ {"where": "L13", "cause": "crease", "round": "r12", "candidate": "r12-L13", "note": "a longer diagonal crease, a zebra spiral"},
+ {"where": "L14", "cause": "crease", "round": "r15", "candidate": "r15-L14", "note": "a smeared stripe at the crease where yellow meets blue"},
+ {"where": "L11", "cause": "crease", "round": "r13", "candidate": "r13-L11", "note": "a pinch at the upper left where the yellow meets it"}
+]

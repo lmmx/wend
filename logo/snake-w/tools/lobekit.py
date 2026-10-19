@@ -103,7 +103,7 @@ def arcs(R, K, length=40):
     k = int(np.argmax(np.abs(avg)))
     phi = filters.gaussian(sdf(R), 2); gy, gx = np.gradient(phi)
     ang = np.degrees(np.arctan2(-gy[iy[k], ix[k]], gx[iy[k], ix[k]])) % 360
-    return dict(v=v, mean_abs=float(np.abs(v).mean()), worst=float(avg[k]), at=(float(c[k, 1]), float(c[k, 0])),
+    return dict(v=v, pts=c[:, ::-1], mean_abs=float(np.abs(v).mean()), worst=float(avg[k]), at=(float(c[k, 1]), float(c[k, 0])),
                 faces=COMPASS[int(((ang + 22.5) % 360) // 45)], faces_deg=float(ang))
 
 
@@ -147,6 +147,14 @@ def waist(R, K, nb=10):
     wR, wK = widths(R, K, nb)
     dip = lambda w: 0.5 * (w[:-2] + w[2:]) - w[1:-1]
     return float(max(0.0, np.max(dip(wK) - dip(wR))))
+
+
+def profile(R, K, nb=10):
+    """how far K's width profile along R's axis is from R's: mean |width difference| / R's mean
+    width. A lobe with the right outline area but its mass in the wrong place (a flat-topped
+    shoulder, a belly too low, a tapered end where the reference is round) reads here"""
+    wR, wK = widths(R, K, nb)
+    return float(np.abs(wK - wR).mean() / max(wR.mean(), 1.0))
 
 
 class Worker:
@@ -379,8 +387,13 @@ class Scorer:
     IoU, boundary distances, centroid, arcs (both ways, arcs2), waist; silhouette IoU, negative-space
     intrusion, clay crease, stray blobs (stray())"""
 
-    def __init__(self, clip, feats):
+    def __init__(self, clip, feats, edge=None):
+        """edge: (fid, x, y, r): also score fid's signed contour error along the reference outline
+        within r px of (x, y) (reference px), the location a visual diagnosis named"""
         self.clip = clip; x0, y0, x1, y1 = clip
+        self.edge = edge
+        # the registry's neighbour pairs inside the crop: their junctions are scored for creases
+        self.pairs = sorted({tuple(sorted((f["id"], n))) for f in FEATS if f["id"] in feats for n in f.get("neighbours", []) if n in feats})
         self.lab = LAB[y0:y1, x0:x1]
         self.feats = feats
         self.ref = {}
@@ -407,22 +420,28 @@ class Scorer:
             R, bR, dR, c = self.ref[fid]
             K = match(L[c], R)
             if K is None:
-                res[fid] = dict(iou=0.0, p95=99.0, mean=99.0, dx=50.0, dy=50.0, arc=-30.0, arc_mean=30.0, elong=1.0, elong_ref=1.0, tilt=45.0, solid=0.5, solid_ref=0.95, waist=30.0); continue
+                res[fid] = dict(iou=0.0, p95=99.0, mean=99.0, dx=50.0, dy=50.0, arc=-30.0, arc_mean=30.0, elong=1.0, elong_ref=1.0, tilt=45.0, solid=0.5, solid_ref=0.95, waist=30.0, profile=1.0, edge=None); continue
             bK = boundary(K); dK = ndimage.distance_transform_edt(~bK)
             d = np.r_[dK[bR], dR[bK]]
             ry, rx = np.nonzero(R); ky, kx = np.nonzero(K)
             A = arcs2(R, K)
             pr, pk = self.props[fid], measure.regionprops(K.astype(int))[0]
-            res[fid] = dict(iou=float((K & R).sum() / (K | R).sum()), p95=float(np.percentile(d, 95)), mean=float(d.mean()),
+            if self.edge and self.edge[0] == fid:
+                x0, y0 = self.clip[:2]
+                near = np.hypot(A["pts"][:, 0] - (self.edge[1] - x0), A["pts"][:, 1] - (self.edge[2] - y0)) < self.edge[3]
+                edge_err = float(A["v"][near].mean()) if near.any() else 0.0
+            else:
+                edge_err = None
+            res[fid] = dict(iou=float((K & R).sum() / (K | R).sum()), p95=float(np.percentile(d, 95)), mean=float(d.mean()), edge=edge_err,
                             dx=float(kx.mean() - rx.mean()), dy=float(ky.mean() - ry.mean()), arc=A["worst"], arc_mean=A["mean_abs"],
                             elong=float(pk.axis_major_length / max(pk.axis_minor_length, 1)), elong_ref=pr[0],
                             tilt=float((np.degrees(pk.orientation) - pr[1] + 90) % 180 - 90), solid=float(pk.solidity), solid_ref=pr[2],
-                            waist=waist(R, K))
+                            waist=waist(R, K), profile=profile(R, K))
             if shade is not None:
                 res[fid]["_K"] = K
         blue, yellow = colour_masks(im)
         sil = ndimage.binary_fill_holes(morphology.closing(blue | yellow, morphology.disk(4)))
-        ex = {"sil": float((sil & self.sil).sum() / (sil | self.sil).sum()), "intr": {k: float(sil[m].mean()) for k, m in self.neg.items()}, "crease": {},
+        ex = {"sil": float((sil & self.sil).sum() / (sil | self.sil).sum()), "intr": {k: float(sil[m].mean()) for k, m in self.neg.items()}, "crease": {}, "junction": {},
               "corners": corners(blue, yellow),
               "stray": stray(blue, self.room["blue"]) + stray(yellow, self.room["yellow"]),
               # the lowest body pixel row in the crop: the floor shadow is painted from the model's lowest feet (scene.js
@@ -431,10 +450,18 @@ class Scorer:
         if shade is not None:
             g = np.asarray(Image.open(shade).convert("L")).astype(float)
             lap = np.abs(filters.laplace(filters.gaussian(g, 1.0)))
-            for fid, r in res.items():
-                K = r.pop("_K", None)
+            Ks = {fid: r.pop("_K", None) for fid, r in res.items()}
+            for fid, K in Ks.items():
                 if K is None:
                     continue
                 inner = morphology.erosion(K, morphology.disk(6))
                 ex["crease"][fid] = float(np.percentile(lap[inner], 99)) if inner.any() else 0.0
+            # where two neighbouring lobes meet: the crease measure above stops 6 px inside each
+            # lobe, so a pinch on the junction itself (r16, r17, r20: L15|L16) was in neither
+            for a, b in self.pairs:
+                if Ks.get(a) is None or Ks.get(b) is None:
+                    continue
+                band = morphology.dilation(Ks[a], morphology.disk(5)) & morphology.dilation(Ks[b], morphology.disk(5))
+                if band.sum() > 20:
+                    ex["junction"][f"{a}|{b}"] = float(np.percentile(lap[band], 99))
         return res, ex

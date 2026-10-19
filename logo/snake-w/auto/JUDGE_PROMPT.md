@@ -15,3 +15,4 @@ Reply with exactly this, in markdown:
 1. A table with one row per feature (all 18, in order): | ID | closer to the reference: X, Y or same | how much closer: 0-3 | what differs between X and Y, relative to the reference | severity of X vs the reference, 0-5 | severity of Y vs the reference, 0-5 |
 2. The whole frame: which is closer overall, and why, in two or three sentences.
 3. Any place where one of them introduces a defect the other does not have.
+4. The remaining discrepancy: for each enlarged row on page4-focus.png (features, and junctions named "A|B"), in whichever of X and Y is closer: what still differs from the reference, concretely (where on the lobe, which way, roughly how much), and whether it is the outline, the mass distribution (where the lobe is full or thin) or the junction's curvature (how two lobes meet).

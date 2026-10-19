@@ -62,6 +62,9 @@ for await (const line of rl) {
       await p2.waitForFunction(() => window.__ready === true, null, { timeout: 180000 });
       await p2.screenshot({ path: req.out, clip: { x: c[0], y: c[1], width: c[2] - c[0], height: c[3] - c[1] } });
       await p2.close(); overrides.delete(key);
+    } else if (req.rings) {
+      // the strands' body rings (ffd-flat.html __rings), written as JSON
+      writeFileSync(req.rings, JSON.stringify(await page.evaluate((s) => window.__rings(s), spec)));
     } else if (req.ids) {
       // the surface-point buffer (ffd-flat.html __ids): raw RGBA bytes of the clip, rows from the top
       const r = await page.evaluate(([s, cl]) => window.__ids(s, cl), [spec, c]);

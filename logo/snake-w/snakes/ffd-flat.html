@@ -282,5 +282,18 @@ window.__depth = () => {
   for (let k = 0; k < out.length; k += 0x8000) str += String.fromCharCode.apply(null, out.subarray(k, k + 0x8000));
   return { w: W, h: H, data: btoa(str) };
 };
+// each strand's swept body rings and their own stations (tools/hybrid.py deforms them): rings
+// as float32 bytes in base64, m rings of `radial` vertices after the 13 snout-cap rings
+window.__rings = (spec) => {
+  const b = build(spec, null), out = {};
+  for (const name of ["yellow", "blue"]) {
+    const S = b.surfaces[name], m = S.centre.pts.length, R = S.rings.slice(13, 13 + m), f = new Float32Array(m * S.radial * 3);
+    R.forEach((ring, i) => ring.forEach((p, j) => f.set(p, 3 * (i * S.radial + j))));
+    const u = new Uint8Array(f.buffer); let str = "";
+    for (let k = 0; k < u.length; k += 0x8000) str += String.fromCharCode.apply(null, u.subarray(k, k + 0x8000));
+    out[name] = { m, radial: S.radial, s: S.centre.s, rings: btoa(str), centres: S.centres.slice(13, 13 + m) };
+  }
+  return out;
+};
 window.__ready = true;
 </script>

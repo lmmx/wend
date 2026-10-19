@@ -94,6 +94,31 @@ def lobe_f(P, ctrl, rr, ss):
     return (rho - 1.0) * r_ * jnp.minimum(ss[0], ss[1])
 
 
+HYB = {"yellow": ["L04", "L06"], "blue": ["L05"]}
+JUNCTIONS = [("L04", "L05"), ("L05", "L06"), ("L04", "L06")]
+
+
+def hybrid_weight(name, jw=0.0, grow=20, band=8, blur=10.0):
+    """the hybrid's weight over the frame (1448 x 1086) for a strand's region: 1 over its lobes'
+    reference masks grown by `grow` px (so an outline may move in or out), 0 in a band over each
+    junction (`jw` over the same-strand L04|L06 one), blurred so the deformation tapers smoothly;
+    no free parameters but jw"""
+    lab = K.LAB
+    W = np.zeros(lab.shape, np.float32)
+    for fid in HYB[name]:
+        W = np.maximum(W, ndimage.binary_dilation(lab == K.FIDS.index(fid) + 1, iterations=grow))
+    for a, b in JUNCTIONS:
+        A = ndimage.binary_dilation(lab == K.FIDS.index(a) + 1, iterations=band); B = ndimage.binary_dilation(lab == K.FIDS.index(b) + 1, iterations=band)
+        same = (a, b) == ("L04", "L06")
+        W = np.where(A & B, W * (jw if same else 0.0), W)
+    return np.clip(ndimage.gaussian_filter(W, blur), 0, 1).astype(np.float32)
+
+
+def hybrid(fc, tube, w, alpha):
+    """the incumbent's smooth tube moved towards the cushions where w > 0: S = S_inc + alpha w delta"""
+    return tube + alpha * w * (fc - tube)
+
+
 def press(fa, fb, k):
     """the two snakes pressed against each other: where their cushions overlap, each is cut back
     to the surface halfway between them (the bisector of the two fields), with a smooth maximum
@@ -274,11 +299,16 @@ class Ray:
                 n_ = [int(np.ceil((v.max() - v.min() + 2 * m_) / h)) + 1 for v in (sx, sy, sz)]
                 self.blocks[L["id"]] = tuple(min(a, b) for a, b in zip(n_, self.shape))
         self.xs, self.ys = xs, ys
-        self.br = {}
+        self.br = {}; self.hy = {}
         for name, cfg in P.items():
             g = bridge_geom(spec, name, cfg["range"], np.asarray(self.P))
             tb, ends, _ = bridge_f(g, cfg["rb"], cfg["ramp"], cfg.get("overlap", 3.0))
             self.br[name] = (jnp.asarray(tb), jnp.asarray(ends))
+            if cfg.get("hybrid"):
+                tu, _, _ = bridge_f(g, 1.0, cfg["ramp"], cfg.get("overlap", 3.0))   # the full tube: the incumbent's own
+                Wf = hybrid_weight(name, cfg["hybrid"].get("jw", 0.0))
+                Wg = ndimage.map_coordinates(Wf, [np.broadcast_to(ys[None, :], (len(xs), len(ys))), np.broadcast_to(xs[:, None], (len(xs), len(ys)))], order=1)   # the grid's (x, y) columns
+                self.hy[name] = (jnp.asarray(tu.reshape(self.shape)), jnp.asarray(np.repeat(Wg[:, :, None], self.shape[2], 2)), jnp.asarray(Wf), float(cfg["hybrid"]["alpha"]))
         # the fixed scene: the strands with the regions cut out, and the heads (ffd-flat.html)
         sl = (slice(y0, y1), slice(x0, x1))
         self.fcol = np.asarray(Image.open(f"{FIXED}/cut.png").convert("RGB"))[sl]
@@ -353,12 +383,29 @@ class Ray:
         prs = [(i, j, k) for (i, j), k in zip(sa[0], pka)], [(i, j, k) for (i, j), k in zip(sb[0], pkb)]
         pfa = lambda Q: self.point_field(Q, tba.reshape(self.shape), ea, la, prs[0])
         pfb = lambda Q: self.point_field(Q, tbb.reshape(self.shape), eb, lb, prs[1])
+        na, nb = self.names
+        if na in self.hy:
+            tu, W3, Wf, al = self.hy[na]; fa = jnp.where(ea.reshape(self.shape), fa, hybrid(fa, tu, W3, al)); pfa = self._hyb_pf(pfa, na)
+        if nb in self.hy:
+            tu, W3, Wf, al = self.hy[nb]; fb = jnp.where(eb.reshape(self.shape), fb, hybrid(fb, tu, W3, al)); pfb = self._hyb_pf(pfb, nb)
         if kp > 0:
             ga, gb = press(fa, fb, kp), press(fb, fa, kp)
             qa, qb = (lambda Q: press(pfa(Q), pfb(Q), kp)), (lambda Q: press(pfb(Q), pfa(Q), kp))
         else:
             ga, gb, qa, qb = fa, fb, pfa, pfb
         return self._cast(ga, qa), self._cast(gb, qb)
+
+    def _hyb_pf(self, pf, name):
+        from jax.scipy.ndimage import map_coordinates as mc
+        tu, W3, Wf, al = self.hy[name]
+        def q(Pt):
+            c = [((Pt @ jnp.asarray(SCR_X, jnp.float32)) - self.xs[0]) / self.h, ((Pt @ jnp.asarray(SCR_Y, jnp.float32)) - self.ys[0]) / self.h,
+                 (self.zs[0] - Pt @ jnp.asarray(VIEW, jnp.float32)) / self.h]
+            t = mc(tu, c, order=1, mode="nearest")
+            w = mc(Wf, [Pt @ jnp.asarray(SCR_Y, jnp.float32), Pt @ jnp.asarray(SCR_X, jnp.float32)], order=1, mode="nearest")
+            fc = pf(Pt)
+            return jnp.where(fc >= 1.0, fc, hybrid(fc, t, w, al))
+        return q
 
     def point_field(self, Pt, tb3, ends, lobes, pairs):
         """the strand's field at any points: the lobes exact, the bridge interpolated from the grid"""
@@ -426,6 +473,12 @@ def mesh(spec, P, vox=1.25, smooth=8, pad=30.0):
             fn = jax.jit(lambda Q, t, e: strand_field(Q, t, e, lobes_, pairs_))
             return np.concatenate([np.asarray(fn(jnp.asarray(Pp[i:i + 400000]), jnp.asarray(tb_[i:i + 400000]), jnp.asarray(ends_[i:i + 400000]))) for i in range(0, len(Pp), 400000)]).reshape(sh), tb_, w_
         f, tb, w = field_on(name, cfg)
+        if cfg.get("hybrid"):
+            gm_ = bridge_geom(spec, name, cfg["range"], Pp)
+            tu, ends_, _ = bridge_f(gm_, 1.0, cfg["ramp"], cfg.get("overlap", 3.0))
+            Wf = hybrid_weight(name, cfg["hybrid"].get("jw", 0.0))
+            wp = ndimage.map_coordinates(Wf, [Pp @ SCR_Y, Pp @ SCR_X], order=1, mode="nearest").reshape(sh)
+            f = np.where(ends_.reshape(sh), f, np.asarray(hybrid(f, tu.reshape(sh), wp, float(cfg["hybrid"]["alpha"]))))
         # the press against the other snake (press(), the same as the ray-cast's)
         kp = float(max(c_.get("press", 0.0) for c_ in P.values()))
         if kp > 0:

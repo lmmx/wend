@@ -1,9 +1,9 @@
 {
  "incumbent": {
-  "tag": "r24-L16+L15",
-  "spec": "auto/r24/spec-r24-L16+L15.json",
-  "renders": "auto/r24/renders",
-  "metrics": "auto/r24/metrics-r24-L16+L15.json",
+  "tag": "r26-L15+L14",
+  "spec": "auto/r26/spec-r26-L15+L14.json",
+  "renders": "auto/r26/renders",
+  "metrics": "auto/r26/metrics-r26-L15+L14.json",
   "params": "w-final.params.json",
   "heads": "heads-final.json",
   "look": "snakes/w-meshshadow.look.json",
@@ -20,7 +20,7 @@
   "L09": 2,
   "L14": 2,
   "L06": 2,
-  "L07": 2,
+  "L07": 3,
   "L01": 3,
   "L12": 1,
   "L15": 2,
@@ -326,6 +326,17 @@
     "L01"
    ],
    "verdict": "new incumbent r24-L16+L15"
+  },
+  {
+   "round": "r26",
+   "incumbent_before": "r24-L16+L15",
+   "accepted": [
+    "L15+L14"
+   ],
+   "rejected": [
+    "L07"
+   ],
+   "verdict": "new incumbent r26-L15+L14"
   }
  ],
  "seeds": {}

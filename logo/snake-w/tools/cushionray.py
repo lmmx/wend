@@ -94,6 +94,14 @@ def lobe_f(P, ctrl, rr, ss):
     return (rho - 1.0) * r_ * jnp.minimum(ss[0], ss[1])
 
 
+def press(fa, fb, k):
+    """the two snakes pressed against each other: where their cushions overlap, each is cut back
+    to the surface halfway between them (the bisector of the two fields), with a smooth maximum
+    of width k, so both meet in a flattened contact face and a groove, as the reference's
+    balloons do, instead of two solids passing through each other (k <= 0: no press)"""
+    return -smin(-fa, -0.5 * (fa - fb), k)
+
+
 def strand_field(P, tb, ends, lobes, pairs):
     """lobes: [(ctrl, rr, ss, k)], pairs: [(i, j, k)]"""
     ls = [lobe_f(P, c, r, s) for c, r, s, _ in lobes]
@@ -279,7 +287,7 @@ class Ray:
         self.fz = (DIST0 - np.load(f"{FIXED}/cut-depth.npy")[sl]).astype(np.float32)   # -inf where empty
         self.coef = np.load(f"{FIXED}/shade_coef.npy")
         self.names = list(P)
-        self._col = jax.jit(self._columns, static_argnums=(4, 5))
+        self._both_j = jax.jit(self._both, static_argnums=(2, 3, 4))
 
     def _origin(self, ctrl, size):
         C_ = bern(jnp.linspace(0, 1, M)) @ ctrl
@@ -288,7 +296,8 @@ class Ray:
         k = jnp.round((self.zs[0] - c[2]) / self.h).astype(jnp.int32)
         return [jnp.clip(v - s // 2, 0, n - s) for v, s, n in zip((i, j, k), size, self.shape)]
 
-    def _columns(self, tb, ends, lobes, pk, pidx, sizes):
+    def _vol(self, tb, ends, lobes, pk, pidx, sizes):
+        """a strand's field on the grid, each lobe on its own block"""
         tb3 = tb.reshape(self.shape); f = tb3
         o = [self._origin(c, sz) for (c, _, _, _), sz in zip(lobes, sizes)]
         blk = lambda A, oo, sz: jax.lax.dynamic_slice(A, oo + [0] * (A.ndim - 3), list(sz) + list(A.shape[3:]))
@@ -302,7 +311,11 @@ class Ray:
                     c2, r2, s2, _ = lobes[m_]
                     fb = jnp.minimum(fb, smin(l, lobe_f(Pb, c2, r2, s2).reshape(sz), kk))
             f = jax.lax.dynamic_update_slice(f, fb, o[n_])
-        f = jnp.where(ends.reshape(self.shape), jnp.maximum(f, 1.0), f)
+        return jnp.where(ends.reshape(self.shape), jnp.maximum(f, 1.0), f)
+
+    def _cast(self, f, pfun):
+        """the columns' first hit on the grid field f, refined on the exact field pfun (points ->
+        values), its normal, and the field's column minimum"""
         # the first sample inside, from the camera (the columns are sampled every h px, densely:
         # no step relies on the field being a true distance; the cushions are > 30 px thick)
         inside = f < 0
@@ -316,23 +329,36 @@ class Ray:
         I, J = jnp.meshgrid(jnp.arange(self.shape[0]), jnp.arange(self.shape[1]), indexing="ij")
         X = jnp.asarray(self.xs, jnp.float32)[I]; Y = jnp.asarray(self.ys, jnp.float32)[J]
         sx, sy, vw = (jnp.asarray(v, jnp.float32) for v in (SCR_X, SCR_Y, VIEW))
-        pairs = [(i, j, kk) for (i, j), kk in zip(pidx, pk)]
         def pf(Z):
             Pt = (X[..., None] * sx + Y[..., None] * sy + Z[..., None] * vw).reshape(-1, 3)
-            return self.point_field(Pt, tb3, ends, lobes, pairs).reshape(Z.shape), Pt
+            return pfun(Pt).reshape(Z.shape)
         for _ in range(2):
             zc = zb + (za - zb) * fb / jnp.minimum(fb - fa, -1e-6)
-            fc, _ = pf(zc)
+            fc = pf(zc)
             out = fc > 0
             za, fa = jnp.where(out, zc, za), jnp.where(out, fc, fa)
             zb, fb = jnp.where(out, zb, zc), jnp.where(out, fb, fc)
         z = jnp.where(k > 0, zb + (za - zb) * fb / jnp.minimum(fb - fa, -1e-6), self.zs[0])
         # the outward normal: the exact field's gradient at the hit (autodiff), in the view's axes
         Pt = (X[..., None] * sx + Y[..., None] * sy + z[..., None] * vw).reshape(-1, 3)
-        gr = jax.grad(lambda Q: self.point_field(Q, tb3, ends, lobes, pairs).sum())(Pt).reshape(self.shape[:2] + (3,))
+        gr = jax.grad(lambda Q: pfun(Q).sum())(Pt).reshape(self.shape[:2] + (3,))
         n = jnp.stack([gr @ sx, -(gr @ sy), gr @ vw], -1)
         g = f.min(-1)
         return g, jnp.where(has, z, -1e9), n
+
+    def _both(self, aa, ab, kp, sa, sb):
+        """both strands' columns; sa, sb: the static parts (pair indices, block sizes); kp the press"""
+        (tba, ea, la, pka), (tbb, eb, lb, pkb) = aa, ab
+        fa = self._vol(tba, ea, la, pka, *sa); fb = self._vol(tbb, eb, lb, pkb, *sb)
+        prs = [(i, j, k) for (i, j), k in zip(sa[0], pka)], [(i, j, k) for (i, j), k in zip(sb[0], pkb)]
+        pfa = lambda Q: self.point_field(Q, tba.reshape(self.shape), ea, la, prs[0])
+        pfb = lambda Q: self.point_field(Q, tbb.reshape(self.shape), eb, lb, prs[1])
+        if kp > 0:
+            ga, gb = press(fa, fb, kp), press(fb, fa, kp)
+            qa, qb = (lambda Q: press(pfa(Q), pfb(Q), kp)), (lambda Q: press(pfb(Q), pfa(Q), kp))
+        else:
+            ga, gb, qa, qb = fa, fb, pfa, pfb
+        return self._cast(ga, qa), self._cast(gb, qb)
 
     def point_field(self, Pt, tb3, ends, lobes, pairs):
         """the strand's field at any points: the lobes exact, the bridge interpolated from the grid"""
@@ -360,14 +386,18 @@ class Ray:
     def render(self, P):
         """colour (RGB), Lambert shade and packed view-space normals of the crop, with the cushions"""
         col, sh, nm, zb = self.fcol.copy(), self.fsh.copy(), self.fnm.copy(), self.fz.copy()
+        args, stat = [], []
         for name in self.names:
             tb, ends = self.br[name]
             lobes, pairs = packed(P[name])
-            sizes = tuple(self.blocks[L["id"]] for L in P[name]["lobes"])
-            g, z, n = (np.asarray(a) for a in self._col(tb, ends, lobes, [k for _, _, k in pairs], tuple((i, j) for i, j, _ in pairs), sizes))
+            args.append((tb, ends, lobes, [k for _, _, k in pairs])); stat.append((tuple((i, j) for i, j, _ in pairs), tuple(self.blocks[L["id"]] for L in P[name]["lobes"])))
+        kp = float(max(P[n].get("press", 0.0) for n in self.names))
+        res = self._both_j(args[0], args[1], kp, stat[0], stat[1])
+        for name, (g, z, n) in zip(self.names, res):
+            g, z, n = np.asarray(g), np.asarray(z), np.asarray(n)
             # depth: carried out past the outline so that upsampling does not pull it to the void
             zf = z.copy()
-            for _ in range(3):
+            for _ in range(3):  # noqa
                 zf = np.where(zf > -1e8, zf, ndimage.maximum_filter(zf, size=3))
             G, Z, N = self.up(g), self.up(zf), self.up(n)
             N = N / np.maximum(np.linalg.norm(N, axis=-1, keepdims=True), 1e-9)
@@ -389,11 +419,19 @@ def mesh(spec, P, vox=1.25, smooth=8, pad=30.0):
         axes = [np.arange(g0[k], g1[k], vox) for k in range(3)]
         G = np.stack(np.meshgrid(*axes, indexing="ij"), -1).astype(np.float32); sh = G.shape[:3]
         Pp = G.reshape(-1, 3)
-        gm = bridge_geom(spec, name, cfg["range"], Pp)
-        tb, ends, w = bridge_f(gm, cfg["rb"], cfg["ramp"], cfg.get("overlap", 3.0))
-        lobes, pairs = packed(cfg)
-        fn = jax.jit(lambda Q, t, e: strand_field(Q, t, e, lobes, pairs))
-        f = np.concatenate([np.asarray(fn(jnp.asarray(Pp[i:i + 400000]), jnp.asarray(tb[i:i + 400000]), jnp.asarray(ends[i:i + 400000]))) for i in range(0, len(Pp), 400000)]).reshape(sh)
+        def field_on(nm_, cf):
+            gm_ = bridge_geom(spec, nm_, cf["range"], Pp)
+            tb_, ends_, w_ = bridge_f(gm_, cf["rb"], cf["ramp"], cf.get("overlap", 3.0))
+            lobes_, pairs_ = packed(cf)
+            fn = jax.jit(lambda Q, t, e: strand_field(Q, t, e, lobes_, pairs_))
+            return np.concatenate([np.asarray(fn(jnp.asarray(Pp[i:i + 400000]), jnp.asarray(tb_[i:i + 400000]), jnp.asarray(ends_[i:i + 400000]))) for i in range(0, len(Pp), 400000)]).reshape(sh), tb_, w_
+        f, tb, w = field_on(name, cfg)
+        # the press against the other snake (press(), the same as the ray-cast's)
+        kp = float(max(c_.get("press", 0.0) for c_ in P.values()))
+        if kp > 0:
+            for other, oc in P.items():
+                if other != name:
+                    f = np.asarray(press(jnp.asarray(f), jnp.asarray(field_on(other, oc)[0]), kp))
         tbv, wv = tb.reshape(sh), w.reshape(sh).astype(np.float32)
         v, fc, _, _ = measure.marching_cubes(f, 0.0, spacing=(vox,) * 3)
         v = taubin(v, fc, smooth)

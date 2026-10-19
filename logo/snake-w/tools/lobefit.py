@@ -171,12 +171,12 @@ def main():
             logl.append(line)
             if g % 4 == 0 or g == A.gens - 1:
                 print("  " + line, flush=True)
-        m0 = None
+        x0 = None
         if A.init:
             p0 = json.load(open(A.init))["p"]
-            m0 = np.array([p0.get(n, 0.0) for n in K.NAMES]) / K.SCALE
-            print(f"  repair: from {A.init} ({K.describe(dict(h, p={n: float(v) for n, v in zip(K.NAMES, m0 * K.SCALE)}))}), sigma {A.sigma}, crease tolerance {A.crease_tol}", flush=True)
-        best = cma(f, len(K.NAMES), A.sigma, K.LO / K.SCALE, K.HI / K.SCALE, A.gens, A.workers, A.seed, log, m0)
+            x0 = np.array([p0.get(n, 0.0) for n in K.NAMES]) / K.SCALE
+            print(f"  repair: from {A.init} ({K.describe(dict(h, p={n: float(v) for n, v in zip(K.NAMES, x0 * K.SCALE)}))}), sigma {A.sigma}, crease tolerance {A.crease_tol}", flush=True)
+        best = cma(f, len(K.NAMES), A.sigma, K.LO / K.SCALE, K.HI / K.SCALE, A.gens, A.workers, A.seed, log, x0)
         x = best[1]
         h["p"] = {n: float(v) for n, v in zip(K.NAMES, x * K.SCALE)}
         spec = K.apply(inc, [h])

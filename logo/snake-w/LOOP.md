@@ -68,6 +68,23 @@ The visual diagnosis comes before the optimisation. The optimiser does not gener
    - **Causes:** record every rejection's defect in `auto/causes.json` as a structured cause (`junction_pinch`, `crease`, `thinning`, `stray_blob`, `crossing_notch`, `mass_distribution`, `flat_top`) at its feature or junction. Every later fit whose crop holds that feature or junction tightens the guard for exactly that cause (`lobefit --causes`).
    - **Next round:** rebuild the diagnosis pages from the new incumbent, and diagnose again.
 
+## Visual reporting (mandatory at the end of every round)
+
+A round is not complete until its visual evidence has been sent into the owner's chat (SendUserFile) as images, not filenames or numbers, unprompted. This protocol is about reporting; the diagnosis-driven fitting, the blind judge and the gates stay as they are.
+
+1. **Build the sheets.** `round_report.py rN` makes them from the round's existing renders, with no new full-body renders. They are saved to `auto/rN/report/` and copied to `progress/rounds/rN/` in the PR.
+   - **Full frame:** reference | previous accepted best | new accepted best, at matched framing. If nothing was accepted, the incumbent is shown unchanged.
+   - **One sheet per attempted correction:** the region of its target and its joint neighbour, wide enough to show the transitions. Columns are reference | before | candidate. Rows are colour, clay and zebra, then a delta row, then a contour row (reference red, before blue, candidate green). In the delta row, green marks pixels whose colour now agrees with the reference and did not before, red marks pixels that now disagree and agreed before, and grey marks pixels still wrong. Numbered features are labelled.
+   - **Pages:** sheets are readable at ordinary size, one correction per page.
+2. **Send them to the chat** with a short written report:
+   - for each correction, the diagnosed discrepancy, what the candidate visibly changed, what improved and what remains wrong;
+   - the verdict, ACCEPTED or REJECTED, with the independent critic's reasons and any defect introduced;
+   - for the affected features and their neighbours, per-feature IoU, contour p95, and changes in junction creases and surface quality. Never use global silhouette scores in their place.
+   - When a round accepts nothing, say so plainly and send the most informative rejected sheet.
+3. **Every five rounds,** also send the cumulative comparison: reference | the loop's starting geometry (`lvt60`, and for this phase `r18-L12`, before the diagnosis-driven rounds) | the latest accepted best. It shows the full frame and the regions corrected since then, so accumulated progress (or its absence) is visible at a glance.
+4. **Push** the sheets with the round's records to PR #86.
+5. **Do not wait** for the owner's reply or approval. Continue straight into the next round's LOOK step. Reporting must not block the next round.
+
 ## Where the state lives (read this first)
 
 **Workspace (WS):** a working copy of `logo/snake-w/`, with the snakes venv beside it. The repository's `logo/snake-w/` holds the same tools, and the `auto/` records are synced into `logo/snake-w/auto/`.

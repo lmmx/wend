@@ -370,6 +370,17 @@
    ],
    "verdict": "incumbent kept (r28-hybR); geometry frozen",
    "note": "the right hybrid's rim moved only over L13's base and right shoulder: indistinguishable to the blind judge. The owner's final bounded experiment: the geometry freezes at r28-hybR for task #32 (preview, animation, derived assets)"
+  },
+  {
+   "round": "r32",
+   "incumbent_before": "r28-hybR",
+   "accepted": [],
+   "rejected": [
+    "r32-right",
+    "r32-full"
+   ],
+   "verdict": "incumbent kept (r28-hybR); the owner-approved 8-parameter collar / right-arm adjustment did not improve beyond the judge's noise",
+   "note": "collarfit.py: tails found no gain (extension pokes out, the height shift and r floor stay at identity; removing the blue tail handles raises the scarf); the right-arm radius/helix pair works on the measures (L16 IoU +0.022, width profiles, nape contact line) but is not visible to the blind judge"
   }
  ],
  "seeds": {},

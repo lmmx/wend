@@ -229,5 +229,19 @@
   "round": "r24",
   "candidate": "r24-L07",
   "note": "more wedge-like: a straight diagonal left edge, a flat upper edge, a harder top-right corner"
+ },
+ {
+  "where": "L12|L13",
+  "cause": "junction_seam",
+  "round": "r30",
+  "candidate": "r30-hybR2",
+  "note": "a planar vertical cut where both strands' rims land on their own cushions (hybrid rim 0.6, xw 1)"
+ },
+ {
+  "where": "L01",
+  "cause": "mass_distribution",
+  "round": "r32",
+  "candidate": "r32-full",
+  "note": "measured, not judged: with the blue tail pinch / oval handles removed the scarf rides higher up the yellow neck (L01 IoU 0.861 -> 0.832, H1 p95 3.6 -> 5.7 px); those handles hold the collar down"
  }
 ]

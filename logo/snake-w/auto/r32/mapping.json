@@ -1,0 +1,10 @@
+{
+ "r32-right": {
+  "X": "r28-hybR",
+  "Y": "r32-right"
+ },
+ "r32-full": {
+  "X": "r28-hybR",
+  "Y": "r32-full"
+ }
+}

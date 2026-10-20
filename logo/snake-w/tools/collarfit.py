@@ -64,11 +64,19 @@ def lsq_fit(t, u, Y, old, free):
     return c
 
 
-def apply(spec0, x):
+PARTS = ("blue_tail", "yellow_tail", "arm")
+
+
+def apply(spec0, x, parts=PARTS):
+    """the adjustment; parts limits it to some of its three components (an ablation): blue_tail
+    (the left scarf: its handles stay unless this part is on), yellow_tail (the nape), arm (L15/L16)"""
     x = np.clip(np.asarray(x, float), LO, HI)
     bt_ext, bt_dh, bt_floor, yt_ext, yt_dh, yt_floor, k, dR = x
+    if "arm" not in parts: k, dR = 1.0, 0.0
     spec = copy.deepcopy(spec0)
     for name, rm in REMOVE.items():
+        if f"{name}_tail" not in parts and name == "blue": continue
+        if name == "yellow" and "yellow_tail" not in parts and "arm" not in parts: continue
         spec[name]["disp"] = [h for h in spec[name].get("disp", []) if (round(h["s"]), h["psi"]) not in {(s, p) for s, p in rm}]
     L = spec0["L"]; info = {}
     for name, other, ext, dz, floor in (("blue", "yellow", bt_ext, bt_dh, bt_floor), ("yellow", "blue", yt_ext, yt_dh, yt_floor)):
@@ -95,6 +103,8 @@ def apply(spec0, x):
         X3 = A + hh[:, None] * D + rho[:, None] * (np.cos(ph2)[:, None] * e1 + np.sin(ph2)[:, None] * e2)
         tl = (u >= s1 - TAILW - 10) & (u <= s1 - 30); rmed = float(np.median(r[tl]))
         r3 = r2 + wt * np.maximum(0.0, floor * rmed - r2)
+        if f"{name}_tail" not in parts:
+            X3, r3, ext = X2, r2, 0
         # the extension, continuing the helix about the axis at the tail's own rates
         j = int(round(ext)); Dl = j * h
         if j:
@@ -241,10 +251,10 @@ def fit(A):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(); ap.add_argument("cmd"); ap.add_argument("spec"); ap.add_argument("rest", nargs="*")
     ap.add_argument("--gens", type=int, default=16); ap.add_argument("--workers", type=int, default=3); ap.add_argument("--seed", type=int, default=86)
-    ap.add_argument("--extra", default="hybrid-r28-hybR.json")
+    ap.add_argument("--extra", default="hybrid-r28-hybR.json"); ap.add_argument("--parts", default=",".join(PARTS))
     A = ap.parse_args()
     if A.cmd == "build":
-        x = [float(v) for v in A.rest[:-1]]; spec, info = apply(json.load(open(A.spec)), x)
+        x = [float(v) for v in A.rest[:-1]]; spec, info = apply(json.load(open(A.spec)), x, tuple(A.parts.split(",")))
         json.dump(spec, open(A.rest[-1], "w")); print(json.dumps(info))
     else:
         A.out = A.rest[0]; fit(A)

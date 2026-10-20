@@ -120,6 +120,46 @@
     - The floor contact combed column to column.
     - The old look's yellow was not tone-mapped and clipped to lemon. Its 0.9 px blur was right for the silhouettes (σ 0.94 px in the reference) but the softness was in the shading.
 
+## The owner-named defects, diagnosed, and the advisory diagnosis stage (2026-10-20)
+
+The owner named three defects on the final geometry:
+- the left head's blue scarf, at the wrong height and shape;
+- a bumpy nape on the right head;
+- the right-hand tubes looking non-cylindrical and puffy.
+
+### The diagnostic (`geo/`, `geo/DIAGNOSTIC.md`)
+
+- **The macro geometry already matches.** The spine is within 4 px (p90) and the turning points within 5 px. The band width is within 1–2% on the arms, and the colour-switch phase within ±6 px.
+- **The defects are local:**
+  - the strand tails' terminations, the visible taper and the climb, with handles compensating: the scarf and the nape;
+  - a radius bead together with a low helix radius and 22–28% interpenetration: L15, L16.
+
+### Round 32: the owner-approved 8-parameter adjustment (`tools/collarfit.py`)
+
+- **The tail collars** got three parameters per tail: an extension, the last half-turn's height on the partner's neck axis, and a radius floor.
+  - A twist phase about the axis was tried first. It only swung the tip in and out of view (`auto/r32/phase-knob-test.png`), so the height replaced it.
+  - The collar parameters found no gain: the extension pokes out, and the height and the floor stayed at identity.
+  - Removing the blue tail's pinch and oval handles raised the scarf: L01 IoU 0.861 → 0.832, H1 p95 3.6 → 5.7 px. Those handles hold the collar down.
+- **The right arm's radius / helix pair** works on the measures: bead × 0.64, R + 3.1 px, L16 IoU +0.022, the width profiles and the nape contact line.
+  - It is too small for the blind judge, which rated the targets "same" for r32-right.
+  - r32-full got +1 at its targets, and the same +1 at two untouched lobes.
+- **Neither was promoted.** The incumbent stays r28-hybR.
+
+### `tools/geodiag.py`, the advisory diagnosis (`GEODIAG.md`)
+
+- **What it does.** It generalises the diagnostic to every region and every candidate, and runs inside autoround:
+  - it ranks features (one step below the judges' severity);
+  - it suggests next experiments;
+  - it records each candidate's changes against the incumbent;
+  - it logs itself against each blind verdict.
+- **Gates.** It never gates. The owner's rule is to measure broadly and gate narrowly, keep the existing hard and soft criteria, and put any gate proposal to the owner with evidence first.
+- **Calibration.**
+  - On the final incumbent its severity-2 findings include, unprompted, three of the owner's four flags.
+  - It flags 10 of 42 recorded defects in absolute terms, and 15 of 38 as worse than their incumbent.
+  - It misses the shading-only defects (the fused T, the L05 double sphere).
+  - A "no worse region" rule would have flagged 18 of 25 judged rejections and 1 of 6 acceptances. That is evidence, not adopted.
+  - On r32 it disagreed with the judge twice: the width findings resolved, while the judge saw no difference. On r32-full it also did not see the L01 / H1 mask regression.
+
 ## Missing
 
 - The look: the judges still ask for highlights about twice as wide and softer, pale-tinted. Every wider sheen on the blue so far read as a milky lavender haze (R6, R9).

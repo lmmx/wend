@@ -1,0 +1,5 @@
+{
+ "tag": "r28-hybR",
+ "look": "snakes/w-final.look.json (look 6)",
+ "note": "the production page (index.html) as rendered for look 6; tools/promote.py refreshes it on the next accepted geometry"
+}

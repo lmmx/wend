@@ -742,6 +742,26 @@ export function neckCurve(nk, h, F, at, rJ, n = 48) {
     // an optional waist narrows the middle of the neck (the throat under the jaw)
     out.push([c, nk.r_top + (rJ - nk.r_top) * e - (nk.waist || 0) * Math.sin(Math.PI * t) ** 2]);
   }
+  // waist_back (0-1): the share of the waist taken off the back of the neck instead of pinching
+  // both sides; the throat edge stays where the plain waist puts it, the back edge moves out by
+  // waist_back x waist sin^2 (the centre moves back by half of it, the radius grows by half).
+  // It fades out over waist_back_fade (tau, default 0.35-0.6): below that the neck is as it was,
+  // so its crossing with the body tube's start cap stays where it was, hidden under the coil
+  // (filled further down, that crossing comes round the throat as a visible ring)
+  const wb = nk.waist_back || 0, [wf0, wf1] = nk.waist_back_fade || [0.35, 0.6];
+  if (wb && nk.waist) {
+    // sideways only: perpendicular to the neck in the x-y plane (no shift along the neck, which
+    // bunches the chain and bends it, and none in depth)
+    const C0 = out.map((o) => o[0]);
+    for (let k = 0; k < n; k++) {
+      const t = k / (n - 1), s2 = Math.sin(Math.PI * t) ** 2;
+      const T = sub(C0[Math.min(k + 1, n - 1)], C0[Math.max(k - 1, 0)]);
+      let nb = unit([-T[1], T[0], 0]);
+      if (dot(nb, F.d) > 0) nb = mul(nb, -1);
+      const h2 = 0.5 * wb * nk.waist * s2 * (1 - smoothstep(wf0, wf1, t));
+      out[k] = [add(out[k][0], mul(nb, h2)), out[k][1] + h2];
+    }
+  }
   return out;
 }
 

@@ -38,3 +38,23 @@ The owner still sees a bump at the right head's nape. That is an unresolved art-
 - **The scarf cannot come down cleanly until the yellow neck's step is gone.** The order is:
   1. smooth the yellow neck join (the neck curve's join to the body: its position and tangent at J, `necks[0]`);
   2. then lower the scarf.
+
+## Results (rounds 34-36)
+
+**r34, the nape's one-sided waist** (`necks[1].waist_back` = 1, faded out over tau 0.35–0.6).
+- **Geometry:**
+  - The hourglass is gone: the blue neck alone shows no dome or pinch (`auto/r34/closeups-iso.png`).
+  - The back edge above the coil sits within 3 px of the reference.
+  - The contact line's hump is gone.
+- **What remains:** the dip at x 1010 (419 against the reference's 409). That is the yellow coil's own tapering edge, the second contributor to the bump.
+- **Two first attempts introduced seams:**
+  - filling to the join made the neck overhang the tube;
+  - a shift with an along-neck component bunched the chain into a crease ring.
+- **Verdict:** the judge was inconclusive (all features "same", L16 weakly to the incumbent). Not promoted.
+
+**r35, scarf stage 1** (`tools/neckjoin.py`). The ring at the yellow neck's join is removed (r 47.8 → 40.5 px). A crease at the head-mesh / tube junction remains in isolation, as in the incumbent. It is invisible in the assembly, so it was not judged.
+
+**r36, scarf stage 2** (flat sweep).
+- Moving the tail's last half-turn rigidly, along the neck axis or straight down, lowers its top but opens notches in the yellow neck and stray blue at its left.
+- Only shapes the overlap measures flag as clearly worse come out of it.
+- The scarf needs its last turn reshaped (a fuller cushion wrapping across the neck), not moved.

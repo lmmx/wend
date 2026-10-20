@@ -34,7 +34,7 @@ sys.path.insert(0, HERE)
 import strandspline as SS
 
 NAMES = ["bt_ext", "bt_dh", "bt_floor", "yt_ext", "yt_dh", "yt_floor", "bead_k", "dR"]
-LO = np.array([0.0, -24.0, 0.8, 0.0, -24.0, 0.8, 0.3, -2.0])
+LO = np.array([0.0, -24.0, 0.0, 0.0, -24.0, 0.0, 0.3, -2.0])   # floor 0: no floor
 HI = np.array([3.49, 10.0, 1.05, 3.49, 10.0, 1.05, 1.0, 8.0])
 X0 = np.array([0.0, 0.0, 0.8, 0.0, 0.0, 0.8, 1.0, 0.0])           # the incumbent, less the removed handles
 SCALE = np.array([1.0, 6.0, 0.08, 1.0, 6.0, 0.08, 0.25, 3.0])   # one search unit
@@ -75,7 +75,7 @@ def apply(spec0, x, parts=PARTS):
     if "arm" not in parts: k, dR = 1.0, 0.0
     spec = copy.deepcopy(spec0)
     for name, rm in REMOVE.items():
-        if f"{name}_tail" not in parts and name == "blue": continue
+        if (f"{name}_tail" not in parts or "keep_handles" in parts) and name == "blue": continue
         if name == "yellow" and "yellow_tail" not in parts and "arm" not in parts: continue
         spec[name]["disp"] = [h for h in spec[name].get("disp", []) if (round(h["s"]), h["psi"]) not in {(s, p) for s, p in rm}]
     L = spec0["L"]; info = {}
@@ -102,7 +102,7 @@ def apply(spec0, x, parts=PARTS):
         ph2 = ph; hh = hh + dz * wt
         X3 = A + hh[:, None] * D + rho[:, None] * (np.cos(ph2)[:, None] * e1 + np.sin(ph2)[:, None] * e2)
         tl = (u >= s1 - TAILW - 10) & (u <= s1 - 30); rmed = float(np.median(r[tl]))
-        r3 = r2 + wt * np.maximum(0.0, floor * rmed - r2)
+        r3 = r2 + wt * np.maximum(0.0, floor * rmed - r2) if floor > 0 else r2
         if f"{name}_tail" not in parts:
             X3, r3, ext = X2, r2, 0
         # the extension, continuing the helix about the axis at the tail's own rates

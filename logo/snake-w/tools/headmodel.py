@@ -103,6 +103,16 @@ def neck_curve(nk, h, elev, J, TJ, KJ, rJ, n=80):
     C = quintic(Q, nk["alpha"] * dQ, np.zeros(3), nk["beta"] ** 2 * KJ, nk["beta"] * TJ, J, tau)
     e = np.clip((tau - nk["tau_a"]) / (1 - nk["tau_a"]), 0, 1); e = e * e * (3 - 2 * e)
     r = nk["r_top"] + (rJ - nk["r_top"]) * e - nk.get("waist", 0.0) * np.sin(np.pi * tau) ** 2
+    # waist_back (geometry.js neckCurve): the share of the waist taken off the back of the neck
+    wb = nk.get("waist_back", 0.0)
+    if wb and nk.get("waist"):
+        T = np.gradient(C, axis=0)
+        nb = np.c_[-T[:, 1], T[:, 0], np.zeros(len(T))]; nb /= np.linalg.norm(nb, axis=1)[:, None]
+        nb *= np.where(nb @ d > 0, -1.0, 1.0)[:, None]
+        f0, f1 = nk.get("waist_back_fade", (0.35, 0.6))
+        f = np.clip((tau - f0) / (f1 - f0), 0, 1); f = f * f * (3 - 2 * f)
+        h2 = 0.5 * wb * nk["waist"] * np.sin(np.pi * tau) ** 2 * (1 - f)
+        C = C + h2[:, None] * nb; r = r + h2
     return C, r
 
 

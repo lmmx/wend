@@ -381,6 +381,32 @@
    ],
    "verdict": "incumbent kept (r28-hybR); the owner-approved 8-parameter collar / right-arm adjustment did not improve beyond the judge's noise",
    "note": "collarfit.py: tails found no gain (extension pokes out, the height shift and r floor stay at identity; removing the blue tail handles raises the scarf); the right-arm radius/helix pair works on the measures (L16 IoU +0.022, width profiles, nape contact line) but is not visible to the blind judge"
+  },
+  {
+   "round": "r34",
+   "incumbent_before": "r28-hybR",
+   "accepted": [],
+   "rejected": [
+    "r34-nape"
+   ],
+   "verdict": "incumbent kept (r28-hybR); judge inconclusive",
+   "note": "necks[1].waist_back = 1 (geometry.js neckCurve, headmodel.neck_curve): the waist taken off the back of the blue neck, faded out over tau 0.35-0.6. The hourglass is gone in isolation; the visible nape still differs at the yellow coil's tapering edge (dip at x 1010)."
+  },
+  {
+   "round": "r35",
+   "incumbent_before": "r28-hybR",
+   "accepted": [],
+   "rejected": [],
+   "verdict": "not rendered for judging: invisible in the assembly",
+   "note": "scarf stage 1, tools/neckjoin.py: the yellow tube's radius held at 40.5 over s 125-215 removes the ring where the neck meets the body (r 47.8 -> 40.5 at the join); a crease at the head-mesh / tube junction remains in isolation (as in the incumbent), under the scarf."
+  },
+  {
+   "round": "r36",
+   "incumbent_before": "r28-hybR",
+   "accepted": [],
+   "rejected": [],
+   "verdict": "flat sweep only: rigid lowering fails",
+   "note": "scarf stage 2 on stage 1, handles kept: the tail's last half-turn moved along the neck axis (-6..-24) or straight down (-6..-18): the top comes down (-17 -> -8 / +3 px) but L01 IoU 0.858 -> 0.70-0.84, H1 0.957 -> 0.88-0.94, notches in the yellow neck and stray blue at its left (auto/r36/lowering-sweep.png). The scarf needs a reshaped last turn, not a translation."
   }
  ],
  "seeds": {},

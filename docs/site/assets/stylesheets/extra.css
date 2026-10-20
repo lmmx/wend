@@ -1,17 +1,17 @@
-/* wend's palette. The mark's own colours (teal, deep blue, slate blue) come from the
-   logo; the links use the teal at a shade with at least 4.5:1 contrast on white. */
+/* wend's palette: the blue of the logo. #105ede is the logo's median blue (5.7:1 on
+   white); the dark scheme uses a lighter shade of it (#5b9bff, 7.1:1 on the dark page). */
 :root > * {
-  --md-primary-fg-color: #0f766e;
-  --md-primary-fg-color--light: #14b8a6;
-  --md-primary-fg-color--dark: #115e59;
-  --md-accent-fg-color: #0d9488;
+  --md-primary-fg-color: #105ede;
+  --md-primary-fg-color--light: #2b87fe;
+  --md-primary-fg-color--dark: #0b4fc0;
+  --md-accent-fg-color: #105ede;
 }
 
 [data-md-color-scheme="slate"] {
-  --md-primary-fg-color: #2dd4bf;
-  --md-primary-fg-color--light: #5eead4;
-  --md-primary-fg-color--dark: #14b8a6;
-  --md-accent-fg-color: #5eead4;
+  --md-primary-fg-color: #5b9bff;
+  --md-primary-fg-color--light: #7aaeff;
+  --md-primary-fg-color--dark: #3d85f5;
+  --md-accent-fg-color: #7aaeff;
 }
 
 /* Copying a pycon block copies the code only: the prompts (.gp) and the output (.go)

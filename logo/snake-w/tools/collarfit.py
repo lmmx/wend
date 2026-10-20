@@ -34,7 +34,7 @@ sys.path.insert(0, HERE)
 import strandspline as SS
 
 NAMES = ["bt_ext", "bt_dh", "bt_floor", "yt_ext", "yt_dh", "yt_floor", "bead_k", "dR"]
-LO = np.array([0.0, -24.0, 0.0, 0.0, -24.0, 0.0, 0.3, -2.0])   # floor 0: no floor
+LO = np.array([0.0, -24.0, 0.0, 0.0, -24.0, 0.0, 0.0, -2.0])   # floor 0: no floor
 HI = np.array([3.49, 10.0, 1.05, 3.49, 10.0, 1.05, 1.0, 8.0])
 X0 = np.array([0.0, 0.0, 0.8, 0.0, 0.0, 0.8, 1.0, 0.0])           # the incumbent, less the removed handles
 SCALE = np.array([1.0, 6.0, 0.08, 1.0, 6.0, 0.08, 0.25, 3.0])   # one search unit

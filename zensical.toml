@@ -128,6 +128,9 @@ scoped_crossrefs = true
 
 [project.theme]
 variant = "modern"
+# the official logo, cut out of its background (docs/site/assets/; the README uses assets/logo.png)
+logo = "assets/logo-header.png"
+favicon = "assets/favicon.png"
 font.text = "IBM Plex Sans"
 font.code = "IBM Plex Mono"
 language = "en"

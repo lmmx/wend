@@ -1,0 +1,134 @@
+{
+ "toneMapping": "neutral",
+ "materials": {
+  "yellow": {
+   "toneMapped": false,
+   "shade": {
+    "tint": [
+     1.0,
+     0.3,
+     0.5
+    ],
+    "ref": 1.0,
+    "k": 0.45,
+    "light": [
+     1.0,
+     1.25,
+     0.5
+    ],
+    "lk": 0.9,
+    "edge": 0.3,
+    "tone": [
+     1.4047015738466364,
+     0.8,
+     0.25,
+     2.5
+    ]
+   },
+   "envMapIntensity": 1.4042476112504918,
+   "clearcoat": 0.1,
+   "specularColor": "#fff1a0",
+   "specularIntensity": 0.8,
+   "roughness": 0.16,
+   "aoPower": 0.6
+  },
+  "blue": {
+   "shade": {
+    "tint": [
+     0.804192852934502,
+     0.750297605965996,
+     1.0
+    ],
+    "ref": 1.0,
+    "k": 0.17186705989203546,
+    "light": [
+     0.7,
+     1.25,
+     1.0
+    ],
+    "lk": 0.7971489544155654,
+    "edge": 0.3
+   },
+   "envMapIntensity": 1.3987966966443728,
+   "specularColor": "#bfd8ff",
+   "clearcoat": 0.15,
+   "roughness": 0.2,
+   "specularIntensity": 1.0
+  }
+ },
+ "softness": 0.2,
+ "yellow": "#ffcb14",
+ "blue": "#084ec6",
+ "env": {
+  "keyPos": [
+   -4.4166342731614625,
+   4.004825146999954,
+   5.917323486095071
+  ],
+  "key": 6.0,
+  "keySize": 7.100829396407136,
+  "over": 2.5,
+  "front": 0.46540678967005245,
+  "fill": 0.75,
+  "floor": 0.8,
+  "room": 0.08565768138167026,
+  "blur": 0.014784194626542874,
+  "walls": 0.0,
+  "keyRect": [
+   4.5,
+   8.0,
+   25
+  ],
+  "floorColour": [
+   1.0,
+   0.9,
+   0.85
+  ]
+ },
+ "keyLight": {
+  "dir": [
+   -0.44349672692395314,
+   0.3603431042034069,
+   0.8206482196780744
+  ],
+  "intensity": 0.9,
+  "size": 8.804090469005878,
+  "colour": [
+   1.0,
+   1.0,
+   1.0
+  ]
+ },
+ "exposure": 1.7110269809147245,
+ "envLevel": 2.127464778650097,
+ "material": {
+  "roughness": 0.3,
+  "clearcoat": 0.7031278800164351,
+  "clearcoatRoughness": 0.16,
+  "specularIntensity": 0.6625085781403226,
+  "aoPower": 1.4,
+  "ior": 1.9
+ },
+ "shadowCard": {
+  "colour": [
+   0.6,
+   0.48,
+   0.47
+  ],
+  "band": 0.12,
+  "bandOffset": -4,
+  "fadeUp": 12,
+  "fadeDown": 10,
+  "fade": 330,
+  "contact": 0.85,
+  "contactFall": 8,
+  "contactRange": 10,
+  "top": 600,
+  "fromMesh": true,
+  "bounce": {
+   "k": 0.0
+  },
+  "smooth": 4
+ },
+ "background": "#ffffff"
+}

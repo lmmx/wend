@@ -38,6 +38,7 @@ REF_LAB = skc.rgb2lab(REF / 255.0)
 REF_L = K.lobes(REF)
 FLOOR = (slice(round((790 - BOX[1]) * SCALE), round((1000 - BOX[1]) * SCALE)), slice(round((250 - BOX[0]) * SCALE), round((1200 - BOX[0]) * SCALE)))
 ER = max(1, round(3 * SCALE)); PL = max(1, round(4 * SCALE))
+LOSS = os.environ.get("LOOK_LOSS", "full")   # full (score) or ramp (ramp_score)
 
 
 class Worker:
@@ -136,6 +137,29 @@ def floor_score(im):
     return float(d[bg].mean() * 10), {"floor": float(d[bg].mean())}
 
 
+# the tone ramp (lookfit.py fit --loss ramp): per strand, the mean CIELAB colour within bands of
+# its own luminance percentiles, against the reference's (dE76): the colours of the shade, the mid
+# tones and the light, wherever they fall
+RAMP = [(2, 8), (8, 18), (18, 35), (35, 50), (50, 65), (65, 80), (80, 90), (90, 96), (96, 99), (99, 99.8)]
+
+
+def ramp_bins(lab, m):
+    L = lab[..., 0][m]; X = lab[m]; out = []
+    for lo, hi in RAMP:
+        a, b = np.percentile(L, [lo, hi]); sel = (L >= a) & (L <= b)
+        out.append(X[sel].mean(0))
+    return np.array(out)
+
+
+def ramp_score(im):
+    im = prep(im); lab = skc.rgb2lab(im / 255.0); L = K.lobes(im); parts = {}
+    for col in ("yellow", "blue"):
+        m = ndimage.binary_erosion(L[col], iterations=ER); mr = ndimage.binary_erosion(REF_L[col], iterations=ER)
+        d = np.linalg.norm(ramp_bins(lab, m) - ramp_bins(REF_LAB, mr), axis=1)
+        parts[col] = dict(ramp=float(d.mean()), worst=float(d.max()))
+    return float(sum(p["ramp"] for p in parts.values())), parts
+
+
 def load_patch(s):
     return json.loads(s) if s.strip().startswith("{") else json.load(open(s))
 
@@ -175,6 +199,8 @@ SPACE = [
     ("material.roughness", 0.18, 0.45), ("material.clearcoat", 0.4, 1.0), ("material.clearcoatRoughness", 0.03, 0.16), ("material.specularIntensity", 0.3, 1.0), ("material.aoPower", 0.5, 3.0),
     ("materials.yellow.shade.k", 0, 1), ("materials.yellow.shade.tint.g", 0.6, 1.0), ("materials.yellow.shade.tint.b", 0.3, 1.0),
     ("materials.blue.shade.k", 0, 1), ("materials.blue.shade.tint.r", 0.4, 1.0), ("materials.blue.shade.tint.g", 0.4, 1.0),
+    ("materials.yellow.shade.lk", 0, 1), ("materials.yellow.shade.light.g", 0.9, 1.15), ("materials.yellow.shade.light.b", 0.9, 1.6),
+    ("materials.blue.shade.lk", 0, 1), ("materials.blue.shade.light.r", 0.4, 1.0), ("materials.blue.shade.light.g", 1.0, 1.4),
     ("materials.yellow.envMapIntensity", 0.4, 1.6), ("materials.blue.envMapIntensity", 0.4, 1.6),
     ("keyLight.intensity", 0, 4), ("keyLight.az", -80, 10), ("keyLight.el", 15, 75), ("keyLight.size", 2, 24),
 ]
@@ -234,8 +260,11 @@ def to_look(u, fixed):
         look.setdefault("keyLight", {})["colour"] = [1.0, vals.pop("keyLight.colour.g"), vals.pop("keyLight.colour.b")]
     for col, keys in (("yellow", "rgb"), ("blue", "rgb")):
         t = [vals.pop(f"materials.{col}.shade.tint.{c}", 1.0) for c in keys]
+        li = [vals.pop(f"materials.{col}.shade.light.{c}", 1.0) for c in keys]
         if f"materials.{col}.shade.k" in vals:
             setp(look, f"materials.{col}.shade.tint", t); setp(look, f"materials.{col}.shade.ref", 1.0)
+        if f"materials.{col}.shade.lk" in vals:
+            setp(look, f"materials.{col}.shade.light", li)
     for p, v in vals.items():
         setp(look, p, v)
     return look
@@ -256,9 +285,9 @@ def from_look(look):
             v = special[path]
         elif path.startswith("keyLight.colour."):
             v = (getp(look, "keyLight.colour", [1, 1, 1]) or [1, 1, 1])["rgb".index(path[-1])]
-        elif ".shade.tint." in path:
+        elif ".shade.tint." in path or ".shade.light." in path:
             t = getp(look, path.rsplit(".", 1)[0], [1, 1, 1]); v = t["rgb".index(path[-1])]
-        elif path.endswith(".shade.k"):
+        elif path.endswith(".shade.k") or path.endswith(".shade.lk"):
             v = getp(look, path, 0.0)
         else:
             v = getp(look, path, {"material.aoPower": 1.0, "keyLight.intensity": 0.0, "keyLight.size": 8.0, "materials.blue.envMapIntensity": 1.0, "materials.yellow.envMapIntensity": 1.0, "env.walls": 0.0}.get(path, lo))
@@ -291,7 +320,7 @@ def fit(out, fixed, start, gens, procs, sigma, seed, free=None, ranges=None):
         look = to_look(full(u), fixed); raw = f"{out}/w{wk}.png"
         ws[wk].render(look, raw)
         im = blur(np.asarray(Image.open(raw).convert("RGB")), look.get("softness", 0) * SCALE)
-        t, p = score(im)
+        t, p = (ramp_score if LOSS == "ramp" else score)(im)
         if t < best[0]:
             best[0], best[1] = t, look; Image.fromarray(im).save(f"{out}/best.png"); json.dump(dict(loss=t, parts=p, look=look), open(f"{out}/best.json", "w"), indent=1)
         return (t, p)

@@ -52,18 +52,22 @@ export function studio(renderer, env) {
     const t = new THREE.CanvasTexture(cv); t.colorSpace = THREE.NoColorSpace;
     return t;
   };
-  const box = (w, h, pos, level, round = false) => {
+  const box = (w, h, pos, level, round = false, colour = null, roll = 0) => {
     if (!level) return;
     const g = round ? new THREE.CircleGeometry(w / 2, 32) : new THREE.PlaneGeometry(w, h);
-    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: k(level), map: panel(round), side: THREE.DoubleSide }));
-    m.position.set(...pos); m.lookAt(0, 0, 0); room.add(m);
+    const c = colour ? new THREE.Color(level * colour[0] * tint[0], level * colour[1] * tint[1], level * colour[2] * tint[2]) : k(level);
+    const m = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: c, map: panel(round), side: THREE.DoubleSide }));
+    m.position.set(...pos); m.lookAt(0, 0, 0); m.rotateZ(roll); room.add(m);
   };
-  box(env.keySize, env.keySize, env.keyPos, env.key, true);
+  // env.keyRect [w, h, roll deg]: the key as a strip softbox (each lobe reflects it as one long
+  // soft streak) instead of the round one
+  if (env.keyRect) box(env.keyRect[0], env.keyRect[1], env.keyPos, env.key, false, null, ((env.keyRect[2] || 0) * Math.PI) / 180);
+  else box(env.keySize, env.keySize, env.keyPos, env.key, true);
   box(env.overSize?.[0] ?? 10, env.overSize?.[1] ?? 5, [0, 5.8, 0.8], env.over);
   box(6, 4, [0.5, 0.5, 6.5], env.front);
   box(3, 5, [5.5, 1.5, 4.5], env.fill);
   box(1.2, 6, [6.5, 1.0, -3.0], env.rim);
-  box(16, 16, [0, -5.9, 0], env.floor);
+  box(16, 16, [0, -5.9, 0], env.floor, false, env.floorColour || null);   // env.floorColour: the floor's bounce tinted
   // env.walls: the studio's side and back walls (a white cyclorama), which light the surfaces
   // turning away from the camera, so a silhouette stays light instead of reflecting the dark room
   if (env.walls) {
@@ -85,18 +89,21 @@ export function studio(renderer, env) {
 // coloured vinyl leaves its shadow side deeper and more saturated rather than grey: the colour
 // times `tint` (RGB), by k times how far the pixel's luminance falls below `ref` times the
 // albedo's, faded out over the last `edge` of N.V towards a silhouette (look.materials[name].shade =
-// { tint, k, ref, edge }; k 0 leaves it as it was)
+// { tint, k, ref, edge, light, lk, tone }; k 0 leaves it as it was; light / lk: the same for the lit
+// side, by how far the luminance rises above the albedo's; tone: the material's own tone curve)
 function withVertexAO(material, aoPower = 1, shade = null) {
   material.userData.aoPow = { value: aoPower };
-  material.userData.shade = { tint: { value: new THREE.Vector3(...(shade?.tint || [1, 1, 1])) }, k: { value: shade?.k ?? 0 }, ref: { value: shade?.ref ?? 1 }, edge: { value: shade?.edge ?? 0 } };
+  material.userData.shade = { tint: { value: new THREE.Vector3(...(shade?.tint || [1, 1, 1])) }, k: { value: shade?.k ?? 0 }, ref: { value: shade?.ref ?? 1 }, edge: { value: shade?.edge ?? 0 },
+    light: { value: new THREE.Vector3(...(shade?.light || [1, 1, 1])) }, lk: { value: shade?.lk ?? 0 },
+    tone: { value: new THREE.Vector4(...(shade?.tone || [0, 0.8, 0.5, 1.0])) } };
   material.onBeforeCompile = (shader) => {
     shader.uniforms.aoPow = material.userData.aoPow;
-    shader.uniforms.shadeTint = material.userData.shade.tint; shader.uniforms.shadeK = material.userData.shade.k; shader.uniforms.shadeRef = material.userData.shade.ref; shader.uniforms.shadeEdge = material.userData.shade.edge;
+    shader.uniforms.shadeTint = material.userData.shade.tint; shader.uniforms.shadeK = material.userData.shade.k; shader.uniforms.shadeRef = material.userData.shade.ref; shader.uniforms.shadeEdge = material.userData.shade.edge; shader.uniforms.lightTint = material.userData.shade.light; shader.uniforms.lightK = material.userData.shade.lk; shader.uniforms.ownTone = material.userData.shade.tone;
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nattribute float ao;\nvarying float vAo;")
       .replace("#include <begin_vertex>", "#include <begin_vertex>\nvAo = ao;");
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying float vAo;\nuniform float aoPow;\nuniform vec3 shadeTint;\nuniform float shadeK;\nuniform float shadeRef;\nuniform float shadeEdge;")
+      .replace("#include <common>", "#include <common>\nvarying float vAo;\nuniform float aoPow;\nuniform vec3 shadeTint;\nuniform float shadeK;\nuniform float shadeRef;\nuniform float shadeEdge;\nuniform vec3 lightTint;\nuniform float lightK;\nuniform vec4 ownTone;")
       .replace("#include <opaque_fragment>", `
         {
           float lum = dot(outgoingLight, vec3(0.2126, 0.7152, 0.0722)), alb = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
@@ -105,6 +112,20 @@ function withVertexAO(material, aoPower = 1, shade = null) {
           // own falloff is not tinted into a dark outline
           sh *= smoothstep(0.0, max(shadeEdge, 1e-4), saturate(dot(normal, normalize(vViewPosition))));
           outgoingLight = mix(outgoingLight, outgoingLight * shadeTint, sh * shadeK);
+          // the light side's own tint (shade.light, shade.lk): where the surface is lit beyond its
+          // albedo, as a bright blue goes towards sky (not lilac) under the reference's light
+          float hl = clamp(lum / max(alb, 1e-4) - 1.0, 0.0, 1.0);
+          outgoingLight = mix(outgoingLight, outgoingLight * lightTint, hl * lightK);
+          // shade.tone [exposure, knee, white, whiteAt] (a material with toneMapped false): its own
+          // tone curve, which keeps hue and saturation: the brightest channel rolls off smoothly
+          // above the knee (the colour scaled, not clipped per channel), and only near the top it
+          // goes towards white, as a saturated yellow stays saturated up to its highlight
+          if (ownTone.x > 0.0) {
+            vec3 c = outgoingLight * ownTone.x;
+            float m = max(c.r, max(c.g, c.b)), kn = ownTone.y;
+            if (m > kn) { float mc = kn + (1.0 - kn) * (1.0 - exp(-(m - kn) / (1.0 - kn))); c *= mc / m; c = mix(c, vec3(mc), ownTone.z * smoothstep(1.0, 1.0 + ownTone.w, m)); }
+            outgoingLight = c;
+          }
         }
         #include <opaque_fragment>`)
       .replace("#include <aomap_fragment>", `
@@ -441,7 +462,15 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
     // paint(sc): the card for these parameters (scene.shadowCard.paint redraws it live)
     const paint = (sc, colours) => {
       // the band is strongest around the feet: their nearness to the floor, blurred widely
-      const near = Float32Array.from(bottom, (b) => (b > -Infinity ? Math.exp(-(foot - b) / sc.contactRange) : 0));
+      const near0 = Float32Array.from(bottom, (b) => (b > -Infinity ? Math.exp(-(foot - b) / sc.contactRange) : 0));
+      // smoothed across a few columns: the mesh's bottom is ragged column to column (stripes)
+      const near = new Float32Array(Wc), sm = sc.smooth ?? 0;
+      for (let x = 0; x < Wc; x++) {
+        if (!sm) { near[x] = near0[x]; continue; }
+        let a = 0, n = 0;
+        for (let q = Math.max(0, x - 3 * sm); q <= Math.min(Wc - 1, x + 3 * sm); q++) { const w = Math.exp(-0.5 * ((q - x) / sm) ** 2); a += near0[q] * w; n += w; }
+        near[x] = a / n;
+      }
       const env = new Float32Array(Wc);
       for (let x = 0; x < Wc; x++) {
         let acc = 0;

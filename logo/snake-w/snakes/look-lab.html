@@ -42,7 +42,7 @@ window.__look = (patch, { relative = false } = {}) => {
     const m = o.material, name = m?.userData?.strand;
     if (!name) return;
     const { specularColor, aoPower = 1, shade = null, ...opts } = { ...look.material, ...(look.materials?.[name] || {}) };
-    const U = m.userData.shade; U.tint.value.set(...(shade?.tint || [1, 1, 1])); U.k.value = shade?.k ?? 0; U.ref.value = shade?.ref ?? 1; U.edge.value = shade?.edge ?? 0;
+    const U = m.userData.shade; U.tint.value.set(...(shade?.tint || [1, 1, 1])); U.k.value = shade?.k ?? 0; U.ref.value = shade?.ref ?? 1; U.edge.value = shade?.edge ?? 0; U.light.value.set(...(shade?.light || [1, 1, 1])); U.lk.value = shade?.lk ?? 0; U.tone.value.set(...(shade?.tone || [0, 0.8, 0.5, 1.0]));
     const tm = opts.toneMapped ?? true;
     for (const k of ["roughness", "clearcoat", "clearcoatRoughness", "specularIntensity", "envMapIntensity", "sheen", "sheenRoughness", "iridescence", "ior"]) if (opts[k] !== undefined) m[k] = opts[k];
     if (opts.sheenColor) m.sheenColor.set(opts.sheenColor);

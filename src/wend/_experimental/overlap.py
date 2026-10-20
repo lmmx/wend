@@ -2,10 +2,11 @@
 
 Experimental (see `wend._experimental`). ``overlaps(a, b)`` answers:
 
-- ``YES``: a concrete path that both expressions render, found and then
-  *verified* by matching it against each (``match_all`` returns only
-  bindings that render back to the path, SEMANTICS.md §7), so a YES carries
-  the path and a binding of each side.
+- ``YES``: a concrete path that both expressions render, with a binding of
+  each side that renders it. Each binding either came from ``match_all``
+  (which returns only bindings that render back to the path, SEMANTICS.md
+  §7) or is one the path was rendered from: a sample value, or every
+  binding of a small finite domain, rendered once per expression.
 - ``NO``: no path can be rendered by both. The argument is an
   over-approximation: each expression's renderable paths are contained in a
   set of *shapes* (below), and no shape of one intersects a shape of the
@@ -25,19 +26,25 @@ them. The languages are built from the expression's terms:
 - a formatted segment (a template's literal text and fields) is the
   concatenation of its pieces' languages, less ``""``, ``"."`` and ``".."``,
   which no formatted segment renders (§4);
-- a field whose parameter has a finite domain (``choices=``, ``type=bool``,
-  an ``Enum`` type) is the set of texts wend renders for its values. Where
-  every parameter of a segment has one and the product is small, the
-  segment is the exact set of its renderings, so repeated parameters inside
-  it are exact too;
+- a field whose parameter has a finite domain is the set of texts wend
+  renders for its values. ``type=bool`` and an ``Enum`` type are finite
+  under the contract. ``choices=`` are not: membership is ``value in
+  choices``, so ``1.0`` and ``True`` pass for ``choices={1}`` (and render
+  as ``1.0`` and ``True``), and a ``str`` subclass equal to a choice may
+  format however it likes. Choices are finite only with
+  ``builtin_values=True``, where each stands for itself and the builtin
+  numbers equal to it. Where every parameter of a segment is finite and
+  the product is small, the segment is the exact set of its renderings,
+  so repeated parameters inside it are exact too;
 - any other field is every string without ``/`` or NUL, without ``.`` when
   the field's facts guarantee that (§4), and non-empty when they guarantee
   that. Under the contract that is all an integer-formatted field
   guarantees: an ``int`` subclass may format as letters. With
-  ``builtin_formatting=True`` the analysis also assumes values format as
-  ``int``, ``float`` and ``str`` do, so ``{n:04d}`` is at least four of
-  ``0-9``, signs, grouping and hex characters. Results that relied on it
-  say so in ``assumptions``;
+  ``builtin_values=True`` the analysis assumes bound values are of builtin
+  types (``str``, ``int``, ``float``, ``complex``, ``bool``, ``None``,
+  pathlib paths), so ``{n:04d}`` is at least four characters of its
+  presentation type's alphabet. Results that relied on it list
+  ``"builtin_values"`` in ``assumptions``;
 - a ``SubPath`` is a run of segments other than ``.`` and ``..`` (§3), or,
   with ``choices=``, the exact set of its values;
 - a head parameter is any anchor and a run of any segments (``..``
@@ -52,15 +59,21 @@ bindings, do; a witness then needs readings that agree on every common
 name, and the abstraction (which ignores the correlation) can only prove
 NO, never YES, on its own.
 
+Both modes assume rendering is deterministic: the same bindings give the
+same text (as ``match`` also assumes when it verifies a reading by rendering
+it). That is what lets two segments that are one parameter's field with one
+spec be required to agree.
+
 Unions are handled alternative by alternative.
 """
 
 from __future__ import annotations
 
 import enum
+import functools
 import itertools
 from collections import deque
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any, Literal
@@ -239,6 +252,15 @@ class _Builder:
             self.nfa.eps[q].append(out)
         self.end = out
 
+    def either(self, *branches: Callable[[_Builder], None]) -> None:
+        """Append the union of what each branch appends."""
+        fork, out = self.end, self.nfa.state()
+        for branch in branches:
+            self.end = fork
+            branch(self)
+            self.nfa.eps[self.end].append(out)
+        self.end = out
+
     def lang(self, exclude: tuple[str, ...]) -> Lang:
         return Lang(None, self.nfa, self.start, self.end, exclude)
 
@@ -410,26 +432,68 @@ PATH_SEGMENT = _any_segment(("", "."))  # a PATH value's segments may be ".."
 TOP = Shape(ALL_ANCHORS, (Item(PATH_SEGMENT, run=True),))
 
 
-def _domain(p: Param) -> list[Any] | None:
-    """The values ``p`` accepts, when they are few and known."""
-    if p.choices is not None:
-        values = list(p.choices)
-    elif p.type is bool:
-        values = [False, True]
+def _numeric_twins(c: Any) -> list[Any]:
+    """The builtin numbers equal to ``c`` (so equal as choices: ``1 in {1.0}``
+    and ``True in {1}`` hold), each of which renders its own way."""
+    if not isinstance(c, (int, float, complex)) or isinstance(c, complex) and c.imag:
+        return []
+    real = c.real if isinstance(c, complex) else c
+    if real != real or real in (float("inf"), float("-inf")):
+        return [complex(real)] if not isinstance(c, complex) else [real]
+    out: list[Any] = [float(real), complex(real)]
+    if real == int(real):
+        out.append(int(real))
+        if real in (0, 1):
+            out.append(bool(real))
+        if real == 0:
+            out += [-0.0, complex(-0.0)]
+    return out
+
+
+def _domain(p: Param, assumed: _Assumed | None = None) -> list[Any] | None:
+    """Every value ``p`` accepts, when they are few and known.
+
+    ``type=bool`` and an ``Enum`` type are exhaustive (neither has other
+    instances). ``choices`` are not, under the contract alone: membership
+    is ``value in choices``, so ``1.0`` and ``True`` are accepted for
+    ``choices={1}`` and render as ``1.0`` and ``True``, and a ``str``
+    subclass equal to a choice may format however it likes. With
+    ``assumed.builtin`` (builtin values only) a choice stands for itself and
+    the builtin numbers equal to it. With ``assumed`` None the same values
+    are returned for searches, which verify what they find by rendering.
+    """
+    if p.type is bool:
+        values: list[Any] = [False, True]
     elif isinstance(p.type, type) and issubclass(p.type, enum.Enum):
         values = list(p.type)
+    elif p.choices is not None:
+        if assumed is not None:
+            if not assumed.builtin:
+                return None
+            assumed.used.add("builtin_values")
+        values = list(p.choices)
+        for c in list(values):
+            for twin in _numeric_twins(c):
+                if not any(
+                    type(v) is type(twin) and repr(v) == repr(twin) for v in values
+                ):
+                    values.append(twin)
+        if p.type is not None:
+            values = [v for v in values if isinstance(v, p.type)]
     else:
         return None
     return values if len(values) <= MAX_DOMAIN else None
 
 
-def _environments(params: Iterable[Param], cap: int) -> list[dict[str, Any]] | None:
-    """Every binding of ``params``, when each has a small known domain and
-    there are at most ``cap`` bindings; None otherwise."""
+def _environments(
+    params: Iterable[Param], cap: int, assumed: _Assumed | None = None
+) -> list[dict[str, Any]] | None:
+    """Every binding of ``params``, when each has a small domain and there
+    are at most ``cap`` bindings; None otherwise. ``assumed`` as `_domain`."""
     names, domains = [], []
     size = 1
     for q in params:
-        dom = _domain(q)
+        dom = _domain(q, assumed)
         if dom is None:
             return None
         size *= len(dom)
@@ -485,7 +549,7 @@ def _field_lang(b: _Builder, f: Field, assumed: _Assumed) -> None:
     """Append field ``f``'s language to ``b``."""
     src = f.source
     if isinstance(src, Param):
-        dom = _domain(src) if f.static_spec is not None else None
+        dom = _domain(src, assumed) if f.static_spec is not None else None
         if dom is not None:
             texts = set()
             for v in dom:
@@ -503,25 +567,40 @@ def _field_lang(b: _Builder, f: Field, assumed: _Assumed) -> None:
             b.alternatives([])  # it never renders
             return
     if f.role == "segment":
-        b.repeat(ANY, 1, None)
-        return
-    dot_free, non_empty = f.facts
+        # A whole-segment parameter: its value as is, or formatted as ``{v}``.
+        dot_free, non_empty, static = False, True, ""
+    else:
+        (dot_free, non_empty), static = f.facts, f.static_spec
     cs = ANY & Chars(frozenset("."), negated=True) if dot_free else ANY
     lo = 1 if non_empty else 0
     hi: int | None = None
-    spec = parse_spec(f.static_spec) if f.static_spec is not None else None
+    spec = parse_spec(static) if static is not None else None
     if assumed.builtin and spec is not None and f.conversion is None:
         declared = src.type if isinstance(src, Param) else None
         integer = spec.type in INT_TYPES or (spec.type is None and declared is int)
         if integer and declared in (None, int):
-            cs = Chars(_int_chars(spec))
-            lo = max(lo, spec.width or 1)
-            assumed.used.add("builtin_formatting")
+            # ``bool`` is a builtin int: ``format(True, "")`` is ``True``
+            # (any other spec formats it as 1), so a parameter's renderings
+            # of it join the integers'.
+            bools = []
+            if isinstance(src, Param):
+                for v in (False, True):
+                    try:
+                        bools.append(_render_field(f, {src.name: v}))
+                    except WendError, ValueError:
+                        pass
+            ints, at_least = Chars(_int_chars(spec)), max(lo, spec.width or 1)
+            b.either(
+                lambda b: b.repeat(ints, at_least, None),
+                lambda b: b.alternatives(bools),
+            )
+            assumed.used.add("builtin_values")
+            return
         elif declared is str and spec.type in (None, "s"):
             lo = max(lo, spec.width or 0)
             if spec.precision is not None:
                 hi = max(spec.precision, spec.width or 0)
-            assumed.used.add("builtin_formatting")
+            assumed.used.add("builtin_values")
     b.repeat(cs, lo, hi)
 
 
@@ -540,7 +619,9 @@ def _seg_lang(seg: Seg, assumed: _Assumed) -> Lang:
             if not isinstance(p.source, (Param, Const)):
                 params = {}
                 break
-    envs = _environments(params.values(), MAX_SEGMENT_PRODUCT) if params else None
+    envs = (
+        _environments(params.values(), MAX_SEGMENT_PRODUCT, assumed) if params else None
+    )
     if envs is not None:
         texts = set()
         for env in envs:
@@ -593,7 +674,7 @@ def _rename(shape: Shape, last: Any) -> list[Shape]:
 def _deferred_shapes(d: Deferred, assumed: _Assumed) -> list[Shape]:
     """Shapes of a deferred operation, from its base's shapes where the
     operation's effect on them is known; any path otherwise."""
-    base, used = shapes(d.base, builtin_formatting=assumed.builtin)
+    base, used = shapes(d.base, builtin_values=assumed.builtin)
     assumed.used |= used
     if d.op == "parent":
 
@@ -648,10 +729,10 @@ def _deferred_shapes(d: Deferred, assumed: _Assumed) -> list[Shape]:
 
 
 def shapes(
-    e: PathExpr, *, builtin_formatting: bool = False
+    e: PathExpr, *, builtin_values: bool = False
 ) -> tuple[list[Shape], frozenset[str]]:
     """Shapes containing every path ``e`` can render, and the assumptions used."""
-    assumed = _Assumed(builtin_formatting)
+    assumed = _Assumed(builtin_values)
     h = e.head
     heads: list[Shape]
     if h is REL:
@@ -659,7 +740,7 @@ def shapes(
     elif isinstance(h, Root):
         heads = [Shape(frozenset({h.anchor}), ())]
     elif isinstance(h, HeadParam):
-        dom = _domain(h.param)
+        dom = _domain(h.param, assumed)
         if dom is not None:
             heads = []
             for v in dom:
@@ -684,7 +765,7 @@ def shapes(
             alternatives.append([(Item(_seg_lang(part, assumed), var=_var(part)),)])
             continue
         assert isinstance(part, Splice)
-        dom = _domain(part.param)
+        dom = _domain(part.param, assumed)
         values: list[tuple[Item, ...]] = []
         if dom is not None:
             for v in dom:
@@ -864,29 +945,51 @@ def _through_operation(e: PathExpr, path: str, limit: int) -> list[dict[str, Any
 
 def _readings(e: PathExpr, path: str, limit: int) -> list[dict[str, Any]] | None:
     """Bindings of ``e`` that render ``path``: from ``match_all``, or, where
-    it finds none or cannot invert ``e``, by rendering every binding when
-    every parameter has a small finite domain (``match`` does not read every
-    type back from text: an ``Enum`` field, say). None if neither applies."""
+    it finds none or cannot invert ``e``, by looking ``path`` up among the
+    renderings of every binding when every parameter has a small finite
+    domain (``match`` does not read every type back from text: an ``Enum``
+    field, say), or through an operation of a deferred ``e``. None if none
+    of these applies."""
     try:
         found = e.match_all(path, limit=limit)
     except NotInvertibleError:
         found = None
     if found:
         return found
+    index = _render_index(e)
+    if index is not None:
+        return [dict(env) for env in index.get(str(PurePosixPath(path)), ())[:limit]]
     through = _through_operation(e, path, limit)
     if through:
         return through
+    return found
+
+
+def _render_index(e: PathExpr) -> dict[str, list[dict[str, Any]]] | None:
+    """Every path ``e`` renders, with the bindings that render it, when every
+    parameter has a small finite domain; None otherwise. Built once per
+    expression: a search looks many paths up in it."""
+    try:
+        return _cached_render_index(e)
+    except TypeError:  # an unhashable constant inside the expression
+        return _build_render_index(e)
+
+
+@functools.lru_cache(maxsize=256)
+def _cached_render_index(e: PathExpr) -> dict[str, list[dict[str, Any]]] | None:
+    return _build_render_index(e)
+
+
+def _build_render_index(e: PathExpr) -> dict[str, list[dict[str, Any]]] | None:
     envs = _environments(e.params.values(), MAX_RENDER_SEARCH)
     if envs is None:
-        return found
-    out = []
-    target = str(PurePosixPath(path))
+        return None
+    index: dict[str, list[dict[str, Any]]] = {}
     for env in envs:
-        if _rendered(e, env) == target:
-            out.append(env)
-            if len(out) >= limit:
-                break
-    return out
+        path = _rendered(e, env)
+        if path is not None:
+            index.setdefault(path, []).append(env)
+    return index
 
 
 def overlaps(
@@ -894,18 +997,17 @@ def overlaps(
     b: Any,
     *,
     shared: bool = False,
-    builtin_formatting: bool = False,
+    builtin_values: bool = False,
     witnesses: int = 32,
 ) -> Overlap:
     """Whether ``a`` and ``b`` (expressions or unions) can render one path.
 
     ``shared=True`` makes a parameter name common to both one variable.
-    ``builtin_formatting=True`` assumes bound values format as the builtin
-    ``int``, ``float`` and ``str`` do (stronger NOs; see the module
-    docstring). ``witnesses`` bounds the candidate paths tried for a YES.
+    ``builtin_values=True`` assumes bound values are of builtin types
+    (stronger NOs; see the module docstring). ``witnesses`` bounds the candidate paths tried for a YES.
     """
     results = [
-        _overlap(x, y, shared, builtin_formatting, witnesses)
+        _overlap(x, y, shared, builtin_values, witnesses)
         for x in _alternatives(a)
         for y in _alternatives(b)
     ]
@@ -1037,12 +1139,18 @@ def _pools(params: list[Param], words: list[str]) -> list[list[Any]]:
         if dom is not None:
             pools.append(dom)
         elif q.type is int:
-            pools.append([0, 1, 7, 42, 100, 2026, -1])
+            pools.append([0, 1, 7, 42, 100, 2026, -1, False, True])
         elif q.type is float:
             pools.append([0.5, 1.0, 2.5])
+        elif q.kind is Kind.ABSOLUTE:
+            pools.append(["/", "/a", *("/" + w for w in words if "/" not in w)])
         elif q.kind is Kind.SUBPATH:
             pairs = [f"{x}/{y}" for x in words[:4] for y in words[:4]]
             pools.append([".", *words, "a", "a/b", *pairs])
+        elif q.kind in (Kind.AUTO, Kind.PATH):
+            # Possibly a head (absolute or not), possibly untyped: any
+            # builtin value formats.
+            pools.append([*words, "a", "1", "x.y", "/a", "/", 2.5, True])
         else:
             pools.append([*words, "a", "1", "x.y"])
     return pools
@@ -1090,11 +1198,25 @@ def _words(*exprs: PathExpr) -> list[str]:
     return out[:16]
 
 
+@functools.lru_cache(maxsize=4096)
+def _cached_shapes(e: PathExpr, builtin: bool) -> tuple[list[Shape], frozenset[str]]:
+    return shapes(e, builtin_values=builtin)
+
+
+def _shapes_of(e: PathExpr, builtin: bool) -> tuple[list[Shape], frozenset[str]]:
+    """`shapes`, cached: a graph compares each expression with many others,
+    and shapes depend only on the expression's structure."""
+    try:
+        return _cached_shapes(e, builtin)
+    except TypeError:  # an unhashable constant inside the expression
+        return shapes(e, builtin_values=builtin)
+
+
 def _overlap(
     a: PathExpr, b: PathExpr, shared: bool, builtin: bool, witnesses: int
 ) -> Overlap:
-    sa, used_a = shapes(a, builtin_formatting=builtin)
-    sb, used_b = shapes(b, builtin_formatting=builtin)
+    sa, used_a = _shapes_of(a, builtin)
+    sb, used_b = _shapes_of(b, builtin)
     assumptions = used_a | used_b
     common = a.param_names & b.param_names if shared else frozenset()
     candidates: list[str] = []
@@ -1161,7 +1283,12 @@ def _overlap(
                 )
     # YES needs a verified witness; it does not depend on any assumption.
     inverted = True
-    for path in candidates[: witnesses * 4]:
+    # Sampled candidates first: their texts come from real values, so the
+    # witness reads naturally; then the shortest texts the shapes allow.
+    ordered = [c for c in candidates if c in known] + [
+        c for c in candidates if c not in known
+    ]
+    for path in ordered[: witnesses * 4]:
         ka, kb = known.get(path, (None, None))
         ra = [ka] if ka is not None else _readings(a, path, 8)
         rb = [kb] if kb is not None else _readings(b, path, 8)

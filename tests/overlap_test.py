@@ -15,7 +15,7 @@ import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
-from wend import P, Param, SubPath, T
+from wend import Absolute, P, Param, SubPath, T
 from wend._experimental.overlap import intersect, overlaps, shapes
 from wend.errors import NotInvertibleError, WendError
 
@@ -45,8 +45,8 @@ EXAMPLES = [
         P("data") / split / T(t"chunk_{idx:04d}.parquet"),
         "data/test/chunk_0007.parquet",
         False,
-        "no",
-    ),
+        "maybe",
+    ),  # choices are not exhaustive
     (
         P("data") / split / T(t"chunk_{idx:04d}.parquet"),
         "data/train/notes.txt",
@@ -115,14 +115,56 @@ def test_shared_bindings_tie_parameters_across_steps():
     )
 
 
+def test_choices_are_exhaustive_only_for_builtin_values():
+    shard = P("data") / split / T(t"chunk_{idx:04d}.parquet")
+    test = "data/test/chunk_0007.parquet"
+    assert overlaps(shard, test).verdict == "maybe"
+    r = overlaps(shard, test, builtin_values=True)
+    assert r.verdict == "no" and r.assumptions == {"builtin_values"}
+    # The contract accepts any value equal to a choice, and each renders its
+    # own way: 1.0 and True pass for choices={1}.
+    c = Param("c", choices={1, 2})
+    e = P("r") / T(t"{c}.txt")
+    assert e.render(c=1.0) == "r/1.0.txt" and e.render(c=True) == "r/True.txt"
+    for path, value in [
+        ("r/1.0.txt", 1.0),
+        ("r/True.txt", True),
+        ("r/(1+0j).txt", 1 + 0j),
+    ]:
+        for builtin in (False, True):
+            r = overlaps(e, path, builtin_values=builtin)
+            assert r.verdict == "yes" and r.witness.a == {"c": value}, (
+                path,
+                builtin,
+                r,
+            )
+    assert overlaps(e, "r/3.txt").verdict == "maybe"
+    assert overlaps(e, "r/3.txt", builtin_values=True).verdict == "no"
+
+    class Sly(str):
+        def __format__(self, spec):
+            return "zz"
+
+        __hash__ = str.__hash__
+
+    # A str subclass equal to a choice is that choice to the check, not to
+    # formatting.
+    assert e.render(c=1) == "r/1.txt"
+    s = Param("s", choices={"a", "b"})
+    assert (P("r") / T(t"{s}.txt")).render(s=Sly("a")) == "r/zz.txt"
+    assert overlaps(P("r") / T(t"{s}.txt"), "r/zz.txt").verdict != "no"
+
+
 def test_a_repeated_parameter_is_exact_when_it_has_a_finite_domain():
     c = Param("c", choices={"a", "b"})
     seg = P("r") / T(t"{c}-{c}")
     assert overlaps(seg, "r/a-a").verdict == "yes"
-    assert overlaps(seg, "r/a-b").verdict == "no"
+    assert overlaps(seg, "r/a-b", builtin_values=True).verdict == "no"
+    f = Param("f", type=bool)  # exhaustive under the contract alone
+    assert overlaps(P("r") / T(t"{f}-{f}"), "r/True-False").verdict == "no"
 
 
-def test_builtin_formatting_is_an_assumption_not_a_fact():
+def test_builtin_values_is_an_assumption_not_a_fact():
     n = Param("n", type=int)
     e = P("logs") / T(t"{n:04d}")
 
@@ -134,15 +176,60 @@ def test_builtin_formatting_is_an_assumption_not_a_fact():
     assert e.render(n=Odd(3)) == "logs/abcd"
     strict = overlaps(e, "logs/abcd")
     assert strict.verdict != "no"
-    trusting = overlaps(e, "logs/abcd", builtin_formatting=True)
+    trusting = overlaps(e, "logs/abcd", builtin_values=True)
     assert trusting.verdict == "no"
-    assert trusting.assumptions == {"builtin_formatting"}
+    assert trusting.assumptions == {"builtin_values"}
 
 
 def test_a_yes_never_rests_on_an_assumption():
     n = Param("n", type=int)
-    r = overlaps(P("logs") / T(t"{n:04d}"), "logs/0042", builtin_formatting=True)
+    r = overlaps(P("logs") / T(t"{n:04d}"), "logs/0042", builtin_values=True)
     assert r.verdict == "yes" and r.witness.a == {"n": 42}
+
+
+def test_a_finite_witness_search_renders_each_binding_once(monkeypatch):
+    # Each candidate path used to re-render every binding, and a deferred
+    # head re-ran that per start path: 35k renders and 1.3 s for this pair.
+    from wend._experimental import overlap as O
+
+    calls = 0
+    real = O._rendered
+
+    def counted(e, env):
+        nonlocal calls
+        calls += 1
+        return real(e, env)
+
+    monkeypatch.setattr(O, "_rendered", counted)
+    O._cached_render_index.cache_clear()
+    rc = Param("rc", choices={"a", "/x", "b/c", "a/.."})
+    ci = Param("ci", choices={1, 2})
+    sc = SubPath("sc", choices={".", "a", "a/b"})
+    a = (P(rc) / T(t"{f}.txt") / T(t"v{ci:d}") / sc).parent
+    b = P("/") / T(t"{n:d}.{p}") / p / T(t"{ci}{ci}")
+    assert overlaps(a, b).verdict == "maybe"
+    assert calls < 2000
+    # The index still finds witnesses only rendering can: Enum fields.
+    Colour = enum.Enum("Colour", "RED GREEN")
+    col = Param("col", type=Colour)
+    r = overlaps((P("r") / T(t"{col}") / "x").parent, "r/Colour.GREEN")
+    assert r.verdict == "yes" and r.witness.a == {"col": Colour.GREEN}
+
+
+def test_bool_is_a_builtin_int():
+    # format(True, "") is "True": a type=int field without a presentation
+    # type renders it, so builtin values cannot mean digits only.
+    n = Param("n", type=int)
+    for e in [P("x") / T(t"{n}.txt"), P("x") / n / "y"]:
+        path = e.render(n=True)
+        r = overlaps(e, path, builtin_values=True)
+        assert r.verdict == "yes" and r.witness.a == {"n": True}
+    # With a presentation type it formats as 1, and digits are exact.
+    assert (
+        overlaps(P("x") / T(t"{n:d}.txt"), "x/True.txt", builtin_values=True).verdict
+        == "no"
+    )
+    assert overlaps(P("x") / n, "x/data.json", builtin_values=True).verdict == "no"
 
 
 def test_unions_overlap_if_some_alternatives_do():
@@ -154,7 +241,7 @@ def test_unions_overlap_if_some_alternatives_do():
 def test_intersect_finds_texts_longer_than_any_bound():
     # A width far past any fixed search depth, so the search must be exact.
     n = Param("n", type=int)
-    [la], _ = shapes(P(T(t"{n:070d}")), builtin_formatting=True)
+    [la], _ = shapes(P(T(t"{n:070d}")), builtin_values=True)
     [lb], _ = shapes(P(T(t"{name}9")))
     texts = intersect(la.items[0].lang, lb.items[0].lang)
     assert texts and len(texts[0]) == 70 and texts[0].endswith("9")
@@ -169,16 +256,20 @@ s = SubPath("s")
 sc = SubPath("sc", choices={".", "a", "a/b"})
 root = Param("root")
 f = Param("f", type=bool)
+ab = Absolute("ab")
 
 POOL = {
-    "p": ["a", "b", "x", "a.b", "x.txt", "1", "01", "..."],
-    "q": ["a", "b", "x.txt", "7"],
-    "n": [0, 1, 7, 12, -1, 100, 2026],
+    # Every kind of value builtin_values allows: bool is an int, and an
+    # untyped parameter may be bound to any builtin type.
+    "p": ["a", "b", "x", "a.b", "x.txt", "1", "01", "...", 3, 2.5, None, True],
+    "q": ["a", "b", "x.txt", "7", False, 1 + 2j],
+    "n": [0, 1, 7, 12, -1, 100, 2026, True, False],
     "c": ["a", "b", "x.txt"],
     "s": [".", "a", "a/b", "b/x.txt", "x.txt"],
     "sc": [".", "a", "a/b"],
     "root": ["", "a", "/", "/a", "..", "a/..", "//x"],
     "f": [False, True],
+    "ab": ["/", "/a", "/a/b"],
 }
 
 HEADS = [
@@ -187,6 +278,7 @@ HEADS = [
     lambda: P("data"),
     lambda: P(root),
     lambda: P("//"),
+    lambda: P(ab),
 ]
 PARTS = [
     lambda: "a",
@@ -208,6 +300,10 @@ PARTS = [
     lambda: T(t"{f}.txt"),
     lambda: T(t"{n:d}.{p}"),
     lambda: T(t"chunk_{n:03d}"),
+    # A bool's text against an int field's: bool is an int.
+    lambda: "True",
+    lambda: T(t"{f}"),
+    lambda: T(t"{n}.txt"),
 ]
 
 
@@ -241,7 +337,7 @@ def readings(e, path):
 @given(a=expressions(), b=expressions())
 def test_no_is_never_refuted_and_yes_is_always_witnessed(a, b):
     for shared, builtin in [(False, False), (False, True), (True, False)]:
-        r = overlaps(a, b, shared=shared, builtin_formatting=builtin)
+        r = overlaps(a, b, shared=shared, builtin_values=builtin)
         if r.verdict == "yes":
             w = r.witness
             assert a.render(w.a) == w.path and b.render(w.b) == w.path
@@ -279,5 +375,7 @@ def test_an_expression_overlaps_itself(e):
     if next(renders(e), None) is None:
         return  # renders nothing from the pool; it may render nothing at all
     for shared in (False, True):
+        # Not only never NO: a sample rendering of e is a witness, so the
+        # search should always find one.
         r = overlaps(e, e, shared=shared)
-        assert r.verdict != "no", (e.pattern, shared, r)
+        assert r.verdict == "yes", (e.pattern, shared, r)

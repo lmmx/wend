@@ -17,7 +17,10 @@
           spec=spline.json: body from strandspline.js strandsFromSpec(spec) (as still-spline.html);
           geo=module.js: take the strands { yellow, blue } from that module's centrelines()
           (passed to createScene as `body`); bars (zebra bands per 180 deg, default 24);
-          hide=shadow (default) | none -->
+          hide=shadow (default) | none;
+          only=yellow|blue: render one strand alone (its body, overlay and head; the other's
+          meshes hidden), to see a surface without what crosses in front of it;
+          nopress=1: the contact press off (params.tube.press), for this render only -->
 <style>html,body{margin:0;background:#222}canvas{display:block}</style>
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }</script>
 <canvas id="c" width="1448" height="1086"></canvas>
@@ -44,6 +47,7 @@ if (q.get("spec")) {
   if (spec.tube) params.tube = { ...(params.tube || {}), ...spec.tube };
   body = strandsFromSpec(spec);
 }
+if (q.get("nopress") && params.tube) params.tube = { ...params.tube, press: null };
 const t0 = performance.now();
 const canvas = document.getElementById("c");
 const extra = q.get("extra") ? await (await fetch(q.get("extra"))).json() : null;
@@ -69,6 +73,15 @@ if (q.get("yaw")) {
 }
 const meshes = [];
 group.traverse((o) => { if (o.isMesh) meshes.push(o); });
+// only=NAME: hide the other strand's meshes (body, overlay, head), and the eye nearest its head
+if (q.get("only")) {
+  const other = q.get("only") === "yellow" ? "blue" : "yellow";
+  for (const m of meshes) if (m.material?.userData?.strand === other) m.visible = false;
+  const eyeAt = other === "yellow" ? 0 : 1, eyes = meshes.filter((m) => m.geometry?.type === "SphereGeometry" || m.geometry?.type === "CircleGeometry");
+  const byX = [...eyes].sort((a, b) => a.position.x - b.position.x);
+  const hideX = eyeAt === 0 ? byX.slice(0, byX.length / 2) : byX.slice(byX.length / 2);
+  for (const m of hideX) m.visible = false;
+}
 
 // ---- lights for clay
 const lights = new THREE.Group();

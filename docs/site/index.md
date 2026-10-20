@@ -1,15 +1,26 @@
 ---
-description: "Filesystem paths as symbolic expressions built from Python t-strings: render them, match them back, and find them on disk."
+description: "Symbolic, typed, invertible filesystem paths built from Python t-strings (3.14+)."
 ---
+
+<div class="home-hero" markdown>
+
+![The wend logo: two snakes, one blue and one yellow, twisted into a W](assets/logo.png){ .home-hero-logo width="180" }
+
+<div class="home-hero-text" markdown>
 
 # wend
 
-![The wend logo: two snakes, one blue and one yellow, twisted into a W](assets/logo.png){ .home-logo width="220" }
+<p class="home-hero-tagline">Symbolic, typed, invertible filesystem paths built from Python t&#8209;strings (3.14+).</p>
 
-wend builds filesystem paths as symbolic expressions from Python 3.14 t-strings. An
-expression keeps its parameters, its literal parts and its formatting, so one definition
-can render paths from values, read the values back out of a path, and find the matching
-paths on disk.
+</div>
+
+</div>
+
+A wend expression records *how* a path is built — which parts are literal, which are
+parameters, how values are formatted — instead of collapsing it to a string. The same
+expression can be resolved, partially bound, transformed structurally, matched against
+concrete paths, used to discover files on disk, compiled for batch resolution, and
+inferred from an existing directory tree.
 
 <!--
 ```python

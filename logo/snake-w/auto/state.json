@@ -407,6 +407,16 @@
    "rejected": [],
    "verdict": "flat sweep only: rigid lowering fails",
    "note": "scarf stage 2 on stage 1, handles kept: the tail's last half-turn moved along the neck axis (-6..-24) or straight down (-6..-18): the top comes down (-17 -> -8 / +3 px) but L01 IoU 0.858 -> 0.70-0.84, H1 0.957 -> 0.88-0.94, notches in the yellow neck and stray blue at its left (auto/r36/lowering-sweep.png). The scarf needs a reshaped last turn, not a translation."
+  },
+  {
+   "round": "r38",
+   "incumbent_before": "r28-hybR",
+   "accepted": [],
+   "rejected": [
+    "r38-edge"
+   ],
+   "verdict": "incumbent kept (r28-hybR)",
+   "note": "edgefit.py (dR 2.2, bead_k 0, r_scale -0.035, yfloor 0.62): boundary direction and curvature roughly halved, lengths still +23-28 %; judge +1 at L16 (noise-sized), small zebra notches on L14/L15"
   }
  ],
  "seeds": {},

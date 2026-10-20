@@ -28,7 +28,7 @@ export const LOOK = {
 // A softbox studio: a dim room, a broad box overhead for the tops, a small key box at
 // upper left for each coil's white spot, a front fill, a back rim, and a white floor that
 // lifts the undersides as the reference's floor does.
-function studio(renderer, env) {
+export function studio(renderer, env) {
   const room = new THREE.Scene();
   // env.tint warms (or cools) the whole studio: room and every light
   const tint = env.tint || [1, 1, 1];
@@ -64,6 +64,12 @@ function studio(renderer, env) {
   box(3, 5, [5.5, 1.5, 4.5], env.fill);
   box(1.2, 6, [6.5, 1.0, -3.0], env.rim);
   box(16, 16, [0, -5.9, 0], env.floor);
+  // env.walls: the studio's side and back walls (a white cyclorama), which light the surfaces
+  // turning away from the camera, so a silhouette stays light instead of reflecting the dark room
+  if (env.walls) {
+    const wall = (pos, w, h) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ color: k(env.walls), side: THREE.DoubleSide })); m.position.set(...pos); m.lookAt(0, pos[1], 0); room.add(m); };
+    wall([-9.5, 0, 0], 18, 10); wall([9.5, 0, 0], 18, 10); wall([0, 0, -9.5], 18, 10);
+  }
   const pmrem = new THREE.PMREMGenerator(renderer);
   const tex = pmrem.fromScene(room, env.blur ?? 0.02).texture;
   room.traverse((o) => { if (o.isMesh) { o.geometry.dispose(); o.material.dispose(); } });
@@ -73,15 +79,36 @@ function studio(renderer, env) {
 
 // Ambient occlusion from a per-vertex attribute, applied where three's aoMap would be:
 // indirect diffuse, clear coat and specular.
-function withVertexAO(material) {
+// material.userData.aoPow (a uniform, live): the occlusion raised to that power, so it can be
+// deepened or softened without recomputing it (look.material.aoPower)
+// material.userData.shade (uniforms, live): the shade tinted, as light scattered inside a
+// coloured vinyl leaves its shadow side deeper and more saturated rather than grey: the colour
+// times `tint` (RGB), by k times how far the pixel's luminance falls below `ref` times the
+// albedo's, faded out over the last `edge` of N.V towards a silhouette (look.materials[name].shade =
+// { tint, k, ref, edge }; k 0 leaves it as it was)
+function withVertexAO(material, aoPower = 1, shade = null) {
+  material.userData.aoPow = { value: aoPower };
+  material.userData.shade = { tint: { value: new THREE.Vector3(...(shade?.tint || [1, 1, 1])) }, k: { value: shade?.k ?? 0 }, ref: { value: shade?.ref ?? 1 }, edge: { value: shade?.edge ?? 0 } };
   material.onBeforeCompile = (shader) => {
+    shader.uniforms.aoPow = material.userData.aoPow;
+    shader.uniforms.shadeTint = material.userData.shade.tint; shader.uniforms.shadeK = material.userData.shade.k; shader.uniforms.shadeRef = material.userData.shade.ref; shader.uniforms.shadeEdge = material.userData.shade.edge;
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nattribute float ao;\nvarying float vAo;")
       .replace("#include <begin_vertex>", "#include <begin_vertex>\nvAo = ao;");
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying float vAo;")
+      .replace("#include <common>", "#include <common>\nvarying float vAo;\nuniform float aoPow;\nuniform vec3 shadeTint;\nuniform float shadeK;\nuniform float shadeRef;\nuniform float shadeEdge;")
+      .replace("#include <opaque_fragment>", `
+        {
+          float lum = dot(outgoingLight, vec3(0.2126, 0.7152, 0.0722)), alb = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
+          float sh = clamp(1.0 - lum / max(alb * shadeRef, 1e-4), 0.0, 1.0);
+          // edge (shade.edge): no tint where the surface turns away from the view, so a silhouette's
+          // own falloff is not tinted into a dark outline
+          sh *= smoothstep(0.0, max(shadeEdge, 1e-4), saturate(dot(normal, normalize(vViewPosition))));
+          outgoingLight = mix(outgoingLight, outgoingLight * shadeTint, sh * shadeK);
+        }
+        #include <opaque_fragment>`)
       .replace("#include <aomap_fragment>", `
-        float ambientOcclusion = vAo;
+        float ambientOcclusion = pow(vAo, aoPow);
         reflectedLight.indirectDiffuse *= ambientOcclusion;
         #if defined( USE_CLEARCOAT )
           clearcoatSpecularIndirect *= ambientOcclusion;
@@ -276,7 +303,9 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
   for (const [key, surf] of Object.entries(surfaces)) {
     const name = key.split("_")[0];
     const { specularColor, ...opts } = { ...look.material, ...(look.materials?.[name] || {}) };
-    const mat = withVertexAO(new THREE.MeshPhysicalMaterial({ color: look[name], ...opts, ...(specularColor ? { specularColor: new THREE.Color(specularColor) } : {}) }));
+    const { aoPower = 1, shade = null, ...physical } = opts;
+    const mat = withVertexAO(new THREE.MeshPhysicalMaterial({ color: look[name], ...physical, ...(specularColor ? { specularColor: new THREE.Color(specularColor) } : {}) }), aoPower, shade);
+    mat.userData.strand = name;
     const own = name === "yellow" ? 0 : 1;
     meshes[key] = new THREE.Mesh(withAO(strandGeometry(surf), own), mat);
     group.add(meshes[key]);
@@ -367,6 +396,7 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
   shadow.rotation.x = -Math.PI / 2;
   shadow.position.set(rect.x0 + rect.width / 2, ground - 0.5, rect.z1 - rect.depth / 2);
   scene.add(shadow);
+  let shadowCard = null;
   if (look.shadowCard) {
     // The reference's floor shadow, painted on a card behind the base that faces the camera:
     // at this camera (a few degrees above the floor) a shadow lying on the floor would be
@@ -387,41 +417,80 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
     // look.shadowCard.fromMesh: the bottom from the strands' mesh itself (every ring vertex), so the
     // contact shadow hugs a lobe whose section or displacement handles moved its bottom off the
     // balls' round profile (the balls' bottom left a pale crescent under such a lobe: r10-L13)
+    // the strand drawing each column's bottom (fromMesh), for the floor's colour bleed
+    const bottomOf = new Array(Wc).fill(null);
     if (sc.fromMesh) {
       bottom.fill(-Infinity);
-      for (const s of Object.values(surfaces)) for (const ring of s.rings) for (const p of ring) {
+      for (const [key, s] of Object.entries(surfaces)) for (const ring of s.rings) for (const p of ring) {
         const [ix, iy] = toImage(p, elev), xc = Math.round(ix - x0);
-        for (let x = Math.max(0, xc - 1); x <= Math.min(Wc - 1, xc + 1); x++) bottom[x] = Math.max(bottom[x], iy);
+        for (let x = Math.max(0, xc - 1); x <= Math.min(Wc - 1, xc + 1); x++) if (iy > bottom[x]) { bottom[x] = iy; bottomOf[x] = key.split("_")[0]; }
+      }
+      // and extra's meshes, which take the cut tube's place (the valleys' bottoms)
+      for (const [name, list] of Object.entries(extra?.meshes || {})) for (const m of list) {
+        const P = meshAttr(m, "positions", Float32Array);
+        for (let i = 0; i < P.length; i += 3) {
+          const [ix, iy] = toImage([P[i], P[i + 1], P[i + 2]], elev), xc = Math.round(ix - x0);
+          for (let x = Math.max(0, xc - 1); x <= Math.min(Wc - 1, xc + 1); x++) if (iy > bottom[x]) { bottom[x] = iy; bottomOf[x] = name; }
+        }
       }
     }
     let foot = -Infinity;
     for (let x = 0; x < Wc; x++) if (bottom[x] > -Infinity) foot = Math.max(foot, bottom[x]);
-    // the band is strongest around the feet: their nearness to the floor, blurred widely
-    const near = Float32Array.from(bottom, (b) => (b > -Infinity ? Math.exp(-(foot - b) / sc.contactRange) : 0));
-    const env = new Float32Array(Wc);
-    for (let x = 0; x < Wc; x++) {
-      let acc = 0;
-      for (let k = 0; k < Wc; k += 2) if (near[k] > 1e-3) acc += near[k] * Math.exp(-0.5 * ((x - k) / sc.fade) ** 2);
-      env[x] = acc;
-    }
-    const emax = Math.max(...env);
-    for (let x = 0; x < Wc; x++) env[x] /= emax || 1;
     const cv = document.createElement("canvas"); cv.width = Wc; cv.height = Hc;
     const g = cv.getContext("2d"), img = g.createImageData(Wc, Hc);
-    const [cr, cg, cb] = sc.colour;
-    // across the floor (up the image) the shadow fades slowly; at its near edge, the line of
-    // the feet, it ends quickly, as the reference's does
-    const edge = foot + sc.bandOffset;
-    for (let x = 0; x < Wc; x++) {
-      for (let y = 0; y < Hc; y++) {
-        const iy = y0 + y;
-        let a = sc.band * env[x] * (iy < edge ? Math.exp(-(edge - iy) / sc.fadeUp) : Math.exp(-(((iy - edge) / sc.fadeDown) ** 2)));
-        if (near[x] > 1e-3 && iy > bottom[x] - 2) a += sc.contact * near[x] * Math.exp(-(iy - bottom[x] + 2) / sc.contactFall);
-        a = Math.min(a, 0.9);
-        img.data.set([cr * 255, cg * 255, cb * 255, a * 255], 4 * (y * Wc + x));
+    // paint(sc): the card for these parameters (scene.shadowCard.paint redraws it live)
+    const paint = (sc, colours) => {
+      // the band is strongest around the feet: their nearness to the floor, blurred widely
+      const near = Float32Array.from(bottom, (b) => (b > -Infinity ? Math.exp(-(foot - b) / sc.contactRange) : 0));
+      const env = new Float32Array(Wc);
+      for (let x = 0; x < Wc; x++) {
+        let acc = 0;
+        for (let k = 0; k < Wc; k += 2) if (near[k] > 1e-3) acc += near[k] * Math.exp(-0.5 * ((x - k) / sc.fade) ** 2);
+        env[x] = acc;
       }
-    }
-    g.putImageData(img, 0, 0);
+      const emax = Math.max(...env);
+      for (let x = 0; x < Wc; x++) env[x] /= emax || 1;
+      // sc.bounce { k, fall, blur }: each foot's own colour on the floor below it (light bounced
+      // off the strand; the reference's floor glows yellow under the yellow, blue under the blue)
+      const bo = sc.bounce, bc = [new Float32Array(Wc), new Float32Array(Wc), new Float32Array(Wc), new Float32Array(Wc)];
+      if (bo?.k) {
+        const raw = [0, 1, 2].map(() => new Float32Array(Wc)), w = new Float32Array(Wc);
+        for (let x = 0; x < Wc; x++) if (bottomOf[x] && near[x] > 1e-3) {
+          const c = colours[bottomOf[x]]; for (let i = 0; i < 3; i++) raw[i][x] = c[i] * near[x]; w[x] = near[x];
+        }
+        const R = Math.ceil(3 * (bo.blur || 12));
+        for (let x = 0; x < Wc; x++) {
+          let a = 0, c0 = 0, c1 = 0, c2 = 0, n = 0;
+          for (let k = Math.max(0, x - R); k <= Math.min(Wc - 1, x + R); k++) {
+            const q = Math.exp(-0.5 * ((x - k) / (bo.blur || 12)) ** 2); a += w[k] * q; c0 += raw[0][k] * q; c1 += raw[1][k] * q; c2 += raw[2][k] * q; n += q;
+          }
+          bc[3][x] = a / n; if (a > 1e-6) { bc[0][x] = c0 / a; bc[1][x] = c1 / a; bc[2][x] = c2 / a; }
+        }
+      }
+      const [cr, cg, cb] = sc.colour;
+      // across the floor (up the image) the shadow fades slowly; at its near edge, the line of
+      // the feet, it ends quickly, as the reference's does
+      const edge = foot + sc.bandOffset;
+      for (let x = 0; x < Wc; x++) {
+        for (let y = 0; y < Hc; y++) {
+          const iy = y0 + y;
+          let a = sc.band * env[x] * (iy < edge ? Math.exp(-(edge - iy) / sc.fadeUp) : Math.exp(-(((iy - edge) / sc.fadeDown) ** 2)));
+          if (near[x] > 1e-3 && iy > bottom[x] - 2) a += sc.contact * near[x] * Math.exp(-(iy - bottom[x] + 2) / sc.contactFall);
+          a = Math.min(a, 0.9);
+          let r = cr, gg = cg, b = cb;
+          if (bo?.k && bc[3][x] > 1e-4 && iy > foot - 2) {
+            // the bounce over the shadow: alpha b2, its colour the feet's
+            const b2 = Math.min(0.6, bo.k * bc[3][x] * Math.exp(-(iy - foot + 2) / (bo.fall || 40)));
+            const A = a + b2 * (1 - a);
+            r = (cr * a + bc[0][x] * b2 * (1 - a)) / A; gg = (cg * a + bc[1][x] * b2 * (1 - a)) / A; b = (cb * a + bc[2][x] * b2 * (1 - a)) / A; a = A;
+          }
+          img.data.set([r * 255, gg * 255, b * 255, a * 255], 4 * (y * Wc + x));
+        }
+      }
+      g.putImageData(img, 0, 0);
+    };
+    const hexRGB = (h) => { const c = new THREE.Color(h); return [c.r, c.g, c.b]; };
+    paint(sc, { yellow: hexRGB(look.yellow), blue: hexRGB(look.blue) });
     const tex = new THREE.CanvasTexture(cv); tex.colorSpace = THREE.SRGBColorSpace;
     const card = new THREE.Mesh(new THREE.PlaneGeometry(Wc, Hc), new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false }));
     // image point (x, y) at distance D behind the model: (x, -y cos e, y sin e) - D (0, sin e, cos e)
@@ -430,6 +499,30 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
     card.rotation.x = -elev;
     card.renderOrder = -1;
     scene.add(card);
+    shadowCard = { paint: (sc2, colours) => { paint(sc2, colours); tex.needsUpdate = true; } };
+  }
+
+  // look.keyLight: a directional key that casts soft shadows (the lobes on each other), on top of
+  // the studio's image light: { dir: towards the light, intensity, colour, size: the shadow's
+  // softness (VSM blur radius, px of the map), mapSize, bias }
+  let keyLight = null;
+  if (look.keyLight) {
+    const kl = look.keyLight;
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.VSMShadowMap;
+    keyLight = new THREE.DirectionalLight(new THREE.Color(...(kl.colour || [1, 1, 1])), kl.intensity ?? 1);
+    const d = new THREE.Vector3(...(kl.dir || [-0.5, 0.6, 0.6])).normalize();
+    keyLight.position.copy(target).addScaledVector(d, 3000);
+    keyLight.target.position.copy(target);
+    const sc = keyLight.shadow.camera;
+    Object.assign(sc, { left: -800, right: 800, top: 800, bottom: -800, near: 1000, far: 5000 });
+    sc.updateProjectionMatrix();
+    keyLight.shadow.mapSize.set(kl.mapSize || 2048, kl.mapSize || 2048);
+    keyLight.shadow.radius = kl.size ?? 8;
+    keyLight.shadow.blurSamples = 16;
+    keyLight.shadow.bias = kl.bias ?? -0.0005;
+    scene.add(keyLight, keyLight.target);
+    group.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   }
 
   function resize(w, h) {
@@ -441,5 +534,5 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
     Object.assign(camera, { left: -hw, right: hw, top: hh, bottom: -hh });
     camera.updateProjectionMatrix();
   }
-  return { renderer, scene, camera, group, meshes, eyes, lines, surfaces, resize, render: () => renderer.render(scene, camera) };
+  return { renderer, scene, camera, group, meshes, headMeshes, eyes, lines, surfaces, keyLight, shadowCard, target, resize, render: () => renderer.render(scene, camera) };
 }

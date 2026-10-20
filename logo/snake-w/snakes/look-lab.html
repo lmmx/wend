@@ -1,0 +1,73 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Snake W Look Lab</title>
+<style>html,body{margin:0;background:#fff}canvas{display:block;width:1448px;height:1086px}</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js" } }</script>
+<canvas id="c" width="1448" height="1086"></canvas>
+<script type="module">
+// The final geometry built once; window.__look(look) re-renders it under another look (the
+// studio, the materials, the key light, tone mapping) without rebuilding the meshes, and returns
+// the canvas as a PNG data URL. The occlusion is the build's (look.ao fixed); its power is live
+// (look.material.aoPower). tools/look_worker.mjs drives it; tools/lookfit.py fits a look.
+import * as THREE from "three";
+import { createScene, LOOK, studio } from "./scene.js";
+import { strandsFromSpec } from "./strandspline.js";
+const q = new URLSearchParams(location.search);
+const get = async (u) => (await fetch(u)).json();
+const [params, base, bakedHeads, spec, extra] = await Promise.all([
+  get(q.get("params") || "w-final.params.json"), get(q.get("look") || "w-final.look.json"),
+  get(q.get("heads") || "heads-w-final.json"), get(q.get("spec") || "w-final.spec.json"), get(q.get("extra") || "w-final.extra.json")]);
+if (spec.tube) params.tube = { ...(params.tube || {}), ...spec.tube };
+const look0 = Object.assign(structuredClone(LOOK), base);
+look0.keyLight = { intensity: 0, ...(look0.keyLight || {}) };   // built, so a look can turn it up
+const s = createScene(document.getElementById("c"), params, look0, { still: true, bakedHeads, body: strandsFromSpec(spec), extra });
+s.renderer.setPixelRatio(Number(q.get("ss") || 1));
+s.resize(1448, 1086);
+const TM = { none: THREE.NoToneMapping, neutral: THREE.NeutralToneMapping, agx: THREE.AgXToneMapping, aces: THREE.ACESFilmicToneMapping };
+const merge = (a, b) => { for (const [k, v] of Object.entries(b || {})) a[k] = v && typeof v === "object" && !Array.isArray(v) ? merge(a[k] && typeof a[k] === "object" ? a[k] : {}, v) : v; return a; };
+window.__t = {};
+let envKey = null, cardKey = JSON.stringify([look0.shadowCard, look0.yellow, look0.blue]);
+window.__look = (patch, { relative = false } = {}) => {
+  const T = performance.now();
+  const look = merge(structuredClone(look0), patch);
+  const r = s.renderer;
+  r.toneMapping = TM[look.toneMapping]; r.toneMappingExposure = look.exposure;
+  r.setClearColor(look.background);
+  // the studio is rebuilt only when it changed (a PMREM bake is the slow part)
+  const ek = JSON.stringify(look.env);
+  if (ek !== envKey) { const old = s.scene.environment; s.scene.environment = studio(r, look.env); old?.dispose(); envKey = ek; }
+  const T1 = performance.now();
+  s.scene.environmentIntensity = look.envLevel;
+  s.group.traverse((o) => {
+    const m = o.material, name = m?.userData?.strand;
+    if (!name) return;
+    const { specularColor, aoPower = 1, shade = null, ...opts } = { ...look.material, ...(look.materials?.[name] || {}) };
+    const U = m.userData.shade; U.tint.value.set(...(shade?.tint || [1, 1, 1])); U.k.value = shade?.k ?? 0; U.ref.value = shade?.ref ?? 1; U.edge.value = shade?.edge ?? 0;
+    const tm = opts.toneMapped ?? true;
+    for (const k of ["roughness", "clearcoat", "clearcoatRoughness", "specularIntensity", "envMapIntensity", "sheen", "sheenRoughness", "iridescence", "ior"]) if (opts[k] !== undefined) m[k] = opts[k];
+    if (opts.sheenColor) m.sheenColor.set(opts.sheenColor);
+    m.color.set(look[name]);
+    if (specularColor) m.specularColor.set(specularColor); else m.specularColor.setRGB(1, 1, 1);
+    if (m.toneMapped !== tm) { m.toneMapped = tm; m.needsUpdate = true; }
+    m.userData.aoPow.value = aoPower;
+  });
+  const kl = look.keyLight, L = s.keyLight;
+  L.intensity = kl.intensity ?? 0; L.color.setRGB(...(kl.colour || [1, 1, 1]));
+  const d = new THREE.Vector3(...(kl.dir || [-0.5, 0.6, 0.6])).normalize();
+  L.position.copy(s.target).addScaledVector(d, 3000); L.shadow.radius = kl.size ?? 8; L.shadow.bias = kl.bias ?? -0.0005;
+  L.shadow.needsUpdate = true;
+  // the floor's shadow card, repainted when it (or the strands' colours, for its bounce) changed
+  const ck = JSON.stringify([look.shadowCard, look.yellow, look.blue]);
+  if (s.shadowCard && ck !== cardKey) {
+    const rgb = (h) => { const c = new THREE.Color(h); return [c.r, c.g, c.b]; };
+    s.shadowCard.paint(look.shadowCard, { yellow: rgb(look.yellow), blue: rgb(look.blue) }); cardKey = ck;
+  }
+  const T2 = performance.now();
+  s.render(); r.getContext().finish();
+  const T3 = performance.now();
+  const url = document.getElementById("c").toDataURL("image/png");
+  window.__t = { env: T1 - T, mats: T2 - T1, render: T3 - T2, png: performance.now() - T3 };
+  return url;
+};
+window.__ready = true;
+</script>

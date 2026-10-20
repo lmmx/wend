@@ -1,7 +1,9 @@
-# Snake W: the logo as a Three.js reconstruction
+# Snake W: a Three.js reconstruction of the logo
 
-Two snakes, one blue and one yellow, twisted into a W. The scene is built to match one reference
-image (`snakes/ref/reference.png`) at the reference's own camera.
+An experiment, not the logo itself. wend's official logo is the original image-generated artwork,
+`assets/logo.png` at the repository root. This project rebuilds that artwork procedurally: two
+snakes, one blue and one yellow, twisted into a W, built to match the image (copied here as
+`snakes/ref/reference.png`) at its own camera. It is kept for future development.
 
 ![The final render](final/final.png)
 
@@ -11,11 +13,11 @@ How it got there, from the first parametric fit to the final geometry and look:
 
 - `final/progress.mp4` (31 s) shows all 38 milestones, each beside the reference. A running
   chart tracks the colour overlap with the reference: the mean IoU of the blue and yellow regions.
-- `docs/journal/2026-10-20-logo-snake-w-86.md` is the technical retrospective.
+- `docs/journal/2026-10-20-snake-w-experiment-86.md` is the technical retrospective.
 
 ## View it
 
-    cd logo/snake-w/snakes && python3 -m http.server 8000    # http://localhost:8000/
+    cd experiments/snake-w/snakes && python3 -m http.server 8000    # http://localhost:8000/
 
 Three.js r170 loads from jsdelivr (pinned). The page builds in about 3 s and keeps the reference
 framing at any window size. `?params=`, `?spec=`, `?extra=`, `?look=` and `?heads=` point at other

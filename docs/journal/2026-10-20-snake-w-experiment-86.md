@@ -1,6 +1,6 @@
-# 2026-10-20: Snake W logo, a retrospective
+# 2026-10-20: Snake W, a Three.js reconstruction of the logo: a retrospective
 
-This entry covers PR [#86](https://github.com/lmmx/wend/pull/86), `logo/snake-w/`. It replaces the
+This entry covers PR [#86](https://github.com/lmmx/wend/pull/86), `experiments/snake-w/`. It replaces the
 PR's five working entries of 2026-10-18 and 2026-10-19. Those, and every round's specs, metrics,
 judgements and sheets, are archived on the branch
 [`archive/logo-snake-w-research`](https://github.com/lmmx/wend/tree/archive/logo-snake-w-research)
@@ -83,6 +83,9 @@ The gains were L15 IoU 0.853 → 0.885 and an even tube radius along the right a
 
 ## Decisions
 
+**[Decision]** The official logo is the original image-generated artwork (`assets/logo.png`),
+which the README shows. The reconstruction is an experiment under `experiments/snake-w/`, kept for
+future development; the research archive keeps its historical paths under `logo/snake-w/`.
 **[Decision]** The geometry and look are frozen at r38-edge with look 6.
 **[Decision]** Only the production page, its final files, the bake and render tools, the final
 still, the progress video and a static milestone sheet ship. The research machinery is archived,

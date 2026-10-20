@@ -1,5 +1,9 @@
 # wend
 
+<p align="center">
+  <img src="https://raw.githubusercontent.com/lmmx/wend/master/assets/logo.png" alt="The wend logo: two snakes, one blue and one yellow, twisted into a W" width="480">
+</p>
+
 [![PyPI version](https://img.shields.io/pypi/v/wend.svg)](https://pypi.org/project/wend/)
 [![Python versions](https://img.shields.io/pypi/pyversions/wend.svg)](https://pypi.org/project/wend/)
 [![License](https://img.shields.io/pypi/l/wend.svg)](https://github.com/lmmx/wend/blob/master/LICENSE)

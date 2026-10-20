@@ -1,6 +1,6 @@
 {
- "yellow": "#ffc420",
- "blue": "#0058f2",
+ "yellow": "#ffc514",
+ "blue": "#084ec6",
  "headBlend": 60,
  "ao": {
   "k": 0.08,
@@ -10,35 +10,43 @@
   "contactFall": 30
  },
  "material": {
-  "roughness": 0.36,
-  "clearcoat": 0.22,
-  "clearcoatRoughness": 0.18,
-  "specularIntensity": 0.5
+  "roughness": 0.3,
+  "clearcoat": 0.7031278800164351,
+  "clearcoatRoughness": 0.16,
+  "specularIntensity": 0.6625085781403226,
+  "aoPower": 1.5,
+  "ior": 1.75
  },
  "env": {
-  "room": 0.08,
-  "key": 13,
-  "keySize": 2.2,
+  "room": 0.08565768138167026,
+  "key": 7.0,
+  "keySize": 7.100829396407136,
   "keyPos": [
-   -3.5,
-   4.0,
-   6.5
+   -4.4166342731614625,
+   4.004825146999954,
+   5.917323486095071
   ],
-  "over": 6,
+  "over": 0.6,
   "overSize": [
-   12,
-   9
+   20,
+   16
   ],
-  "front": 3.0,
-  "fill": 1.2,
+  "front": 0.15,
+  "fill": 0.3,
   "rim": 0,
-  "floor": 1.1,
+  "floor": 0.3,
   "feather": 0.5,
-  "blur": 0.04,
+  "blur": 0.014784194626542874,
   "tint": [
    1.0,
    0.97,
    0.93
+  ],
+  "walls": 0.0,
+  "keyRect": [
+   4.5,
+   8.0,
+   25
   ]
  },
  "eye": "#0a1238",
@@ -57,12 +65,63 @@
  },
  "materials": {
   "yellow": {
-   "specularColor": "#fff2c8",
+   "specularColor": "#fff6d0",
    "toneMapped": false,
-   "envMapIntensity": 0.88
+   "envMapIntensity": 0.9684466284486151,
+   "shade": {
+    "tint": [
+     1.0,
+     0.3,
+     0.5
+    ],
+    "ref": 1.0,
+    "k": 0.6,
+    "light": [
+     1.0,
+     1.2,
+     1.0
+    ],
+    "lk": 0.8,
+    "edge": 0.3,
+    "tone": [
+     0.9011483516128205,
+     0.8,
+     0.45,
+     3.0
+    ],
+    "white": [
+     1.0,
+     1.0,
+     0.8
+    ]
+   },
+   "clearcoat": 0.1,
+   "specularIntensity": 1.0,
+   "roughness": 0.3,
+   "aoPower": 1.0
   },
   "blue": {
-   "specularColor": "#80b4ff"
+   "specularColor": "#d8e8ff",
+   "shade": {
+    "tint": [
+     0.804192852934502,
+     0.750297605965996,
+     1.0
+    ],
+    "ref": 1.0,
+    "k": 0.17186705989203546,
+    "light": [
+     0.7,
+     1.25,
+     1.0
+    ],
+    "lk": 0.7971489544155654,
+    "edge": 0.3
+   },
+   "envMapIntensity": 1.3987966966443728,
+   "clearcoat": 0.15,
+   "specularIntensity": 0.9,
+   "roughness": 0.18
   }
  },
  "shadow": {
@@ -74,7 +133,7 @@
   "broad": 0.014,
   "contact": 0.07
  },
- "envLevel": 2.6,
+ "envLevel": 2.127464778650097,
  "eyeR": 16.5,
  "eyeSocket": {
   "k": 0.8,
@@ -84,22 +143,55 @@
  "shadowCard": {
   "colour": [
    0.62,
-   0.48,
-   0.48
+   0.5,
+   0.58
   ],
-  "band": 0.37,
+  "band": 0.32,
   "bandOffset": -4,
-  "fadeUp": 26,
-  "fadeDown": 10,
-  "fade": 330,
-  "contact": 0.5,
-  "contactFall": 6,
-  "contactRange": 10,
+  "fadeUp": 12,
+  "fadeDown": 14,
+  "fade": 260,
+  "contact": 0.9,
+  "contactFall": 7,
+  "contactRange": 40,
   "top": 600,
-  "fromMesh": true
+  "fromMesh": true,
+  "bounce": {
+   "k": 0.12,
+   "blur": 16,
+   "fall": 40
+  },
+  "smooth": 6
  },
- "background": "#fdfdfb",
- "toneMapping": "aces",
- "exposure": 0.95,
- "softness": 0.9
+ "background": "#ffffff",
+ "toneMapping": "neutral",
+ "exposure": 1.1212496598392692,
+ "softness": 0.3,
+ "keyLight": {
+  "dir": [
+   -0.44349672692395314,
+   0.3603431042034069,
+   0.8206482196780744
+  ],
+  "intensity": 1.1,
+  "size": 8.804090469005878,
+  "colour": [
+   1.0,
+   1.0,
+   1.0
+  ]
+ },
+ "hemi": {
+  "sky": [
+   1.0,
+   0.99,
+   0.97
+  ],
+  "ground": [
+   1.0,
+   0.86,
+   0.76
+  ],
+  "intensity": 2.4
+ }
 }

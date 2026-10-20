@@ -20,6 +20,7 @@ const [params, base, bakedHeads, spec, extra] = await Promise.all([
 if (spec.tube) params.tube = { ...(params.tube || {}), ...spec.tube };
 const look0 = Object.assign(structuredClone(LOOK), base);
 look0.keyLight = { intensity: 0, ...(look0.keyLight || {}) };   // built, so a look can turn it up
+look0.hemi = { intensity: 0, ...(look0.hemi || {}) };
 const s = createScene(document.getElementById("c"), params, look0, { still: true, bakedHeads, body: strandsFromSpec(spec), extra });
 s.renderer.setPixelRatio(Number(q.get("ss") || 1));
 s.resize(1448, 1086);
@@ -42,7 +43,7 @@ window.__look = (patch, { relative = false } = {}) => {
     const m = o.material, name = m?.userData?.strand;
     if (!name) return;
     const { specularColor, aoPower = 1, shade = null, ...opts } = { ...look.material, ...(look.materials?.[name] || {}) };
-    const U = m.userData.shade; U.tint.value.set(...(shade?.tint || [1, 1, 1])); U.k.value = shade?.k ?? 0; U.ref.value = shade?.ref ?? 1; U.edge.value = shade?.edge ?? 0; U.light.value.set(...(shade?.light || [1, 1, 1])); U.lk.value = shade?.lk ?? 0; U.tone.value.set(...(shade?.tone || [0, 0.8, 0.5, 1.0]));
+    const U = m.userData.shade; U.tint.value.set(...(shade?.tint || [1, 1, 1])); U.k.value = shade?.k ?? 0; U.ref.value = shade?.ref ?? 1; U.edge.value = shade?.edge ?? 0; U.light.value.set(...(shade?.light || [1, 1, 1])); U.lk.value = shade?.lk ?? 0; U.tone.value.set(...(shade?.tone || [0, 0.8, 0.5, 1.0])); U.white.value.set(...(shade?.white || [1, 1, 1]));
     const tm = opts.toneMapped ?? true;
     for (const k of ["roughness", "clearcoat", "clearcoatRoughness", "specularIntensity", "envMapIntensity", "sheen", "sheenRoughness", "iridescence", "ior"]) if (opts[k] !== undefined) m[k] = opts[k];
     if (opts.sheenColor) m.sheenColor.set(opts.sheenColor);
@@ -51,6 +52,8 @@ window.__look = (patch, { relative = false } = {}) => {
     if (m.toneMapped !== tm) { m.toneMapped = tm; m.needsUpdate = true; }
     m.userData.aoPow.value = aoPower;
   });
+  const hm = look.hemi || { intensity: 0 };
+  s.hemi.intensity = hm.intensity ?? 0; s.hemi.color.setRGB(...(hm.sky || [1, 1, 1])); s.hemi.groundColor.setRGB(...(hm.ground || [1, 0.9, 0.8]));
   const kl = look.keyLight, L = s.keyLight;
   L.intensity = kl.intensity ?? 0; L.color.setRGB(...(kl.colour || [1, 1, 1]));
   const d = new THREE.Vector3(...(kl.dir || [-0.5, 0.6, 0.6])).normalize();

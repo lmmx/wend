@@ -120,6 +120,7 @@ FLOOR_SPACE = [
     ("shadowCard.fade", 80, 500), ("shadowCard.contact", 0.0, 0.9), ("shadowCard.contactFall", 2, 20), ("shadowCard.contactRange", 2, 40),
     ("shadowCard.colour.r", 0.3, 0.8), ("shadowCard.colour.g", 0.2, 0.7), ("shadowCard.colour.b", 0.2, 0.8),
     ("shadowCard.bounce.k", 0.0, 0.5), ("shadowCard.bounce.fall", 5, 120), ("shadowCard.bounce.blur", 4, 60),
+    ("shadowCard.smooth", 0.0, 12.0),
 ]
 FLOOR_ROWS = (690, 960)
 

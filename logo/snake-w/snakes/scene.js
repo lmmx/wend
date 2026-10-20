@@ -95,15 +95,15 @@ function withVertexAO(material, aoPower = 1, shade = null) {
   material.userData.aoPow = { value: aoPower };
   material.userData.shade = { tint: { value: new THREE.Vector3(...(shade?.tint || [1, 1, 1])) }, k: { value: shade?.k ?? 0 }, ref: { value: shade?.ref ?? 1 }, edge: { value: shade?.edge ?? 0 },
     light: { value: new THREE.Vector3(...(shade?.light || [1, 1, 1])) }, lk: { value: shade?.lk ?? 0 },
-    tone: { value: new THREE.Vector4(...(shade?.tone || [0, 0.8, 0.5, 1.0])) } };
+    tone: { value: new THREE.Vector4(...(shade?.tone || [0, 0.8, 0.5, 1.0])) }, white: { value: new THREE.Vector3(...(shade?.white || [1, 1, 1])) } };
   material.onBeforeCompile = (shader) => {
     shader.uniforms.aoPow = material.userData.aoPow;
-    shader.uniforms.shadeTint = material.userData.shade.tint; shader.uniforms.shadeK = material.userData.shade.k; shader.uniforms.shadeRef = material.userData.shade.ref; shader.uniforms.shadeEdge = material.userData.shade.edge; shader.uniforms.lightTint = material.userData.shade.light; shader.uniforms.lightK = material.userData.shade.lk; shader.uniforms.ownTone = material.userData.shade.tone;
+    shader.uniforms.shadeTint = material.userData.shade.tint; shader.uniforms.shadeK = material.userData.shade.k; shader.uniforms.shadeRef = material.userData.shade.ref; shader.uniforms.shadeEdge = material.userData.shade.edge; shader.uniforms.lightTint = material.userData.shade.light; shader.uniforms.lightK = material.userData.shade.lk; shader.uniforms.ownTone = material.userData.shade.tone; shader.uniforms.toneWhite = material.userData.shade.white;
     shader.vertexShader = shader.vertexShader
       .replace("#include <common>", "#include <common>\nattribute float ao;\nvarying float vAo;")
       .replace("#include <begin_vertex>", "#include <begin_vertex>\nvAo = ao;");
     shader.fragmentShader = shader.fragmentShader
-      .replace("#include <common>", "#include <common>\nvarying float vAo;\nuniform float aoPow;\nuniform vec3 shadeTint;\nuniform float shadeK;\nuniform float shadeRef;\nuniform float shadeEdge;\nuniform vec3 lightTint;\nuniform float lightK;\nuniform vec4 ownTone;")
+      .replace("#include <common>", "#include <common>\nvarying float vAo;\nuniform float aoPow;\nuniform vec3 shadeTint;\nuniform float shadeK;\nuniform float shadeRef;\nuniform float shadeEdge;\nuniform vec3 lightTint;\nuniform float lightK;\nuniform vec4 ownTone;\nuniform vec3 toneWhite;")
       .replace("#include <opaque_fragment>", `
         {
           float lum = dot(outgoingLight, vec3(0.2126, 0.7152, 0.0722)), alb = dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722));
@@ -116,14 +116,15 @@ function withVertexAO(material, aoPower = 1, shade = null) {
           // albedo, as a bright blue goes towards sky (not lilac) under the reference's light
           float hl = clamp(lum / max(alb, 1e-4) - 1.0, 0.0, 1.0);
           outgoingLight = mix(outgoingLight, outgoingLight * lightTint, hl * lightK);
-          // shade.tone [exposure, knee, white, whiteAt] (a material with toneMapped false): its own
+          // shade.tone [exposure, knee, white, whiteAt], shade.white (its white point, RGB) (a material with
+// toneMapped false): its own
           // tone curve, which keeps hue and saturation: the brightest channel rolls off smoothly
           // above the knee (the colour scaled, not clipped per channel), and only near the top it
           // goes towards white, as a saturated yellow stays saturated up to its highlight
           if (ownTone.x > 0.0) {
             vec3 c = outgoingLight * ownTone.x;
             float m = max(c.r, max(c.g, c.b)), kn = ownTone.y;
-            if (m > kn) { float mc = kn + (1.0 - kn) * (1.0 - exp(-(m - kn) / (1.0 - kn))); c *= mc / m; c = mix(c, vec3(mc), ownTone.z * smoothstep(1.0, 1.0 + ownTone.w, m)); }
+            if (m > kn) { float mc = kn + (1.0 - kn) * (1.0 - exp(-(m - kn) / (1.0 - kn))); c *= mc / m; c = mix(c, vec3(mc) * toneWhite, ownTone.z * smoothstep(1.0, 1.0 + ownTone.w, m)); }
             outgoingLight = c;
           }
         }
@@ -465,6 +466,14 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
       const near0 = Float32Array.from(bottom, (b) => (b > -Infinity ? Math.exp(-(foot - b) / sc.contactRange) : 0));
       // smoothed across a few columns: the mesh's bottom is ragged column to column (stripes)
       const near = new Float32Array(Wc), sm = sc.smooth ?? 0;
+      // and the contact's top edge (each column's bottom) smoothed the same way, where it is defined
+      const bottomS = Float32Array.from(bottom);
+      if (sm) for (let x = 0; x < Wc; x++) {
+        if (!(bottom[x] > -Infinity)) continue;
+        let a = 0, n = 0;
+        for (let q = Math.max(0, x - 3 * sm); q <= Math.min(Wc - 1, x + 3 * sm); q++) if (bottom[q] > -Infinity) { const w = Math.exp(-0.5 * ((q - x) / sm) ** 2); a += bottom[q] * w; n += w; }
+        bottomS[x] = a / n;
+      }
       for (let x = 0; x < Wc; x++) {
         if (!sm) { near[x] = near0[x]; continue; }
         let a = 0, n = 0;
@@ -504,7 +513,7 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
         for (let y = 0; y < Hc; y++) {
           const iy = y0 + y;
           let a = sc.band * env[x] * (iy < edge ? Math.exp(-(edge - iy) / sc.fadeUp) : Math.exp(-(((iy - edge) / sc.fadeDown) ** 2)));
-          if (near[x] > 1e-3 && iy > bottom[x] - 2) a += sc.contact * near[x] * Math.exp(-(iy - bottom[x] + 2) / sc.contactFall);
+          if (near[x] > 1e-3 && iy > bottomS[x] - 2) a += sc.contact * near[x] * Math.exp(-(iy - bottomS[x] + 2) / sc.contactFall);
           a = Math.min(a, 0.9);
           let r = cr, gg = cg, b = cb;
           if (bo?.k && bc[3][x] > 1e-4 && iy > foot - 2) {
@@ -531,6 +540,14 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
     shadowCard = { paint: (sc2, colours) => { paint(sc2, colours); tex.needsUpdate = true; } };
   }
 
+  // look.hemi { sky, ground, intensity }: fill that lights without reflecting (a hemisphere light
+  // has no specular): the soft wrap-around light and the floor's warm bounce, so the studio's
+  // reflected boxes can be left to the key alone
+  let hemi = null;
+  if (look.hemi) {
+    hemi = new THREE.HemisphereLight(new THREE.Color(...(look.hemi.sky || [1, 1, 1])), new THREE.Color(...(look.hemi.ground || [1, 0.9, 0.8])), look.hemi.intensity ?? 1);
+    scene.add(hemi);
+  }
   // look.keyLight: a directional key that casts soft shadows (the lobes on each other), on top of
   // the studio's image light: { dir: towards the light, intensity, colour, size: the shadow's
   // softness (VSM blur radius, px of the map), mapSize, bias }
@@ -563,5 +580,5 @@ export function createScene(canvas, params, look = LOOK, { still = false, bakedH
     Object.assign(camera, { left: -hw, right: hw, top: hh, bottom: -hh });
     camera.updateProjectionMatrix();
   }
-  return { renderer, scene, camera, group, meshes, headMeshes, eyes, lines, surfaces, keyLight, shadowCard, target, resize, render: () => renderer.render(scene, camera) };
+  return { renderer, scene, camera, group, meshes, headMeshes, eyes, lines, surfaces, keyLight, hemi, shadowCard, target, resize, render: () => renderer.render(scene, camera) };
 }

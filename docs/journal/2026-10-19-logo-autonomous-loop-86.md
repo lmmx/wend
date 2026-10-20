@@ -96,7 +96,34 @@
   - `index.html` loads the final files and builds in 2.9 s, against 24 s when the heads are meshed in the page. It renders pixel-identical to the loop's real render of r28-hybR.
 - `progress/final/use-sizes.png` sets the reference beside the final at 640 to 16 px wide.
 
+- The look (lighting, material, colour), after the owner's "super mario n64 rather than soft vinyl plastic toy":
+  - `snakes/look-lab.html` builds the final geometry once and re-renders a look in about 2 s. `tools/look_worker.mjs` drives it, `tools/lookfit.py` fits a look (CMA) against the reference, and `look/` holds the pages, the blind look judge's prompt (`look/JUDGE_LOOK.md`) and the looks.
+  - The objectives were measured against the reference over the strands' interiors:
+    - a trimmed per-cell colour match;
+    - tone quantiles;
+    - a highlight top-hat;
+    - gradients;
+    - a tone ramp: the mean colour within luminance bands, the most useful.
+  - Six looks were accepted by blind look judges, each over the last. look6 is `snakes/w-final.look.json` (`look/before-after.png`).
+  - New look keys in `scene.js`, all off by default:
+    - `keyLight`: a directional key with soft VSM shadows.
+    - `hemi`: fill with no reflection, so only the key softbox shows in the gloss.
+    - `env.keyRect`: a strip softbox, one long soft streak per lobe.
+    - `env.floorColour`, `env.walls`.
+    - Per strand, `materials.*.shade`: a shade tint (`tint`, `k`, `edge`), a light tint (`light`, `lk`), and the material's own hue-preserving tone curve (`tone`, `white`).
+    - `materials.*.aoPower`.
+    - `shadowCard.bounce` (the floor's colour under each foot) and `shadowCard.smooth`.
+  - The yellow, measured against the reference (darkest 10%, mid, 90%): #bd851e / #fbc223 / #fed34f against #be851e / #fdc935 / #fde95d. It is on its own tone curve, because neutral tone mapping cannot keep a bright, fully saturated yellow (its knee desaturates).
+  - The blue: #033790 / #055bda / #3678f4 against #123e8f / #0d5bdb / #267cf7, its highlights sky (#9fcafa against #92c6fe) through a light tint. White reflections over a bright blue go lilac under the tone curve.
+  - Fixed on the way:
+    - The floor card found no feet under the valleys' overlays.
+    - The floor contact combed column to column.
+    - The old look's yellow was not tone-mapped and clipped to lemon. Its 0.9 px blur was right for the silhouettes (σ 0.94 px in the reference) but the softness was in the shading.
+
 ## Missing
+
+- The look: the judges still ask for highlights about twice as wide and softer, pale-tinted. Every wider sheen on the blue so far read as a milky lavender haze (R6, R9).
+  - Also: a wider warm pink-lavender floor glow with no band at all, and a cyan glint under the right valley's lower blue lobe.
 
 - The collar L01 still rides high: its top end overshoots the reference by 12 px, and it stands about 6° too upright. Its right shoulder is 9–11 px short of the reference's round shoulder.
   - The lobe handle moves the whole run, so lowering the top end also lowers the bottom end, which already overshoots by 7 px. The tip is drawn by stations just past the run's end.

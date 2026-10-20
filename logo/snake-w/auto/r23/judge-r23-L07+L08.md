@@ -1,9 +1,0 @@
-verdict: REJECT
-mapping: X = r18-L12 (incumbent), Y = r23-L07+L08 (candidate)
-judge: one blind Sonnet (xhigh) agent, pair-r23-L07+L08/ only (focus: L07, L08, L07|L08)
-
-Closer: X (the incumbent) at L06 by 1 ("Y has a dark pinch / notch in that [top] seam in clay and a small kink in the blue/yellow boundary in colour"), at L07 by 1 ("Y's right end a straighter diagonal cut with a slightly squarer top-right corner; a dark notch and fragmented zebra stripes on the lower seam with L06") and at L08 by 2 ("Y is boxier: its left flank nearly vertical and straight, a sharper top-left shoulder, flatter top and sharper top-right corner; its zebra bands run flatter and more parallel"). Every other feature: same.
-Severities X / Y: L06 2/2, L07 2/3, L08 2/3; all others equal.
-Remaining, in X (the incumbent): L07's top a straight diagonal where the reference arches, its left tip sharp where the reference's is blunt and round, its right end a straight cut where the reference bulges out; thicker at the lower left, thinner at the upper right (outline, mass distribution). L08's top-right corner angular and its right face straight or concave where the reference is a convex arc with a rounded lip; thin at the upper right (outline, mass distribution). L07|L08: the crease ends at a sharper corner at the right, where the reference's wraps the blue's right shoulder; the blue's right shoulder 15-20 px right of the reference's, its lower-left edge 15 px left (junction curvature).
-Against the diagnosis and the numbers: on real renders L07's IoU rose 0.874 -> 0.901 and L06's 0.897 -> 0.912, while L08's fell 0.919 -> 0.901 and its crease rose 1.41 -> 1.79. The judge saw the IoU gain on L07 as a squarer, worse lobe: the mask agrees more and the cushion reads less round.
-Causes recorded: L08 flat_top, L06|L07 junction_pinch, L06 crossing_notch.

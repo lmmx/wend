@@ -61,8 +61,6 @@ addopts = "-v"
 
 [tool.ruff]
 target-version = "py314"
-# the logo's fitting and rendering scripts are research code, not part of the package
-extend-exclude = ["logo/snake-w/tools"]
 
 [tool.ruff.lint]
 ignore = ["C408", "C901", "E501", "E722", "E741"]

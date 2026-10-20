@@ -1,8 +1,0 @@
-{
- "tag": "r38-edge",
- "spec": "auto/r38/spec-r38-edge.json",
- "extra": "hybrid-r28-hybR.json",
- "look": "snakes/w-final.look.json",
- "date": "2026-10-20",
- "page_messages": []
-}

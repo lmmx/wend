@@ -1,7 +1,0 @@
-verdict: REJECT (narrower)
-mapping: X = r18-L12 (incumbent), Y = poc-r4 (reference-lobe cushions with the shape prior)
-judge: one blind Sonnet (xhigh) agent, pair-poc-r4/ only (focus: L04, L05, L06, L04|L06, L04|L05, L05|L06)
-
-Closer: X (the incumbent) at L05 by 2, at L03, L04 and L06 by 1 ("a marginal win for X on smoothness"; "the closer-than calls for L04-L06 carry moderate uncertainty"). Y has "a rounder right bulb and a rounder blue lobe, closer to the reference in mass", but adds: a small round nub with ring creases at L03's lower right / L04's right; a pinched-neck knob and extra lump at L06's left end; a secondary bulge at L05's lower right; a foot-like yellow bulge under L04's blue. X's own: L04 and L06 run together as a flat band with no crease; hard straight seams in zebra at L04|L06 and L05|L06; L05's straight upper-left edge.
-Against the numbers (real renders): L04 IoU 0.869 -> 0.919 (p95 10.9 -> 4.2), L05 0.708 -> 0.915 (14.5 -> 3.2), L06 0.897 -> 0.924 (5.0 -> 3.0); clay creases L04 1.44 -> 1.44, L05 0.90 -> 1.23, L06 1.11 -> 1.18.
-Diagnosis: the knobs sit where each region's cut tube comes out from behind its partner: started from the reference lobes, the cushions no longer meet the strand there (L04's axis end 53 px from where the yellow emerges), so the tube's stub shows beside them. Next: the continuity prior (cushionray.continuity), the region's first and last cushions' axis ends on those points.

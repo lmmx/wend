@@ -84,6 +84,16 @@ Every value is measured against the reference image (`snakes/ref/reference.png`)
 | `contact_ripple` | The band-passed offset along the stretch of one feature's reference contour next to the other, rms: a bumpy contact line, e.g. the nape. |
 | `contact_offset` | Its smooth part, mean: the contact line displaced, e.g. a collar too high. |
 
+**Contact boundaries** (from r38; `tools/edges.py`, `auto/r37/EDGES.md`). The blue/yellow boundaries between neighbouring coils are paired by lobe identity and compared with the reference's over the whole curve. Only boundaries in `tools/geodiag_edges.json` are measured: those stable between two renders of one geometry and well formed in the reference. The others, and every outer edge, are unavailable until their extraction is fixed. Thresholds are the larger of a fixed floor and a multiple (3 / 5 / 8) of each boundary's own noise.
+
+| check | definition |
+|---|---|
+| `edge_dir` | Mean tangent angle between corresponding points (deg; floors 6 / 10 / 15). |
+| `edge_len` | \|relative projected length\| (floors 0.12 / 0.2 / 0.3). |
+| `edge_pos` | Mean distance between corresponding points (px; floors 6 / 10 / 15). |
+
+A boundary that cannot be extracted in a candidate is recorded as `unavailable`, never as a pass.
+
 **Tails:**
 
 | check | definition |

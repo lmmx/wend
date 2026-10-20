@@ -1,2 +1,3 @@
 {"round": "r32", "tag": "r32-right", "verdict": "REJECT", "worse": [], "improved": [], "resolved": ["L05:width_dev", "L15:width_dev", "L15:width_thin", "L16:width_dev", "tail:yellow:taper_visible"], "disagree": true}
 {"round": "r32", "tag": "r32-full", "verdict": "REJECT", "worse": [], "improved": [], "resolved": ["L01:seen_bead", "L01:pinch", "L05:width_dev", "L15:width_dev", "L15:width_thin", "L16:width_dev", "left arm:spine_p90", "tail:yellow:taper_visible"], "disagree": true}
+{"round": "r38", "tag": "r38-edge", "verdict": "REJECT", "override": "ACCEPT (owner)", "worse": ["L16|H2:contact_offset", "R neck/head:phase_max"], "improved": [], "resolved": ["L15:width_dev", "L15:width_thin", "tail:yellow:taper_visible"], "disagree": true}

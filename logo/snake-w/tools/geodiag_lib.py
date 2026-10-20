@@ -133,6 +133,8 @@ def values(D):
     for nm, M in D["image"]["macro"].items():
         v[(nm, "spine_p90")] = M["spine_p90"]; v[(nm, "width_dev_macro")] = M["width_dev"]; v[(nm, "phase_max")] = M["phase_max"]
     for n, T in D["strands"].get("tails", {}).items(): v[(f"tail:{n}", "taper_visible")] = T["taper_visible"]
+    for k, Ed in D.get("edges", {}).items():
+        if not Ed.get("unavailable"): v[(k, "edge_dir")] = Ed["dtan"]; v[(k, "edge_len")] = abs(Ed["dlen"]); v[(k, "edge_pos")] = Ed["pos"]
     return v
 
 

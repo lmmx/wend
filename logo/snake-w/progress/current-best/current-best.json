@@ -1,6 +1,6 @@
 {
- "tag": "r28-hybR",
- "spec": "auto/r26/spec-r26-L15+L14.json",
+ "tag": "r38-edge",
+ "spec": "auto/r38/spec-r38-edge.json",
  "extra": "hybrid-r28-hybR.json",
  "note": "refreshed by autoround merge on every accepted candidate (loop look); tools/promote.py writes the production files and the look-6 render, production.png"
 }

@@ -240,6 +240,32 @@ def image_measures(M, Mr):
     return out, lobe_c
 
 
+# ---------------------------------------------------------------- corresponding boundaries
+
+EDGES = os.path.join(HERE, "geodiag_edges.json")
+_REF_EDGES = {}
+
+
+def edge_measures(M, lobe_c):
+    """the reliable contact boundaries (tools/geodiag_edges.json: stable between two renders of one
+    geometry, auto/r37/EDGES.md) against the reference's: whole-curve position, ends, direction,
+    curvature and length (edgefit.edge_cost). A boundary that cannot be extracted is `unavailable`."""
+    import edgefit as EF
+    if not os.path.exists(EDGES): return {}
+    rel = json.load(open(EDGES))["edges"]
+    if not _REF_EDGES:
+        Lr = {f: LAB == i + 1 for i, f in enumerate(FEATS)}
+        for k in rel: _REF_EDGES[k] = EF.contact(Lr, *k.split("|"))
+    out = {}
+    for k, nz in rel.items():
+        ec = EF.contact(lobe_c, *k.split("|")); er = _REF_EDGES.get(k)
+        if er is None or ec is None or ec[1] < 25 or ec[2] < 0.8:
+            out[k] = dict(unavailable=True); continue
+        _, d = EF.edge_cost(er, ec)
+        out[k] = dict(d, noise=nz, where=np.asarray(ec[0])[len(ec[0]) // 2].tolist())
+    return out
+
+
 # ---------------------------------------------------------------- 3D measures
 
 def sha(*paths):
@@ -353,6 +379,9 @@ CHECKS = {
     "width_dev_macro": ("macro", "the helix envelope's width vs the reference (rel)"),
     "phase_max": ("macro", "a front-strand switch displaced along the W (px)"),
     "taper_visible": ("tails", "the tail's taper inside the visible run (share)"),
+    "edge_dir": ("edges", "a contact boundary's direction against the reference's (mean tangent angle, deg)"),
+    "edge_len": ("edges", "a contact boundary's projected length against the reference's (|rel|)"),
+    "edge_pos": ("edges", "a contact boundary displaced (mean px at corresponding points)"),
 }
 DEFAULT_T = {  # used until calibrate has run: (sev1, sev2, sev3)
     "outline_ripple": (1.0, 1.6, 2.5), "outline_offset": (6, 10, 16), "width_dev": (0.06, 0.09, 0.13), "width_bulge": (0.10, 0.15, 0.22),
@@ -439,6 +468,13 @@ def findings(D, T):
         for k, kk in (("spine_p90", "spine_p90"), ("width_dev", "width_dev_macro"), ("phase_max", "phase_max")):
             sv = sev_of(Mm[k], T[kk])
             if sv: out.append(dict(region=nm, check=kk, value=round(Mm[k], 4), sev=sv, conf="med", causes=causes_for(nm, kk, None, None, Mm), where=Mm["where"]))
+    for k, Ed in D.get("edges", {}).items():
+        if Ed.get("unavailable"): continue
+        nz = Ed["noise"]
+        for chk, val, base, nkey in (("edge_dir", Ed["dtan"], (6, 10, 15), "dtan"), ("edge_len", abs(Ed["dlen"]), (0.12, 0.2, 0.3), "dlen"), ("edge_pos", Ed["pos"], (6, 10, 15), "pos")):
+            t = [max(b, m * nz[nkey]) for b, m in zip(base, (3, 5, 8))]
+            sv = sev_of(val, t)
+            if sv: out.append(dict(region=k, check=chk, value=round(val, 3), sev=sv, conf="high", causes=causes_for(k.split("|")[0], "contact_ripple", feats.get(k.split("|")[0]), lobes.get(k.split("|")[0]), None), where=Ed["where"]))
     for name, Tl in tails.items():
         sv = sev_of(Tl["taper_visible"], T["taper_visible"])
         if sv or Tl["tip_visible"]:
@@ -559,7 +595,7 @@ def run(tag, colour, spec, outdir, extra=None, clay=None, zebra=None, metrics=No
     img, lobe_c = image_measures(M, Mr)
     arr = img.pop("arrays")
     st = strand_measures(spec, extra, lobe_c, M, params) if spec else {}
-    D = dict(tag=tag, colour=colour, spec=spec, extra=extra, image=img, strands=st,
+    D = dict(tag=tag, colour=colour, spec=spec, extra=extra, image=img, strands=st, edges=edge_measures(M, lobe_c),
              metrics={f: {k: v for k, v in m.items() if k in ("seg", "crease", "fold_vis", "iou")} for f, m in (json.load(open(metrics))["features"].items() if metrics else [])})
     fs = findings(D, thresholds())
     incD = json.load(open(inc)) if inc and os.path.exists(inc) else None

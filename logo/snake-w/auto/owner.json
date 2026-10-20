@@ -6,5 +6,11 @@
   "steps": [
    "r13"
   ]
+ },
+ "r38-edge": {
+  "sev": 0,
+  "said": "promote r38-edge: r28-hybR's right-arm tubes swell beyond the reference's lobes; keep the improved cross-sections; fidelity to the reference's own lobes, not an idealised reinterpretation",
+  "date": "2026-10-20",
+  "addressed": "r38"
  }
 }

@@ -1,7 +1,7 @@
 {
  "tag": "r38-edge",
  "colour": "auto/r38/renders/r38-edge-colour.png",
- "spec": "auto/r38/fit/spec.json",
+ "spec": "auto/r38/spec-r38-edge.json",
  "extra": "snakes/hybrid-r28-hybR.json",
  "image": {
   "features": {
@@ -12644,6 +12644,212 @@
    }
   }
  },
+ "edges": {
+  "H1|L01": {
+   "pos": 7.07903162486813,
+   "ends": 9.224244925285259,
+   "dtan": 9.170837106623804,
+   "dkap": 10.339739857666578,
+   "dlen": 0.1330149744934106,
+   "noise": {
+    "pos": 2.232784943006358,
+    "dtan": 2.921081123917965,
+    "dkap": 3.097107172584199,
+    "dlen": 0.037784973853779436
+   },
+   "where": [
+    431.7202215483877,
+    396.0
+   ]
+  },
+  "L01|L02": {
+   "pos": 17.250978290569588,
+   "ends": 21.717516998620106,
+   "dtan": 10.723493783484514,
+   "dkap": 10.023184842442348,
+   "dlen": 0.43927216741684116,
+   "noise": {
+    "pos": 1.2895570940890388,
+    "dtan": 1.4234762036347144,
+    "dkap": 3.6271426709051835,
+    "dlen": 0.0014944769196201246
+   },
+   "where": [
+    445.0,
+    490.67598079338256
+   ]
+  },
+  "L02|L03": {
+   "pos": 4.054144719216442,
+   "ends": 5.115737520120502,
+   "dtan": 9.329065436000915,
+   "dkap": 8.246350414806908,
+   "dlen": 0.08686477626829658,
+   "noise": {
+    "pos": 1.3431760156788262,
+    "dtan": 1.3316028992622537,
+    "dkap": 4.715162172097233,
+    "dlen": 0.005798478212475144
+   },
+   "where": [
+    466.0,
+    577.1319677573008
+   ]
+  },
+  "L03|L04": {
+   "pos": 9.602780630596603,
+   "ends": 17.20972532206395,
+   "dtan": 8.01499740436556,
+   "dkap": 10.066878446844267,
+   "dlen": 0.3338215462692431,
+   "noise": {
+    "pos": 0.2576024062451245,
+    "dtan": 1.7473034813814141,
+    "dkap": 2.696840511231302,
+    "dlen": 0.0025624144182818664
+   },
+   "where": [
+    487.9202548736023,
+    668.0
+   ]
+  },
+  "L04|L06": {
+   "pos": 6.12983225815267,
+   "ends": 6.716270112848056,
+   "dtan": 5.773170241491638,
+   "dkap": 16.945080957515586,
+   "dlen": 0.06967953969633256,
+   "noise": {
+    "pos": 0.5000000000000028,
+    "dtan": 0.0,
+    "dkap": 0.0,
+    "dlen": 0.019440866264537338
+   },
+   "where": [
+    573.0,
+    638.0
+   ]
+  },
+  "L08|L09": {
+   "pos": 2.7589688243016326,
+   "ends": 3.8138753422993177,
+   "dtan": 5.508066272403018,
+   "dkap": 6.212756820926593,
+   "dlen": 0.04373704815026924,
+   "noise": {
+    "pos": 1.5834203981222237,
+    "dtan": 1.912108178702652,
+    "dkap": 6.174309252677409,
+    "dlen": 0.010617262165954267
+   },
+   "where": [
+    700.988449550865,
+    466.01155044913503
+   ]
+  },
+  "L09|L10": {
+   "pos": 8.269358683726727,
+   "ends": 9.524588108230992,
+   "dtan": 5.788724459631071,
+   "dkap": 6.248435754104063,
+   "dlen": -0.06342990471871823,
+   "noise": {
+    "pos": 1.5066159765503575,
+    "dtan": 1.8049320298711078,
+    "dkap": 5.062433943302988,
+    "dlen": 0.01830666311280771
+   },
+   "where": [
+    782.3887122269326,
+    480.00000000000006
+   ]
+  },
+  "L10|L11": {
+   "pos": 3.0278147151482995,
+   "ends": 4.231220304309421,
+   "dtan": 3.9809812188563374,
+   "dkap": 6.798930906630829,
+   "dlen": -0.014104773234804968,
+   "noise": {
+    "pos": 0.9459904251170578,
+    "dtan": 0.9958926365834637,
+    "dkap": 1.3207134326152323,
+    "dlen": 0.02022275599234946
+   },
+   "where": [
+    813.4392454321905,
+    569.0
+   ]
+  },
+  "L12|L13": {
+   "pos": 20.017623909187712,
+   "ends": 22.233764210145914,
+   "dtan": 5.592994708716812,
+   "dkap": 17.14532603720256,
+   "dlen": 0.5333428137026264,
+   "noise": {
+    "pos": 4.0813620527906,
+    "dtan": 2.8159378320017927,
+    "dkap": 5.18905174557158,
+    "dlen": 0.06269658803730704
+   },
+   "where": [
+    915.0384125745231,
+    696.0
+   ]
+  },
+  "L14|L15": {
+   "pos": 9.813586222324643,
+   "ends": 17.24081480188586,
+   "dtan": 6.663813097900355,
+   "dkap": 4.7095974249681625,
+   "dlen": 0.27879473066311156,
+   "noise": {
+    "pos": 0.513402844529156,
+    "dtan": 1.184090762289728,
+    "dkap": 2.9934140715750486,
+    "dlen": 0.008166123576880624
+   },
+   "where": [
+    996.1031725111279,
+    599.0
+   ]
+  },
+  "L15|L16": {
+   "pos": 10.247628296072968,
+   "ends": 15.645729013561777,
+   "dtan": 6.6829429274679395,
+   "dkap": 9.287803194085585,
+   "dlen": 0.2455720489056754,
+   "noise": {
+    "pos": 0.672382571668785,
+    "dtan": 1.5728829605269565,
+    "dkap": 2.586147864138561,
+    "dlen": 0.010494239427148444
+   },
+   "where": [
+    1022.0,
+    513.81425257363
+   ]
+  },
+  "L16|H2": {
+   "pos": 10.34804291431373,
+   "ends": 13.787984757405425,
+   "dtan": 8.544656611768788,
+   "dkap": 9.21859558176446,
+   "dlen": 0.22600311995464484,
+   "noise": {
+    "pos": 0.6835366240763907,
+    "dtan": 1.3530096837881083,
+    "dkap": 2.4306812057088174,
+    "dlen": 0.0075548743004252294
+   },
+   "where": [
+    1043.0,
+    439.02743230698786
+   ]
+  }
+ },
  "metrics": {
   "H1": {
    "iou": 0.9599622539768131,
@@ -13055,7 +13261,43 @@
   "R neck/head|width_dev_macro": 0.03141361256544517,
   "R neck/head|phase_max": 8.0,
   "tail:yellow|taper_visible": 0.0,
-  "tail:blue|taper_visible": 0.2857142857142857
+  "tail:blue|taper_visible": 0.2857142857142857,
+  "H1|L01|edge_dir": 9.170837106623804,
+  "H1|L01|edge_len": 0.1330149744934106,
+  "H1|L01|edge_pos": 7.07903162486813,
+  "L01|L02|edge_dir": 10.723493783484514,
+  "L01|L02|edge_len": 0.43927216741684116,
+  "L01|L02|edge_pos": 17.250978290569588,
+  "L02|L03|edge_dir": 9.329065436000915,
+  "L02|L03|edge_len": 0.08686477626829658,
+  "L02|L03|edge_pos": 4.054144719216442,
+  "L03|L04|edge_dir": 8.01499740436556,
+  "L03|L04|edge_len": 0.3338215462692431,
+  "L03|L04|edge_pos": 9.602780630596603,
+  "L04|L06|edge_dir": 5.773170241491638,
+  "L04|L06|edge_len": 0.06967953969633256,
+  "L04|L06|edge_pos": 6.12983225815267,
+  "L08|L09|edge_dir": 5.508066272403018,
+  "L08|L09|edge_len": 0.04373704815026924,
+  "L08|L09|edge_pos": 2.7589688243016326,
+  "L09|L10|edge_dir": 5.788724459631071,
+  "L09|L10|edge_len": 0.06342990471871823,
+  "L09|L10|edge_pos": 8.269358683726727,
+  "L10|L11|edge_dir": 3.9809812188563374,
+  "L10|L11|edge_len": 0.014104773234804968,
+  "L10|L11|edge_pos": 3.0278147151482995,
+  "L12|L13|edge_dir": 5.592994708716812,
+  "L12|L13|edge_len": 0.5333428137026264,
+  "L12|L13|edge_pos": 20.017623909187712,
+  "L14|L15|edge_dir": 6.663813097900355,
+  "L14|L15|edge_len": 0.27879473066311156,
+  "L14|L15|edge_pos": 9.813586222324643,
+  "L15|L16|edge_dir": 6.6829429274679395,
+  "L15|L16|edge_len": 0.2455720489056754,
+  "L15|L16|edge_pos": 10.247628296072968,
+  "L16|H2|edge_dir": 8.544656611768788,
+  "L16|H2|edge_len": 0.22600311995464484,
+  "L16|H2|edge_pos": 10.34804291431373
  },
  "findings": [
   {
@@ -13545,6 +13787,396 @@
    ],
    "inc": 4.0,
    "status": "new"
+  },
+  {
+   "region": "H1|L01",
+   "check": "edge_dir",
+   "value": 9.171,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    431.7202215483877,
+    396.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "H1|L01",
+   "check": "edge_len",
+   "value": 0.133,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    431.7202215483877,
+    396.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "H1|L01",
+   "check": "edge_pos",
+   "value": 7.079,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    431.7202215483877,
+    396.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L01|L02",
+   "check": "edge_dir",
+   "value": 10.723,
+   "sev": 2,
+   "conf": "high",
+   "causes": [
+    "tube_radius",
+    "handles"
+   ],
+   "where": [
+    445.0,
+    490.67598079338256
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L01|L02",
+   "check": "edge_len",
+   "value": 0.439,
+   "sev": 3,
+   "conf": "high",
+   "causes": [
+    "tube_radius",
+    "handles"
+   ],
+   "where": [
+    445.0,
+    490.67598079338256
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L01|L02",
+   "check": "edge_pos",
+   "value": 17.251,
+   "sev": 3,
+   "conf": "high",
+   "causes": [
+    "tube_radius",
+    "handles"
+   ],
+   "where": [
+    445.0,
+    490.67598079338256
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L02|L03",
+   "check": "edge_dir",
+   "value": 9.329,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "handles"
+   ],
+   "where": [
+    466.0,
+    577.1319677573008
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L03|L04",
+   "check": "edge_dir",
+   "value": 8.015,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "handles"
+   ],
+   "where": [
+    487.9202548736023,
+    668.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L03|L04",
+   "check": "edge_len",
+   "value": 0.334,
+   "sev": 3,
+   "conf": "high",
+   "causes": [
+    "handles"
+   ],
+   "where": [
+    487.9202548736023,
+    668.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L03|L04",
+   "check": "edge_pos",
+   "value": 9.603,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "handles"
+   ],
+   "where": [
+    487.9202548736023,
+    668.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L04|L06",
+   "check": "edge_pos",
+   "value": 6.13,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "tube_radius",
+    "handles",
+    "contact_deformation",
+    "helix_radius",
+    "overlay"
+   ],
+   "where": [
+    573.0,
+    638.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L09|L10",
+   "check": "edge_pos",
+   "value": 8.269,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "contact_deformation",
+    "helix_radius"
+   ],
+   "where": [
+    782.3887122269326,
+    480.00000000000006
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L12|L13",
+   "check": "edge_len",
+   "value": 0.533,
+   "sev": 3,
+   "conf": "high",
+   "causes": [
+    "tube_radius",
+    "handles",
+    "contact_deformation",
+    "helix_radius",
+    "overlay"
+   ],
+   "where": [
+    915.0384125745231,
+    696.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L12|L13",
+   "check": "edge_pos",
+   "value": 20.018,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "tube_radius",
+    "handles",
+    "contact_deformation",
+    "helix_radius",
+    "overlay"
+   ],
+   "where": [
+    915.0384125745231,
+    696.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L14|L15",
+   "check": "edge_dir",
+   "value": 6.664,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "contact_deformation",
+    "helix_radius",
+    "overlay"
+   ],
+   "where": [
+    996.1031725111279,
+    599.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L14|L15",
+   "check": "edge_len",
+   "value": 0.279,
+   "sev": 2,
+   "conf": "high",
+   "causes": [
+    "contact_deformation",
+    "helix_radius",
+    "overlay"
+   ],
+   "where": [
+    996.1031725111279,
+    599.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L14|L15",
+   "check": "edge_pos",
+   "value": 9.814,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "contact_deformation",
+    "helix_radius",
+    "overlay"
+   ],
+   "where": [
+    996.1031725111279,
+    599.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L15|L16",
+   "check": "edge_dir",
+   "value": 6.683,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    1022.0,
+    513.81425257363
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L15|L16",
+   "check": "edge_len",
+   "value": 0.246,
+   "sev": 2,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    1022.0,
+    513.81425257363
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L15|L16",
+   "check": "edge_pos",
+   "value": 10.248,
+   "sev": 2,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    1022.0,
+    513.81425257363
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L16|H2",
+   "check": "edge_dir",
+   "value": 8.545,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    1043.0,
+    439.02743230698786
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L16|H2",
+   "check": "edge_len",
+   "value": 0.226,
+   "sev": 2,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    1043.0,
+    439.02743230698786
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L16|H2",
+   "check": "edge_pos",
+   "value": 10.348,
+   "sev": 2,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    1043.0,
+    439.02743230698786
+   ],
+   "inc": null,
+   "status": "unchanged"
   }
  ],
  "resolved": [
@@ -13634,6 +14266,76 @@
    ],
    "inc": 1.9959605263083526,
    "status": "new"
+  },
+  {
+   "region": "L01|L02",
+   "check": "edge_len",
+   "value": 0.439,
+   "sev": 3,
+   "conf": "high",
+   "causes": [
+    "tube_radius",
+    "handles"
+   ],
+   "where": [
+    445.0,
+    490.67598079338256
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L01|L02",
+   "check": "edge_pos",
+   "value": 17.251,
+   "sev": 3,
+   "conf": "high",
+   "causes": [
+    "tube_radius",
+    "handles"
+   ],
+   "where": [
+    445.0,
+    490.67598079338256
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L03|L04",
+   "check": "edge_len",
+   "value": 0.334,
+   "sev": 3,
+   "conf": "high",
+   "causes": [
+    "handles"
+   ],
+   "where": [
+    487.9202548736023,
+    668.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L12|L13",
+   "check": "edge_len",
+   "value": 0.533,
+   "sev": 3,
+   "conf": "high",
+   "causes": [
+    "tube_radius",
+    "handles",
+    "contact_deformation",
+    "helix_radius",
+    "overlay"
+   ],
+   "where": [
+    915.0384125745231,
+    696.0
+   ],
+   "inc": null,
+   "status": "unchanged"
   },
   {
    "region": "R neck/head",
@@ -13772,6 +14474,105 @@
     446.5951288257441
    ],
    "inc": 0.1934868118898905,
+   "status": "unchanged"
+  },
+  {
+   "region": "L01|L02",
+   "check": "edge_dir",
+   "value": 10.723,
+   "sev": 2,
+   "conf": "high",
+   "causes": [
+    "tube_radius",
+    "handles"
+   ],
+   "where": [
+    445.0,
+    490.67598079338256
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L14|L15",
+   "check": "edge_len",
+   "value": 0.279,
+   "sev": 2,
+   "conf": "high",
+   "causes": [
+    "contact_deformation",
+    "helix_radius",
+    "overlay"
+   ],
+   "where": [
+    996.1031725111279,
+    599.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L15|L16",
+   "check": "edge_len",
+   "value": 0.246,
+   "sev": 2,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    1022.0,
+    513.81425257363
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L15|L16",
+   "check": "edge_pos",
+   "value": 10.248,
+   "sev": 2,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    1022.0,
+    513.81425257363
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L16|H2",
+   "check": "edge_len",
+   "value": 0.226,
+   "sev": 2,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    1043.0,
+    439.02743230698786
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L16|H2",
+   "check": "edge_pos",
+   "value": 10.348,
+   "sev": 2,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    1043.0,
+    439.02743230698786
+   ],
+   "inc": null,
    "status": "unchanged"
   },
   {
@@ -14027,6 +14828,227 @@
    "status": "unchanged"
   },
   {
+   "region": "H1|L01",
+   "check": "edge_dir",
+   "value": 9.171,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    431.7202215483877,
+    396.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "H1|L01",
+   "check": "edge_len",
+   "value": 0.133,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    431.7202215483877,
+    396.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "H1|L01",
+   "check": "edge_pos",
+   "value": 7.079,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    431.7202215483877,
+    396.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L02|L03",
+   "check": "edge_dir",
+   "value": 9.329,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "handles"
+   ],
+   "where": [
+    466.0,
+    577.1319677573008
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L03|L04",
+   "check": "edge_dir",
+   "value": 8.015,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "handles"
+   ],
+   "where": [
+    487.9202548736023,
+    668.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L03|L04",
+   "check": "edge_pos",
+   "value": 9.603,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "handles"
+   ],
+   "where": [
+    487.9202548736023,
+    668.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L04|L06",
+   "check": "edge_pos",
+   "value": 6.13,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "tube_radius",
+    "handles",
+    "contact_deformation",
+    "helix_radius",
+    "overlay"
+   ],
+   "where": [
+    573.0,
+    638.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L09|L10",
+   "check": "edge_pos",
+   "value": 8.269,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "contact_deformation",
+    "helix_radius"
+   ],
+   "where": [
+    782.3887122269326,
+    480.00000000000006
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L12|L13",
+   "check": "edge_pos",
+   "value": 20.018,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "tube_radius",
+    "handles",
+    "contact_deformation",
+    "helix_radius",
+    "overlay"
+   ],
+   "where": [
+    915.0384125745231,
+    696.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L14|L15",
+   "check": "edge_dir",
+   "value": 6.664,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "contact_deformation",
+    "helix_radius",
+    "overlay"
+   ],
+   "where": [
+    996.1031725111279,
+    599.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L14|L15",
+   "check": "edge_pos",
+   "value": 9.814,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "contact_deformation",
+    "helix_radius",
+    "overlay"
+   ],
+   "where": [
+    996.1031725111279,
+    599.0
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L15|L16",
+   "check": "edge_dir",
+   "value": 6.683,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    1022.0,
+    513.81425257363
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
+   "region": "L16|H2",
+   "check": "edge_dir",
+   "value": 8.545,
+   "sev": 1,
+   "conf": "high",
+   "causes": [
+    "unknown"
+   ],
+   "where": [
+    1043.0,
+    439.02743230698786
+   ],
+   "inc": null,
+   "status": "unchanged"
+  },
+  {
    "region": "L head/neck",
    "check": "phase_max",
    "value": 6.0,
@@ -14113,33 +15135,38 @@
    "cause": "tail",
    "evidence": [
     "L16|H2 contact_offset=6.352 (sev 3, high)",
-    "L16 width_thin=0.2119 (sev 2, high)"
+    "L16 width_thin=0.2119 (sev 2, high)",
+    "L16|H2 edge_len=0.226 (sev 2, high)",
+    "L16|H2 edge_pos=10.348 (sev 2, high)"
    ],
    "try_": "tail collar: extend s1 behind the partner's neck, phase-shift the last half-turn, hold r until hidden; drop tail pinch handles"
   },
   {
-   "region": "R neck/head",
-   "cause": "twist_phase",
+   "region": "L01|L02",
+   "cause": "tube_radius",
    "evidence": [
-    "R neck/head phase_max=8.0 (sev 3, med)"
-   ],
-   "try_": "a twist-phase offset over the region (tools/twist.py)"
-  },
-  {
-   "region": "L01",
-   "cause": "twist_phase",
-   "evidence": [
-    "L01 outline_offset=9.6 (sev 2, high)",
+    "L01|L02 edge_len=0.439 (sev 3, high)",
+    "L01|L02 edge_pos=17.251 (sev 3, high)",
     "L01 seen_bead=0.8003 (sev 2, high)",
     "L01 pinch=0.2046 (sev 2, high)"
    ],
-   "try_": "a twist-phase offset over the region (tools/twist.py)"
+   "try_": "smooth r(s) through the lobe (bead amplitude down), with the helix radius raised to keep the band width"
+  },
+  {
+   "region": "L03|L04",
+   "cause": "handles",
+   "evidence": [
+    "L03|L04 edge_len=0.334 (sev 3, high)",
+    "L03|L04 edge_dir=8.015 (sev 1, high)",
+    "L03|L04 edge_pos=9.603 (sev 1, high)"
+   ],
+   "try_": "remove or shrink the inflating / pinching disp handles at the stations named"
   }
  ],
  "summary": {
-  "n": 28,
-  "sev3": 2,
-  "sev2": 7,
+  "n": 51,
+  "sev3": 6,
+  "sev2": 13,
   "new": [
    "L16|H2:contact_offset",
    "R neck/head:phase_max"

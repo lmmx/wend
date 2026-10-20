@@ -30,6 +30,11 @@ The starting point is what already exists:
   - a shading decomposition, or any new aggregate metric.
 
   They may be reported as context. Do not dismiss a local correction because it barely changes a global score: a genuine improvement to one lobe matters.
+- **Fidelity to the reference's own lobes** (owner, 2026-10-20). The target is the reference's existing lobes and surface contours, not an idealised or more legible reinterpretation of the coils. A candidate that removes distortion the reconstruction introduced counts as closer to the reference even when it adds no design change.
+- **Owner overrides.** The owner may promote a candidate the blind judge rejected (r38-edge, 2026-10-20). The override, its reason and its known regressions are recorded in `state.json` under `incumbent.override`, and in the round's judge file.
+- **Standing constraints** (`state.json` `incumbent.constraints`) bind every later fit.
+  - The right arm keeps r38-edge's even cross-sections over blue s 262–355 and yellow s 1252 to its tail (no radius bead, tubes 3.5% slimmer, strands 2.2 px apart).
+  - No later fit may reintroduce radius beads or local swelling there. geodiag's `seen_bead` and the width profiles are the check.
 - **Lighting and look work is not part of the loop.** If it seems warranted, propose it to the owner separately, with the reason, and wait for approval. Never suspend the geometry loop for it.
 - **Do not add stopping criteria, global gates or optimisation objectives** that supersede the numbered-feature evaluation without the owner's explicit approval. Do not redefine the goal.
 - **Keep surface quality separate.** Assess clay and zebra surface quality apart from colour and lighting; visible shape and sculptural continuity are first-class targets.

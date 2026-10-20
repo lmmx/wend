@@ -1,9 +1,9 @@
 {
  "incumbent": {
-  "tag": "r28-hybR",
-  "spec": "auto/r26/spec-r26-L15+L14.json",
-  "renders": "auto/r28/renders",
-  "metrics": "auto/r28/metrics-r28-hybR.json",
+  "tag": "r38-edge",
+  "spec": "auto/r38/spec-r38-edge.json",
+  "renders": "auto/r38/renders",
+  "metrics": "auto/r38/metrics-r38-edge.json",
   "params": "w-final.params.json",
   "heads": "heads-final.json",
   "look": "snakes/w-meshshadow.look.json",
@@ -16,7 +16,29 @@
    "L13",
    "L14"
   ],
-  "geodiag": "auto/r28/geodiag-r28-hybR.json"
+  "geodiag": "auto/r38/geodiag-r38-edge.json",
+  "override": {
+   "by": "owner",
+   "date": "2026-10-20",
+   "judge": "REJECT (closer at L16 by 1, at noise level; small zebra notches L14/L15)",
+   "reason": "the owner's assessment: r28-hybR's right-arm tubes swell beyond the reference's lobes; r38-edge's controlled cross-sections follow the reference's surface contours more closely",
+   "known_regressions": [
+    "H2 IoU 0.944 -> 0.925, contour p95 6.2 -> 8.1 px",
+    "L16 contour p95 7.9 -> 8.5 px (IoU 0.864 -> 0.862)",
+    "small zebra notches on the right edges of L14 and L15 (blind judge; not visible in colour)",
+    "L14|L15 boundary length +24 % -> +28 % against the reference; L16|H2 boundary position 8.4 -> 10.3 px",
+    "geodiag (advisory): new L16|H2 contact_offset, R neck/head phase_max"
+   ],
+   "gains": [
+    "L15 IoU 0.853 -> 0.885, clay crease 1.18 -> 0.74",
+    "boundary direction against the reference: L14|L15 10.9 -> 6.7 deg, L15|L16 14.6 -> 6.7, L16|H2 16.8 -> 8.5; curvature 7.0 -> 4.7, 10.5 -> 9.3, 16.5 -> 9.2",
+    "even radius along the right arm (bead 0), strands 2.2 px apart, tubes 3.5 % slimmer: no local swelling beyond the lobes"
+   ]
+  },
+  "constraints": [
+   "keep the right arm's even cross-sections (r38-edge: bead_k 0, r_scale -0.035, dR +2.2 over blue s 262-355 and yellow s 1252-tail): later fits must not reintroduce radius beads or local swelling there",
+   "fit against the reference's own lobes; no idealised reinterpretation of the coils"
+  ]
  },
  "tried": {
   "L13": 3,
@@ -411,11 +433,11 @@
   {
    "round": "r38",
    "incumbent_before": "r28-hybR",
-   "accepted": [],
-   "rejected": [
+   "accepted": [
     "r38-edge"
    ],
-   "verdict": "incumbent kept (r28-hybR)",
+   "rejected": [],
+   "verdict": "new incumbent r38-edge (owner override of a judge REJECT)",
    "note": "edgefit.py (dR 2.2, bead_k 0, r_scale -0.035, yfloor 0.62): boundary direction and curvature roughly halved, lengths still +23-28 %; judge +1 at L16 (noise-sized), small zebra notches on L14/L15"
   }
  ],

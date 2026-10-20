@@ -4,7 +4,7 @@ description: "Filesystem paths as symbolic expressions built from Python t-strin
 
 # wend
 
-![The wend logo: two snakes, one blue and one yellow, twisted into a W](assets/logo.png){ width="220" }
+![The wend logo: two snakes, one blue and one yellow, twisted into a W](assets/logo.png){ .home-logo width="220" }
 
 wend builds filesystem paths as symbolic expressions from Python 3.14 t-strings. An
 expression keeps its parameters, its literal parts and its formatting, so one definition

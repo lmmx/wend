@@ -20,3 +20,9 @@
 [data-md-copying] .go {
   display: none;
 }
+
+/* The logo on the home page, centred under the title. */
+.md-typeset img.home-logo {
+  display: block;
+  margin: 0 auto;
+}

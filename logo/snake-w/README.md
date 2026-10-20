@@ -54,6 +54,17 @@ They need numpy, scipy, scikit-image and pillow; the fitting and raster tools (`
 
 Spline specs render with `snakes/still-spline.html?params=w-final.params.json&spec=spline-….json`.
 
+## The geometry loop and its diagnosis
+
+`LOOP.md` is the autonomous loop's procedure. Read it before running `tools/autoround.py`.
+
+`GEODIAG.md` describes `tools/geodiag.py`, the advisory geometry diagnosis that runs on every candidate. It covers:
+- every lobe, head, neck, junction, tail and macro region;
+- likely causes and the next experiments;
+- its calibration and regression library: `python tools/geodiag.py calibrate | regress`.
+
+It informs and ranks; it never gates. `progress/current-best/` holds the accepted incumbent's colour, clay and zebra renders, refreshed on every acceptance.
+
 ## Checkpoints
 
 The JSON files in `snakes/checkpoints/` are the stages, newest first:

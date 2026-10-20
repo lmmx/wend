@@ -35,7 +35,20 @@ def owner_sev(owner):
     return {k: v["sev"] for k, v in (owner or {}).items() if not v.get("addressed")}
 
 
-def rank(png, tried=None, sev=None, owner=None):
+def geo_sev(geo):
+    """geodiag's advisory severity per feature (auto/rN geodiag json): its strongest high- or
+    medium-confidence finding at the feature or a junction of it, one step below the judges'
+    scale (geodiag sev 3 counts as a judge's 2), so a measured defect nobody has flagged yet
+    still brings its feature up the ranking, and never outranks what a judge or the owner said"""
+    out = {}
+    for f in (geo or {}).get("findings", []):
+        if f["conf"] == "low" or f["sev"] < 2: continue
+        for fid in f["region"].split("|"):
+            out[fid] = max(out.get(fid, 0), f["sev"] - 1)
+    return out
+
+
+def rank(png, tried=None, sev=None, owner=None, geo=None):
     im = np.asarray(Image.open(png).convert("RGB"))
     L = lobes(im)
     rows = []
@@ -53,14 +66,15 @@ def rank(png, tried=None, sev=None, owner=None):
         p95 = float(np.percentile(d, 95))
         ry, rx = np.nonzero(R); ky, kx = np.nonzero(K)
         js, os_ = (sev or {}).get(f["id"], 0), owner_sev(owner).get(f["id"], 0)
-        vs = max(js, os_)
+        gs = geo_sev(geo).get(f["id"], 0)
+        vs = max(js, os_, gs)
         sc = 10 * (1 - iou) + p95 / 8 + abs(A["worst"]) / 4 + VSEV * vs
         n = (tried or {}).get(f["id"], 0)
         word = "overshoots" if A["worst"] > 0 else "falls short"
         what = f"{NAMES[A['faces']]} edge {word} by {abs(A['worst']):.0f} px (40 px of outline at {A['at'][0]:.0f},{A['at'][1]:.0f}); centroid {kx.mean() - rx.mean():+.0f},{ky.mean() - ry.mean():+.0f} px"
         rows.append(dict(id=f["id"], colour=f["colour"], score=float(sc * TRIED ** n), raw=float(sc), attempts=n, iou=iou, p95=p95,
                          arc=A["worst"], arc_mean=A["mean_abs"], arc_at=A["at"], arc_faces=A["faces"],
-                         dx=float(kx.mean() - rx.mean()), dy=float(ky.mean() - ry.mean()), what=what, vsev=vs, jsev=js, osev=os_))
+                         dx=float(kx.mean() - rx.mean()), dy=float(ky.mean() - ry.mean()), what=what, vsev=vs, jsev=js, osev=os_, gsev=gs))
     lobes_ = sorted([r for r in rows if r["id"].startswith("L")], key=lambda r: -r["score"])
     return lobes_ + [r for r in rows if not r["id"].startswith("L")]
 
@@ -69,7 +83,7 @@ def table(rows):
     out = ["| rank | ID | score | IoU | p95 | worst arc | visual sev | what |", "|---|---|---|---|---|---|---|---|"]
     for k, r in enumerate(rows):
         rk = str(k + 1) if r["id"].startswith("L") else "-"
-        out.append(f"| {rk} | {r['id']} | {r['score']:.1f}{' (' + str(r['attempts']) + ' rejected)' if r.get('attempts') else ''} | {r['iou']:.2f} | {r.get('p95', 0):.0f} | {r.get('arc', 0):+.0f} | {r.get('vsev', '-')}{' (owner)' if r.get('osev', 0) > r.get('jsev', 0) else ''} | {r['what']} |")
+        out.append(f"| {rk} | {r['id']} | {r['score']:.1f}{' (' + str(r['attempts']) + ' rejected)' if r.get('attempts') else ''} | {r['iou']:.2f} | {r.get('p95', 0):.0f} | {r.get('arc', 0):+.0f} | {r.get('vsev', '-')}{' (owner)' if r.get('osev', 0) > r.get('jsev', 0) else ' (geodiag)' if r.get('gsev', 0) > max(r.get('jsev', 0), r.get('osev', 0)) else ''} | {r['what']} |")
     return "\n".join(out)
 
 

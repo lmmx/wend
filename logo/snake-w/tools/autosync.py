@@ -6,9 +6,10 @@ large).
 Usage (from the workspace's logo root): autosync.py REPO_LOGO_DIR"""
 import glob, os, shutil, sys
 dst = os.path.join(sys.argv[1], "auto")
-keep = ["auto/state.json", "auto/LEDGER.md", "auto/sev.json", "auto/owner.json", "auto/JUDGE_PROMPT.md", "auto/NEXT.md"]
+keep = ["auto/state.json", "auto/LEDGER.md", "auto/sev.json", "auto/owner.json", "auto/JUDGE_PROMPT.md", "auto/NEXT.md",
+        "auto/geodiag/EVIDENCE.md", "auto/geodiag/judge_log.jsonl"]
 for rd in sorted(glob.glob("auto/r[0-9]*/")):
-    for pat in ("rank*.json", "rank.md", "summary.json", "mapping.json", "judge-*.md", "metrics-*.json", "spec-*.json", "*/fit.json", "*/handle.json"):
+    for pat in ("rank*.json", "rank.md", "summary.json", "mapping.json", "judge-*.md", "metrics-*.json", "spec-*.json", "*/fit.json", "*/handle.json", "geodiag-*.json"):
         keep += glob.glob(rd + pat)
 n = 0
 for p in keep:

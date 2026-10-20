@@ -135,9 +135,12 @@ def propose(A, S):
     from discrepancy import rank, table
     sev = json.load(open("auto/sev.json")) if os.path.exists("auto/sev.json") else None
     owner = json.load(open(OWNER)) if os.path.exists(OWNER) else None
-    rows = rank(f"{inc['renders']}/{inc['tag']}-colour.png", S["tried"], sev, owner)
+    gpath = inc_geodiag(S, R); geo = json.load(open(gpath))
+    rows = rank(f"{inc['renders']}/{inc['tag']}-colour.png", S["tried"], sev, owner, geo)
     json.dump(rows, open(f"{R}/rank.json", "w"), indent=1)
-    open(f"{R}/rank.md", "w").write(f"Incumbent {inc['tag']}\n\n" + table(rows) + "\n")
+    import geodiag
+    open(f"{R}/rank.md", "w").write(f"Incumbent {inc['tag']}\n\n" + table(rows) + "\n\n## geodiag (advisory) on the incumbent\n\n```\n" + geodiag.report(geo, 12) + "\n```\n"
+                                    + "\n".join(f"- next: {e['region']} ({e['cause']}): {e['try_']}; evidence {'; '.join(e['evidence'])}" for e in geo["next"]) + "\n")
     seeds = S.get("seeds", {})
     plan = json.load(open(A.plan)) if A.plan else None
     chosen = [] if not plan else [p_["target"] for p_ in plan]
@@ -197,6 +200,7 @@ def propose(A, S):
         tag = r["tag"]; mc = json.load(open(f"{R}/metrics-{tag}.json"))
         rc = rk(f"{R}/renders/{tag}-colour.png"); json.dump(rc, open(f"{R}/rank-{tag}.json", "w"), indent=1)
         fails, gains = gates(mc, mb, t, rc, rows)
+        gd = geodiag_of(tag, f"{R}/renders", R, f"{R}/{key}/spec.json", inc.get("extra"), gpath, r["params"])
         hv = f", head {r['params']}" if r["params"] != ip else ""
         run([PY, "tools/delta_sheet.py", inc["renders"], inc["tag"], f"{R}/renders", tag, f"{R}/delta-{tag}.png",
              f"{tag}: {t} handle ({r['fit']['describe']}{hv}) against {inc['tag']}"], f"{R}/{key}.log")
@@ -213,11 +217,38 @@ def propose(A, S):
                                      describe=r["fit"]["describe"] + hv, attribution=r["fit"]["attribution"], handle=r["fit"]["handle"],
                                      handles=r["fit"].get("handles") or [r["fit"]["handle"]],
                                      target_before=dict(iou=rb["iou"], arc=rb["arc"], what=rb["what"]), target_after=dict(iou=rt["iou"], arc=rt["arc"], what=rt["what"]),
-                                     gate_fails=fails, gains=gains, verdict_gates="REJECT" if fails else "pass")
+                                     gate_fails=fails, gains=gains, verdict_gates="REJECT" if fails else "pass",
+                                     geodiag=dict(path=f"{R}/geodiag-{tag}.json", **{k: gd["summary"][k] for k in ("new", "regressed", "resolved")},
+                                                  improved=[f"{f['region']}:{f['check']}" for f in gd["findings"] if f.get("status") == "improved"]))
     json.dump(mapping, open(f"{R}/mapping.json", "w"), indent=1)
     json.dump(summary, open(f"{R}/summary.json", "w"), indent=1, default=float)
     for t, s in summary["targets"].items():
         print(t, s.get("verdict_gates", s.get("verdict")), s.get("describe", ""), s.get("target_before", {}).get("iou"), "->", s.get("target_after", {}).get("iou"), s.get("gate_fails", ""))
+
+
+def geodiag_of(tag, rdir, mdir, spec, extra=None, inc_geo=None, params=P0):
+    """the advisory geometry diagnosis of a rendered candidate (tools/geodiag.py): every region,
+    against the reference and against the incumbent's own diagnosis. Never a gate: its findings
+    rank the next experiment and are logged against the judge's verdict (auto/geodiag/judge_log.jsonl)."""
+    path = f"{mdir}/geodiag-{tag}.json"
+    if os.path.exists(path):
+        return json.load(open(path))
+    import geodiag
+    D = geodiag.run(tag, f"{rdir}/{tag}-colour.png", spec, mdir, f"snakes/{extra}" if extra else None, f"{rdir}/{tag}-clay-full.png",
+                    f"{rdir}/{tag}-zebra-full.png", f"{mdir}/metrics-{tag}.json", inc_geo, params)
+    print(geodiag.report(D, 6), flush=True)
+    return D
+
+
+def inc_geodiag(S, R):
+    """the incumbent's geodiag json (run once and recorded in the state)"""
+    inc = S["incumbent"]
+    if not (inc.get("geodiag") and os.path.exists(inc["geodiag"])):
+        mdir = os.path.dirname(inc["metrics"])
+        geodiag_of(inc["tag"], inc["renders"], mdir, inc["spec"], inc.get("extra"), None, inc.get("params", P0))
+        inc["geodiag"] = f"{mdir}/geodiag-{inc['tag']}.json"
+        json.dump(S, open(STATE, "w"), indent=1)
+    return inc["geodiag"]
 
 
 def merge(A, S):
@@ -245,6 +276,7 @@ def merge(A, S):
     for t in rej - {fid(k) for k in acc}:
         S["tried"][t] = S["tried"].get(t, 0) + 1
     rnd = dict(round=A.round, incumbent_before=inc["tag"], accepted=acc, rejected=[t for t in summ["targets"] if t not in acc], verdict="no correction accepted")
+    judge_log(A.round, summ, acc)
     if acc:
         base = json.load(open(inc["spec"]))
         for n in ("yellow", "blue"):
@@ -263,6 +295,9 @@ def merge(A, S):
                 S["rounds"].append(rnd); json.dump(S, open(STATE, "w"), indent=1); return
         S["incumbent"] = dict(tag=tag, spec=path, renders=f"{R}/renders", metrics=f"{R}/metrics-{tag}.json", params=pp, heads=hh, look=inc.get("look"),
                               **{k: inc[k] for k in ("extra", "frozen") if k in inc})
+        if os.path.exists(f"{R}/geodiag-{tag}.json"):
+            S["incumbent"]["geodiag"] = f"{R}/geodiag-{tag}.json"
+        current_best(S["incumbent"])
         rnd["verdict"] = f"new incumbent {tag}"
         # an accepted correction of a feature the owner named takes one step off the owner's
         # severity (a judged step closer leaves it still wrong, less so); at 1 it is addressed
@@ -278,6 +313,34 @@ def merge(A, S):
     S["rounds"].append(rnd)
     json.dump(S, open(STATE, "w"), indent=1)
     print(rnd)
+
+
+def judge_log(rnd, summ, acc):
+    """one line per judged candidate: the judge's verdict beside geodiag's advisory changes. Where
+    they disagree (accepted with regressions, rejected with none), the line says so: the evidence
+    for recalibrating geodiag, or for a gate proposal to the owner (never applied automatically)"""
+    os.makedirs("auto/geodiag", exist_ok=True)
+    with open("auto/geodiag/judge_log.jsonl", "a") as fh:
+        for key, s in summ["targets"].items():
+            g = s.get("geodiag")
+            if not g or "tag" not in s: continue
+            v = "ACCEPT" if key in acc else "REJECT"
+            worse = g["new"] + g["regressed"]
+            fh.write(json.dumps(dict(round=rnd, tag=s["tag"], verdict=v, worse=worse, improved=g["improved"], resolved=g["resolved"],
+                                     disagree=(v == "ACCEPT" and bool(worse)) or (v == "REJECT" and not worse))) + "\n")
+
+
+def current_best(inc):
+    """the stable current-best render: the accepted incumbent's colour, clay and zebra, full frame,
+    copied to progress/current-best/ (synced to the PR), with what it is"""
+    os.makedirs("progress/current-best", exist_ok=True)
+    import shutil
+    for kind, suf in (("colour", "colour"), ("clay", "clay-full"), ("zebra", "zebra-full")):
+        src = f"{inc['renders']}/{inc['tag']}-{suf}.png"
+        if os.path.exists(src):
+            shutil.copy(src, f"progress/current-best/{kind}.png")
+    json.dump(dict(tag=inc["tag"], spec=inc["spec"], extra=inc.get("extra"), note="refreshed by autoround merge on every accepted candidate (loop look); "
+                   "tools/promote.py writes the production files and the look-6 render, production.png"), open("progress/current-best/current-best.json", "w"), indent=1)
 
 
 if __name__ == "__main__":

@@ -15,7 +15,8 @@
    "L12",
    "L13",
    "L14"
-  ]
+  ],
+  "geodiag": "auto/r28/geodiag-r28-hybR.json"
  },
  "tried": {
   "L13": 3,

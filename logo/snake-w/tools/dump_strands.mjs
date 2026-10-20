@@ -22,7 +22,7 @@ const res = { elev: params.cam.elev, L: lines.L, spine: lines.spine, s: lines.s,
 ["yellow", "blue"].forEach((name, i) => {
   const st = body[name], nk = params.necks[i];
   const i0 = st.s.findIndex((x) => x >= nk.join_s - 2);
-  const sl = Object.fromEntries(Object.entries(st).map(([k, v]) => [k, v.slice(i0)]));
+  const sl = Object.fromEntries(Object.entries(st).map(([k, v]) => [k, Array.isArray(v) ? v.slice(i0) : v]));
   const surf = G.strandSurface(sl, { ...tube, fold: null, press: null });
   const at = G.strandAt(st, nk.join_s);
   res[name] = { ...st, i0, rendered: { pts: surf.centre.pts, r: surf.centre.r }, join: { J: at.J, T: at.T, K: at.K } };

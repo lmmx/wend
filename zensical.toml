@@ -1,7 +1,7 @@
 [project]
 site_name = "wend"
 site_url = "https://lmmx.github.io/wend/"
-site_description = "Filesystem paths as symbolic expressions built from Python t-strings: render them, match them back, and find them on disk."
+site_description = "Symbolic, typed, invertible filesystem paths built from Python t-strings (3.14+)."
 site_author = "Louis Maddox"
 docs_dir = "docs/site"
 repo_name = "lmmx/wend"
@@ -128,6 +128,9 @@ scoped_crossrefs = true
 
 [project.theme]
 variant = "modern"
+# the official logo, cut out of its background (docs/site/assets/; the README uses assets/logo.png)
+logo = "assets/logo-header.png"
+favicon = "assets/favicon.png"
 font.text = "IBM Plex Sans"
 font.code = "IBM Plex Mono"
 language = "en"
@@ -190,7 +193,7 @@ https://lmmx.github.io/wend/.
 
 [project.plugins.llmstxt.sections]
 "Start here" = [
-  {"index.md" = "Filesystem paths as symbolic expressions built from Python t-strings: render them, match them back, and find them on disk."},
+  {"index.md" = "Symbolic, typed, invertible filesystem paths built from Python t-strings (3.14+)."},
 ]
 "Get started" = [
   {"getting-started/installation.md" = "Install wend with pip or uv: it needs Python 3.14 or later, has no dependencies, and has three optional extras."},

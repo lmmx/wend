@@ -84,7 +84,6 @@ Field names follow the text before a run (``epoch_{epoch:03d}``), dates
 
 from __future__ import annotations
 
-import enum
 import os
 import posixpath
 import re
@@ -99,6 +98,7 @@ from ._match import Match, _match_seg, _seg_fast, seg_plan
 from ._params import Kind, Param, SubPath
 from .errors import AmbiguousMatchError, WendError
 from .fs import FileSystem
+from .schema import Cardinality
 
 
 _RUN = re.compile(r"[0-9]+")  # ASCII only: int() would accept other digits
@@ -488,22 +488,6 @@ def _unify(rules: list[_Rule], cfg: _Config, opaque: bool = False) -> list[_Rule
     return sorted(out, key=lambda r: (r.kind, repr(r.shape), r.names[0]))
 
 
-class Cardinality(enum.Enum):
-    """How many of a layout's paths a directory matching its parent holds.
-
-    Defined on the pattern, over the observed directories: the lower bound is
-    zero when the layout is `optional` (some directory matching a proper
-    prefix of the pattern contains none of its paths), and the upper bound is
-    more than one when some directory holds two or more of its paths
-    directly. Values are UML multiplicities.
-    """
-
-    ONE = "1"
-    OPTIONAL = "0..1"
-    AT_LEAST_ONE = "1..*"
-    MANY = "0..*"
-
-
 @dataclass
 class FieldStats:
     """What was observed for one inferred field."""
@@ -545,7 +529,8 @@ class Layout:
     true when some observed directory matching a proper prefix of ``expr``
     contains none of the observed paths of its kind that ``expr`` matches;
     ``many`` is true when some observed directory holds more than one of them
-    directly. ``cardinality`` combines the two.
+    directly. ``cardinality`` combines the two, as the `wend.schema.Cardinality`
+    a schema entry declares.
     """
 
     expr: PathExpr
@@ -557,9 +542,7 @@ class Layout:
 
     @property
     def cardinality(self) -> Cardinality:
-        if self.many:
-            return Cardinality.MANY if self.optional else Cardinality.AT_LEAST_ONE
-        return Cardinality.OPTIONAL if self.optional else Cardinality.ONE
+        return Cardinality.of(optional=self.optional, many=self.many)
 
     def __repr__(self) -> str:
         return (

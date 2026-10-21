@@ -589,7 +589,9 @@ Inference works like JSON schema inference (genson, polars-genson), applied to t
   where a `file` layout `{dir}/{name}` has a matching pattern.
 - **Cardinality:** each layout reports how many of its paths a directory matching its
   parent holds: `1`, `0..1`, `1..*` or `0..*`. The lower bound is `optional`: some
-  directory matching a prefix of the layout contains none of its paths.
+  directory matching a prefix of the layout contains none of its paths. The upper bound
+  is `many`: some directory holds more than one. It is the `Cardinality` a schema entry
+  declares, and `from_inferred` keeps it.
 
 Layouts are ordinary expressions (`rename`, `match`, `under(root).glob()`, ...), and
 `schema.check(paths)` lists paths that don't fit. Both take kinds as `infer` does:

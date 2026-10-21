@@ -629,13 +629,17 @@ skipped when one has none.
 
 **Inference round trip.** `from_inferred(s)` makes one entry per layout:
 - the same pattern and kind;
-- optional when the layout is;
-- any number of paths when the pattern has parameters.
+- the same cardinality: optional when the layout is, and many when the
+  layout is (some observed directory holds more than one of its paths
+  directly). A layout reports its cardinality with the type entries declare.
 
 `hidden` is set as inference observed the tree. `Tree.source()` writes a schema
 as Python that rebuilds the same entries. An inferred schema's declaration
-validates the tree it was inferred from wherever each layout's paths have the
-layout's kind (#51 tracks the exception).
+validates the tree it was inferred from, with one exception: a symlinked
+directory that matches a `dir` layout which is not many, in a directory that
+also holds an observed path of that layout. Inference does not observe the
+symlinked directory, but validation counts it as a match, so the directory
+holds two.
 
 ## 13. Lineage
 

@@ -8,6 +8,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from wend import Absolute, Dir, Exists, File, P, Param, PathOperationError, SubPath, T
+from wend.infer import Cardinality as InferredCardinality
 from wend.infer import infer
 from wend.schema import Cardinality, Entry, Tree, from_inferred
 
@@ -265,6 +266,33 @@ def test_an_inferred_schema_validates_its_tree(tmp_path):
     problems = ns["Inferred"](tmp_path).validate().problems
     assert [(p.kind, os.path.basename(p.path)) for p in problems] == [
         ("extra", "part_7.parquet")
+    ]
+
+
+def test_an_inferred_schema_keeps_each_layouts_cardinality(tmp_path):
+    _tree(
+        tmp_path,
+        [f"runs/run_{r}/model-{v}.pt" for r, v in ((1, 7), (2, 3), (3, 9))]
+        + [f"runs/run_{r}/log_{d}.txt" for r in (1, 2, 3) for d in (1, 2)]
+        + ["runs/run_2/notes.txt"],
+    )
+    schema = infer(tmp_path)
+    cls = from_inferred(schema)
+    entries = {e.expr.pattern: e for e in cls.entries.values()}
+    assert {lay.expr.pattern: lay.cardinality for lay in schema.layouts} == {
+        p: e.cardinality for p, e in entries.items()
+    }
+    # one Cardinality type: an inferred layout reports what an entry declares
+    assert InferredCardinality is Cardinality
+    assert entries["runs/run_{run:d}/model-{model:d}.pt"].cardinality is (
+        InferredCardinality.ONE
+    )
+    assert cls(tmp_path).validate().ok
+    # a templated name seen once per directory is exactly one, not "many"
+    (tmp_path / "runs" / "run_1" / "model-8.pt").write_text("")
+    problems = cls(tmp_path).validate().problems
+    assert _rel(problems, tmp_path) == [
+        ("too-many", "runs/run_1", "runs_run_run_model_model_pt")
     ]
 
 

@@ -59,12 +59,25 @@ __all__ = ["Cardinality", "Entry", "Problem", "Report", "Tree", "from_inferred"]
 
 class Cardinality(enum.Enum):
     """How many paths matching an entry each directory matching its parent
-    holds, as UML multiplicities."""
+    holds, as UML multiplicities.
+
+    The lower bound is zero when ``optional``, and the upper bound is more
+    than one when ``many``. A schema entry declares the two flags; an
+    inferred layout (`wend.infer.Layout`) observes them, and reports its
+    cardinality with this same type.
+    """
 
     ONE = "1"
     OPTIONAL = "0..1"
     AT_LEAST_ONE = "1..*"
     MANY = "0..*"
+
+    @classmethod
+    def of(cls, *, optional: bool, many: bool) -> Cardinality:
+        """The cardinality with these bounds."""
+        if many:
+            return cls.MANY if optional else cls.AT_LEAST_ONE
+        return cls.OPTIONAL if optional else cls.ONE
 
 
 _FRAGMENT_HEADS = (Kind.AUTO, Kind.SEGMENT, Kind.SUBPATH)
@@ -129,9 +142,7 @@ class Entry:
 
     @property
     def cardinality(self) -> Cardinality:
-        if self.many:
-            return Cardinality.MANY if self.optional else Cardinality.AT_LEAST_ONE
-        return Cardinality.OPTIONAL if self.optional else Cardinality.ONE
+        return Cardinality.of(optional=self.optional, many=self.many)
 
     @property
     def condition(self) -> Any:
@@ -655,10 +666,10 @@ def from_inferred(
 ) -> type[Tree]:
     """A schema class with one entry per layout of an inferred schema.
 
-    Each entry keeps its layout's kind and pattern. It is optional when the
-    layout is, and holds any number of paths when the pattern has parameters,
-    so the class validates the tree it was inferred from. ``hidden`` should
-    match the ``include_hidden`` the schema was inferred with.
+    Each entry keeps its layout's kind, pattern and cardinality (the
+    layout's observed ``optional`` and ``many``), so the class validates the
+    tree it was inferred from. ``hidden`` should match the ``include_hidden``
+    the schema was inferred with.
     """
     attrs: dict[str, Any] = {"hidden": hidden}
     for lay in schema.layouts:
@@ -667,7 +678,7 @@ def from_inferred(
             lay.expr,
             "dir" if lay.kind == "dir" else "file",
             optional=lay.optional,
-            many=bool(lay.expr.param_names),
+            many=lay.many,
         )
     return type(name, (Tree,), attrs)
 

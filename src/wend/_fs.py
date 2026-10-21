@@ -27,8 +27,8 @@ from ._expr import (
 )
 from ._match import (
     Match,
-    _accept,
     _match_seg,
+    _path_readings,
     _seg_fast,
     _unify,
     match_all,
@@ -268,14 +268,19 @@ def _discover(
         path: str, j: int, env: dict[str, Any]
     ) -> Iterator[tuple[str, dict[str, Any]]]:
         """``path`` with the SubPaths from position ``j`` on all empty."""
+        envs = [env]
         for part in parts[j:]:
-            if not isinstance(part, Splice) or not _accept(part.param, "."):
+            if not isinstance(part, Splice):
                 return
-            bound = _unify(env, part.param.name, ".")
-            if bound is None:
-                return
-            env = bound
-        yield path, env
+            values = _path_readings(part.param, ".", splice=True)
+            envs = [
+                bound
+                for e2 in envs
+                for v in values
+                if (bound := _unify(e2, part.param.name, v)) is not None
+            ]
+        for e2 in envs:
+            yield path, e2
 
     on_entry = False
     if start < n:
@@ -337,8 +342,8 @@ def _discover(
             d: str, acc: list[str], entry: DirEntry
         ) -> Iterator[tuple[str, dict[str, Any]]]:
             """``entry``, not descended into, as the SubPath's last segment."""
-            value = "/".join([*acc, entry.name])
-            if _accept(param, value):
+            text = "/".join([*acc, entry.name])
+            for value in _path_readings(param, text, splice=True):
                 env2 = _unify(env, param.name, value)
                 if env2 is not None:
                     yield from ends(_child(d, entry.name), i + 1, env2)
@@ -346,8 +351,8 @@ def _discover(
         def splice(
             d: str, acc: list[str], seen: frozenset[Any]
         ) -> Iterator[tuple[str, dict[str, Any]]]:
-            value = "/".join(acc) or "."
-            if _accept(param, value):
+            text = "/".join(acc) or "."
+            for value in _path_readings(param, text, splice=True):
                 env2 = _unify(env, param.name, value)
                 if env2 is not None:
                     yield from walk(d, i + 1, env2)

@@ -290,6 +290,16 @@ wend's obligations, for every expression `e` and environment `env`:
     a `str` with `0` on the right and an `int` with `0` after its sign, so
     `00005` reads as `"00005"` and `5`, and `ab000` as `"ab"`, `"ab0"`,
     `"ab00"` and `"ab000"`.
+- **Choices:** a parameter that declares `choices` also reads, in each
+  position (a field, a whole segment, a head or a `SubPath`), every member
+  whose rendering there is the text. A value read as above that equals a
+  member is returned as that member when the member renders the same text.
+  So every declared member reads back as itself (`choices={1}` reads
+  `x/1.txt` as `1`, and `choices=set(Split)` reads `train` as
+  `Split.TRAIN`). Distinct members that render alike (`{"1", 1}`) make the
+  path ambiguous. A value accepted because it equals a member but rendering
+  differently from it (`1.0` for `choices={1}`) is read back only as the
+  rules above read its text.
 - **Declared types:** a field reads values of exactly its declared type: an
   `int` field does not read `True`, although `{n:d}` renders it as `1`.
   (Under `!r` and `!a` it reads the literal the text spells, if the declared
@@ -343,6 +353,7 @@ wend's obligations, for every expression `e` and environment `env`:
 | a `match`/`glob` result renders to its path (matching soundness) | **by construction**: every candidate is checked by rendering before it is returned |
 | a compiled function raises the same errors as the interpreter | **by construction**: any exception in the fast path re-runs the interpreter |
 | the matching fast path returns at most one binding | **argued** (below) and tested |
+| every declared member of `choices` reads back as itself, and the fast path agrees with the full search | **tested** (Hypothesis, members of mixed types in every position) |
 | obligations 1–3 above (agreement, no spurious rejection, strictness) | **tested** (Hypothesis, independent reference evaluator). Random terms cover every term of §1, every parameter kind, nested format specs, text fields, parameters with defaults, and values whose `__format__` breaks their format type |
 | rendering with a default equals rendering with it bound explicitly, interpreted and compiled; `bind` leaves defaulted parameters free; every reading binds every parameter (§3.1) | **tested** (Hypothesis, random terms with defaulted parameters, and environments that leave them unbound) |
 | below a literal base, no binding of an `AUTO`, `Segment` or `SubPath` parameter leads outside it, whatever operations the term applies | **tested** (Hypothesis, random terms) |

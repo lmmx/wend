@@ -37,8 +37,11 @@ from ._expr import (
     Seg,
     Splice,
     _Rel,
+    _render_field,
     _render_spec,
     canonical,
+    head_value,
+    splice_value,
 )
 from ._params import Kind, Param
 from .errors import (
@@ -108,7 +111,142 @@ def _accept(p: Param, value: Any) -> bool:
     return True
 
 
+# -- reading choices back (docs/SEMANTICS.md §7) ---------------------------------
+#
+# A parameter that declares choices reads, in each position, every member whose
+# rendering there is the text, as well as what its type or spec reads. A value
+# read that equals a member is returned as that member when the member renders
+# the same text, so a declared member reads back as itself.
+
+
+def _texts_of(members: Any, render: Any) -> dict[str, tuple[Any, ...]]:
+    """Each text ``render`` gives a member, with the members giving it
+    (in repr order, so that readings come out in a fixed order)."""
+    out: dict[str, list[Any]] = {}
+    for m in sorted(members, key=repr):
+        try:
+            # A str subclass may come back as itself (a segment value is used
+            # as is): the text is the plain str a path holds.
+            text = str.__str__(render(m))
+        except WendError, ValueError, TypeError, KeyError:
+            continue  # a member that never renders here
+        out.setdefault(text, []).append(m)
+    return {t: tuple(ms) for t, ms in out.items()}
+
+
+def _field_members(f: Field) -> dict[str, tuple[Any, ...]]:
+    """`_texts_of` the choices of a field with a static spec (cached on it)."""
+    cached = f.__dict__.get("_members")
+    if cached is None:
+        p = f.source
+        assert isinstance(p, Param) and p.choices is not None
+        cached = _texts_of(p.choices, lambda m: _render_field(f, {p.name: m}))
+        f.__dict__["_members"] = cached
+    return cached
+
+
+@lru_cache(maxsize=1024)
+def _path_members(p: Param, splice: bool) -> dict[str, tuple[Any, ...]]:
+    assert p.choices is not None
+    if splice:
+        return _texts_of(p.choices, lambda m: "/".join(splice_value(p, m)) or ".")
+    return _texts_of(p.choices, lambda m: head_value(p, m))
+
+
+def _same(a: Any, b: Any) -> bool:
+    return a is b or (type(a) is type(b) and a == b)
+
+
+def _equal(a: Any, b: Any) -> bool:
+    try:
+        return a is b or bool(a == b)
+    except Exception:  # a comparison that fails is no match
+        return False
+
+
+def _verdict(texts: dict[str, tuple[Any, ...]], read: Any) -> Any:
+    """How the members' readings relate to today's (``read(text)``): True if
+    every member already reads back as itself, so reading members changes
+    nothing; else, if each member's text is its alone and today reads it as
+    a value equal to the member, the map from text to member (a one-parse
+    plan can then return the member); else None (only the full search reads
+    the members)."""
+    canon: dict[str, Any] = {}
+    trivial = True
+    for text, members in texts.items():
+        if len(members) > 1:
+            return None  # members that render alike: a path with two readings
+        m = next(iter(members))
+        try:
+            today = read(text)
+        except NotInvertibleError:
+            return None
+        if not any(_same(v, m) for v in today):
+            trivial = False
+            if not any(_equal(v, m) for v in today):
+                return None
+        canon[text] = m
+    return True if trivial else canon
+
+
+def _field_verdict(f: Field) -> Any:
+    """`_verdict` for a field with choices and a static spec (cached on it)."""
+    cached = f.__dict__.get("_verdict", _UNSET)
+    if cached is _UNSET:
+        cached = _verdict(_field_members(f), lambda t: _type_values(f, t, {}))
+        f.__dict__["_verdict"] = cached
+    return cached
+
+
+@lru_cache(maxsize=1024)
+def _path_verdict(p: Param, splice: bool) -> Any:
+    """`_verdict` for a head (``splice=False``) or SubPath with choices."""
+    return _verdict(_path_members(p, splice), lambda t: [t] if _accept(p, t) else [])
+
+
+def _with_members(values: list[Any], members: tuple[Any, ...]) -> list[Any]:
+    """``values`` (read as the type or spec reads them), each replaced by the
+    member it equals if that member renders the same text, then the members
+    that render the text and are not read already."""
+    out: list[Any] = []
+
+    def add(v: Any) -> None:
+        if not any(_same(o, v) for o in out):
+            out.append(v)
+
+    for v in values:
+        add(next((m for m in members if _equal(m, v)), v))
+    for m in members:
+        add(m)
+    return out
+
+
+def _path_readings(p: Param, text: str, splice: bool) -> list[Any]:
+    """The values a head (``splice=False``) or SubPath parameter reads from
+    the path text ``text``."""
+    values = [text] if _accept(p, text) else []
+    if p.choices is None or _path_verdict(p, splice) is True:
+        return values
+    return _with_members(values, _path_members(p, splice).get(text, ()))
+
+
 def _field_values(f: Field, text: str, env: dict[str, Any]) -> list[Any]:
+    values = _type_values(f, text, env)
+    src = f.source
+    if not isinstance(src, Param) or src.choices is None:
+        return values
+    if f.static_spec is not None:
+        if _field_verdict(f) is True:
+            return values  # every member already reads back as itself
+        members = _field_members(f).get(text, ())
+    else:  # the spec depends on bindings: render each member with them
+        name = src.name
+        texts = _texts_of(src.choices, lambda m: _render_field(f, {**env, name: m}))
+        members = texts.get(text, ())
+    return _with_members(values, members)
+
+
+def _type_values(f: Field, text: str, env: dict[str, Any]) -> list[Any]:
     src = f.source
     if isinstance(src, Const):
         raise NotInvertibleError(
@@ -184,8 +322,14 @@ def _match_seg(seg: Seg, text: str, env: dict[str, Any]) -> Iterator[dict[str, A
                 j = text.find(nxt, j + 1)
         else:
             ends = list(range(pos, limit + 1))
+        src = piece.source
+        read = (
+            _field_values
+            if isinstance(src, Param) and src.choices is not None
+            else _type_values
+        )
         for end in ends:
-            for v in _field_values(piece, text[pos:end], env):
+            for v in read(piece, text[pos:end], env):
                 env2 = _unify(env, piece.source.name, v)  # type: ignore[union-attr]
                 if env2 is not None:
                     yield from rec(i + 1, end, env2)
@@ -203,8 +347,9 @@ _STR, _INT, _SEG, _SPLICE = range(4)
 
 # (name, param, kind, base, check): ``base`` is an int field's base; ``check``
 # says whether the value needs `_accept` (the parameter declares choices, or
-# a type the conversion does not already guarantee).
-type _Conv = tuple[str, Param, int, int, bool]
+# a type the conversion does not already guarantee). A dict is a check that
+# then maps the text to the choice member it renders (`_verdict`).
+type _Conv = tuple[str, Param, int, int, bool | dict[str, Any]]
 
 
 class SegPlan:
@@ -229,6 +374,8 @@ def _field_shape(f: Field, alone: bool) -> tuple[Any, ...] | None:
     src = f.source
     if not isinstance(src, Param) or f.conversion is not None or f.static_spec is None:
         return None
+    if src.choices is not None and _field_verdict(f) is None:
+        return None  # only the full search reads these members back
     if f.role == "segment":
         return ("seg",) if alone and src.type in (None, str) else None
     spec = f.static_spec
@@ -341,7 +488,9 @@ def _build_seg_plan(seg: Seg) -> SegPlan | None:
             continue
         src = p.source
         assert isinstance(src, Param) and shape is not None
-        check = src.choices is not None
+        # True: check the value; a dict: check it, then return the member
+        # its text renders (`_verdict`).
+        check = _field_verdict(p) if src.choices is not None else False
         kind = shape[0]
         if kind == "int":
             rx.append(f"(-?[{shape[1]}]+)")
@@ -409,6 +558,10 @@ def _conversions(
         if check:
             ns[f"_p{i}"] = p
             out += [f"if not _accept(_p{i}, {v}):", "    return None"]
+        if isinstance(check, dict):  # the member a choice's text stands for
+            ns[f"_c{i}"] = check
+            text = v if kind == _SPLICE else g
+            out.append(f"{v} = _c{i}.get({text}, {v})")
         w = first.setdefault(name, v)
         if w != v:
             out += [f"if type({v}) is not type({w}) or {v} != {w}:", "    return None"]
@@ -468,7 +621,14 @@ def _build_expr_plan(expr: PathExpr) -> Any:
                 return None  # two variable extents: the split is not forced
             pre, items = items, []
             p = part.param
-            check = p.type is not None or p.choices is not None
+            verdict = _path_verdict(p, True) if p.choices is not None else False
+            if verdict is None:
+                return None  # only the full search reads these members back
+            check = (
+                verdict
+                if isinstance(verdict, dict)
+                else (p.type is not None or p.choices is not None)
+            )
             conv.append((p.name, p, _SPLICE, 0, check))
             continue
         lit = part.literal
@@ -484,6 +644,11 @@ def _build_expr_plan(expr: PathExpr) -> Any:
         # split at separators unique even for a segment regex that allows "".
         items.append("(?=[^/])" + sp.src if sp.may_be_empty else sp.src)
         conv.extend(sp.conv)
+    head_verdict: Any = False
+    if isinstance(h, HeadParam) and h.param.choices is not None:
+        head_verdict = _path_verdict(h.param, False)
+        if head_verdict is None:
+            return None  # only the full search reads these members back
     tail = "/".join(items)
     ns: dict[str, Any] = {
         "_accept": _accept,
@@ -519,6 +684,9 @@ def _build_expr_plan(expr: PathExpr) -> Any:
         if p.type is not None or p.choices is not None:
             ns["_ph"] = p
             body += ["if not _accept(_ph, h):", "    return None"]
+        if isinstance(head_verdict, dict):
+            ns["_ch"] = head_verdict
+            body.append("h = _ch.get(h, h)")
         first[p.name] = "h"
     else:
         anchor = re.escape(h.anchor) if isinstance(h, Root) else ""
@@ -570,12 +738,18 @@ def _match_parts(
         chunk = names[j:k]
         if ".." in chunk:
             break
-        value = "/".join(chunk) or "."
-        if not _accept(part.param, value):
-            continue
-        env2 = _unify(env, part.param.name, value)
-        if env2 is not None:
-            yield from _match_parts(parts, i + 1, names, k, env2)
+        text = "/".join(chunk) or "."
+        p = part.param
+        if p.choices is None:  # the common case, inline
+            if not _accept(p, text):
+                continue
+            values: Any = (text,)
+        else:
+            values = _path_readings(p, text, splice=True)
+        for value in values:
+            env2 = _unify(env, p.name, value)
+            if env2 is not None:
+                yield from _match_parts(parts, i + 1, names, k, env2)
 
 
 def _candidates(
@@ -604,10 +778,8 @@ def _candidates(
     else:
         ks = list(range(0, len(names) - rest_min + 1))
     for k in ks:
-        value = _join_head(anchor, names[:k])
-        if not _accept(p, value):
-            continue
-        yield from _match_parts(expr.parts, 0, names, k, {p.name: value})
+        for value in _path_readings(p, _join_head(anchor, names[:k]), splice=False):
+            yield from _match_parts(expr.parts, 0, names, k, {p.name: value})
 
 
 def _join_head(anchor: str, names: list[str]) -> str:

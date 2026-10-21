@@ -575,6 +575,8 @@ Inference works like JSON schema inference (genson, polars-genson), applied to t
   `epoch_001.pt`... is reported as its own layout.
 - **Directories:** sibling directories with similar contents become a segment field.
 - **Files:** files sharing an extension become `{stem}.ext`.
+- **Empty directories:** with no contents to compare, they are treated like files of one
+  extension: they join a segment field beside them, and three or more form one.
 - **Repeated fields:** a field that always equals an earlier one becomes the same parameter
   (`train/n{n:08d}/n{n:08d}_{i:d}.JPEG`), so `check` catches misfiled paths.
 - **Variable depth:** a tail that recurs at three or more depths below a directory whose
@@ -582,6 +584,7 @@ Inference works like JSON schema inference (genson, polars-genson), applied to t
   A deep tree of literal directories stays literal.
 - **Opaque families:** eight or more sibling directories holding only files, with names
   that share no skeleton (terminfo's `a/att4410`, `b/bvt100`), collapse into one map.
+  Empty directories among them neither count nor get in the way.
 - **Names:** dates become `{year}`, `{month}`, `{day}`; UUIDs and long hex tokens become
   `{uuid}` and `{hex}` string fields.
 - **Kinds:** empty directories (or, in an iterable, entries ending in `/`) are observed

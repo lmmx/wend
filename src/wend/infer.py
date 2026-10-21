@@ -15,8 +15,10 @@ trees. Observed paths form a tree, which is generalised bottom-up:
 - Sibling directories whose contents are structurally similar (Jaccard
   similarity of their children's skeletons) collapse into one segment field,
   like genson's record-to-map unification. Files that share an extension
-  collapse into ``{stem}.ext`` once there are enough of them. A map at a
-  position absorbs the similar directories and same-extension files beside it.
+  collapse into ``{stem}.ext`` once there are ``min_files`` of them, and so
+  do empty directories, which have no contents to compare. A map at a
+  position absorbs the similar directories, same-extension files and empty
+  directories beside it, whatever their number.
 - Merging directories re-unifies their children. A field whose observed
   values always equal an earlier field's becomes the same parameter
   (``n01440764/n01440764_10026.JPEG``).
@@ -27,9 +29,12 @@ extensions of their files instead. Like genson-core's map threshold, this
 coarser comparison needs many siblings: only a group of at least
 ``min_opaque`` (8) such directories, joining clusters that did not merge by
 skeleton, collapses into a map, so a code repository's handful of top-level
-directories stays a record. Inside such an *opaque* map, a name family seen
-in only one of its directories is treated like a one-off name, and a ``{name}``
-map takes in the files left over: their names carry no shared structure.
+directories stays a record. An empty directory says nothing about extensions:
+it neither counts towards ``min_opaque`` nor keeps a family (``0``...``9``
+with an empty ``9``) from being opaque. Inside such an *opaque* map, a name
+family seen in only one of its directories is treated like a one-off name,
+and a ``{name}`` map takes in the files left over: their names carry no
+shared structure.
 
 Variable depth. After flattening, a tail ``T`` (one segment, possibly after
 literal directory segments such as ``__pycache__``, with some literal text)
@@ -63,8 +68,8 @@ directory merged with others keeps its own observed path apart from the
 files below it, as a ``dir`` layout of the merged pattern
 (``{dir}/examples`` when some package directories hold an empty
 ``examples/``). A dir layout generalises like a file layout, through merged
-parents, digit runs and SubPath folds, but a file and a directory never
-share one, whatever names they share.
+parents, digit runs, maps and SubPath folds, but a file and a directory
+never share one, whatever names they share.
 
 Every observed path matches at least one inferred layout of its kind, and
 each layout's ``count`` and field statistics come from the paths it was
@@ -299,15 +304,20 @@ def _similar(a: _Rule, b: _Rule) -> float:
 
 
 def _profile(dirs: Iterable[_Rule]) -> dict[str, float] | None:
-    """Extension frequencies of the files in directories holding only files."""
+    """Extension frequencies of the files in directories holding only files.
+
+    An empty directory says nothing about extensions and is passed over;
+    there is no profile when some directory holds a directory, or none holds
+    a file.
+    """
     counts: Counter[str] = Counter()
     for d in dirs:
-        if not d.children or any(c.kind != "file" for c in d.children):
+        if any(c.kind != "file" for c in d.children):
             return None
         for c in d.children:
             counts[_coarse(c)] += c.count
     total = sum(counts.values())
-    return {k: v / total for k, v in counts.items()}
+    return {k: v / total for k, v in counts.items()} if total else None
 
 
 def _overlap(a: dict[str, float], b: dict[str, float]) -> float:
@@ -365,11 +375,16 @@ def _opaque_dirs(dirs: list[_Rule], cfg: _Config) -> bool:
 
     At least ``min_opaque`` directories holding only files, some of them
     unlike the others by skeleton: their name only says they are a family.
+    Empty members say nothing either way, so only the others are counted
+    and compared.
     """
-    if len(dirs) < cfg.min_opaque or dirs[0].kind != "dir" or _profile(dirs) is None:
+    if len(dirs) < cfg.min_opaque or dirs[0].kind != "dir":
         return False
-    lead = min(dirs, key=lambda d: (-len(d.children), d.names[0]))
-    return any(_similar(d, lead) < cfg.similarity for d in dirs)
+    full = [d for d in dirs if d.children]
+    if len(full) < cfg.min_opaque or _profile(full) is None:
+        return False
+    lead = min(full, key=lambda d: (-len(d.children), d.names[0]))
+    return any(_similar(d, lead) < cfg.similarity for d in full)
 
 
 def _local_family(r: _Rule) -> bool:
@@ -411,27 +426,28 @@ def _unify(rules: list[_Rule], cfg: _Config, opaque: bool = False) -> list[_Rule
     # 2. Directories with similar contents collapse into one segment field.
     #    A map already at this position (from merged parents) absorbs similar
     #    directories, and every qualifying cluster joins the same map, since
-    #    they would all be the same pattern.
+    #    they would all be the same pattern. Empty directories have no
+    #    contents to compare: like files sharing an extension, they join the
+    #    map at this position whatever their number, or form one of their own
+    #    once there are ``min_files`` of them.
     dir_map = next((r for r in out if r.kind == "dir" and r.shape == ("str", "")), None)
     if dir_map is not None:
         out.remove(dir_map)
+    empty = [r for r in lone if r.kind == "dir" and not r.children]
     clusters: list[list[_Rule]] = []
     for d in sorted(
-        (r for r in lone if r.kind == "dir"),
+        (r for r in lone if r.kind == "dir" and r.children),
         key=lambda r: (-len(r.children), r.names[0]),
     ):
         for cl in clusters:
-            if d.children and _similar(d, cl[0]) >= cfg.similarity:
+            if _similar(d, cl[0]) >= cfg.similarity:
                 cl.append(d)
                 break
         else:
             clusters.append([d])
     joins = [
-        bool(cl[0].children)
-        and (
-            len(cl) >= cfg.min_dirs
-            or (dir_map is not None and _similar(cl[0], dir_map) >= cfg.similarity)
-        )
+        len(cl) >= cfg.min_dirs
+        or (dir_map is not None and _similar(cl[0], dir_map) >= cfg.similarity)
         for cl in clusters
     ]
     # Opaque families: file-only directories whose names share no skeleton.
@@ -453,6 +469,10 @@ def _unify(rules: list[_Rule], cfg: _Config, opaque: bool = False) -> list[_Rule
             if prof is not None and _overlap(prof, here) >= cfg.similarity:
                 out.remove(r)
                 into_map.append(r)
+    if into_map or len({n for r in empty for n in r.names}) >= cfg.min_files:
+        into_map.extend(empty)
+    else:
+        out.extend(empty)
     if len(into_map) > 1 or (into_map and dir_map is None):
         out.append(_merge(into_map, ("str", ""), cfg, map_opaque))
     elif into_map:
@@ -1223,9 +1243,10 @@ def infer(
     In an iterable, a trailing "/" marks a directory, which is an observed
     path of kind ``dir`` whether or not other paths lie below it; repeated
     paths count once. ``min_dirs`` and ``min_files`` are how many similar
-    siblings it takes to generalise a name into a field; ``similarity`` is
-    the Jaccard threshold on directory contents. Hidden entries are skipped
-    unless ``include_hidden``.
+    siblings it takes to generalise a name into a field (``min_files`` also
+    counts empty directories, which have no contents to compare);
+    ``similarity`` is the Jaccard threshold on directory contents. Hidden
+    entries are skipped unless ``include_hidden``.
 
     With ``fs`` (a `wend.fs.FileSystem`), ``source`` is a directory in that
     filesystem, such as the path `wend.fs.url_to_fs` gives for a bucket.

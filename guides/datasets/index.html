@@ -2083,7 +2083,7 @@ bindings, and raises the same error for a value that <code>render</code> rejects
 <div class="language-pycon highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="n">compiled</span><span class="o">.</span><span class="n">many</span><span class="p">([{</span><span class="s2">"split"</span><span class="p">:</span> <span class="s2">"val"</span><span class="p">,</span> <span class="s2">"idx"</span><span class="p">:</span> <span class="mi">0</span><span class="p">}])</span>
 <span class="gt">Traceback (most recent call last):</span>
 <span class="w">  </span><span class="c">...</span>
-<span class="gr">wend.errors.InvalidBindingError</span>: <span class="n">split='val': not one of ["'test'", "'train'"]</span>
+<span class="gr">wend.errors.InvalidBindingError</span>: <span class="n">split='val': not one of {'test', 'train'}</span>
 </code></pre></div>
 <h2 id="render-several-paths-per-shard">Render several paths per shard<a class="headerlink" href="#render-several-paths-per-shard" title="Permanent link">&para;</a></h2>
 <p>Each shard has a JSON file of metadata next to it, with the same name and the suffix

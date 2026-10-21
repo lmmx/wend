@@ -605,7 +605,7 @@ shard = P("data") / split / T(t"chunk_{idx:04d}-of-{total:04d}.parquet")
 >>> shard.render(split="val", idx=7)
 Traceback (most recent call last):
   ...
-wend.errors.InvalidBindingError: split='val': not one of ["'test'", "'train'"]
+wend.errors.InvalidBindingError: split='val': not one of {'test', 'train'}
 >>> shard.match("data/test/chunk_0003-of-0100.parquet")
 Match('data/test/chunk_0003-of-0100.parquet', {'split': 'test', 'idx': 3, 'total': 100})
 >>> sorted(shard.required_params())
@@ -1297,7 +1297,7 @@ A compiled renderer returns what `render` returns for the same bindings, and rai
 >>> compiled.many([{"split": "val", "idx": 0}])
 Traceback (most recent call last):
   ...
-wend.errors.InvalidBindingError: split='val': not one of ["'test'", "'train'"]
+wend.errors.InvalidBindingError: split='val': not one of {'test', 'train'}
 ```
 
 ## Render several paths per shard
@@ -1891,7 +1891,7 @@ Where the valid values are known in advance, list them with `choices=`:
 >>> stored.render(root="srv", area="config", user="ada", filename="cv.pdf")
 Traceback (most recent call last):
   ...
-wend.errors.InvalidBindingError: area='config': not one of ["'avatars'", "'documents'"]
+wend.errors.InvalidBindingError: area='config': not one of {'avatars', 'documents'}
 ```
 
 ## Path and absolute parameters: Under
@@ -2684,7 +2684,7 @@ wend.errors.InvalidBindingError: Row 1: split not in choices
 >>> shard.render(root="data", split="val", idx=1, total=2)
 Traceback (most recent call last):
   ...
-wend.errors.InvalidBindingError: split='val': not one of ["'test'", "'train'"]
+wend.errors.InvalidBindingError: split='val': not one of {'test', 'train'}
 ```
 
 A null is always rejected, also where `render` would format `None` as text:

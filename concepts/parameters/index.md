@@ -90,7 +90,7 @@ shard = P("data") / split / T(t"chunk_{idx:04d}-of-{total:04d}.parquet")
 >>> shard.render(split="val", idx=7)
 Traceback (most recent call last):
   ...
-wend.errors.InvalidBindingError: split='val': not one of ["'test'", "'train'"]
+wend.errors.InvalidBindingError: split='val': not one of {'test', 'train'}
 >>> shard.match("data/test/chunk_0003-of-0100.parquet")
 Match('data/test/chunk_0003-of-0100.parquet', {'split': 'test', 'idx': 3, 'total': 100})
 >>> sorted(shard.required_params())

@@ -2029,7 +2029,7 @@ first row that fails. No paths are returned:</p>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">shard</span><span class="o">.</span><span class="n">render</span><span class="p">(</span><span class="n">root</span><span class="o">=</span><span class="s2">"data"</span><span class="p">,</span> <span class="n">split</span><span class="o">=</span><span class="s2">"val"</span><span class="p">,</span> <span class="n">idx</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">total</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span>
 <span class="gt">Traceback (most recent call last):</span>
 <span class="w">  </span><span class="c">...</span>
-<span class="gr">wend.errors.InvalidBindingError</span>: <span class="n">split='val': not one of ["'test'", "'train'"]</span>
+<span class="gr">wend.errors.InvalidBindingError</span>: <span class="n">split='val': not one of {'test', 'train'}</span>
 </code></pre></div>
 <p>A null is always rejected, also where <code>render</code> would format <code>None</code> as text:</p>
 <div class="language-pycon highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">wend</span><span class="w"> </span><span class="kn">import</span> <span class="n">P</span><span class="p">,</span> <span class="n">T</span>

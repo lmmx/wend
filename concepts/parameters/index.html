@@ -2037,7 +2037,7 @@ An absolute parameter rejects a relative value:</p>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">shard</span><span class="o">.</span><span class="n">render</span><span class="p">(</span><span class="n">split</span><span class="o">=</span><span class="s2">"val"</span><span class="p">,</span> <span class="n">idx</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>
 <span class="gt">Traceback (most recent call last):</span>
 <span class="w">  </span><span class="c">...</span>
-<span class="gr">wend.errors.InvalidBindingError</span>: <span class="n">split='val': not one of ["'test'", "'train'"]</span>
+<span class="gr">wend.errors.InvalidBindingError</span>: <span class="n">split='val': not one of {'test', 'train'}</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">shard</span><span class="o">.</span><span class="n">match</span><span class="p">(</span><span class="s2">"data/test/chunk_0003-of-0100.parquet"</span><span class="p">)</span>
 <span class="go">Match('data/test/chunk_0003-of-0100.parquet', {'split': 'test', 'idx': 3, 'total': 100})</span>
 <span class="gp">&gt;&gt;&gt; </span><span class="nb">sorted</span><span class="p">(</span><span class="n">shard</span><span class="o">.</span><span class="n">required_params</span><span class="p">())</span>

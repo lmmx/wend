@@ -2158,7 +2158,7 @@ the target directory:</p>
 <span class="gp">&gt;&gt;&gt; </span><span class="n">stored</span><span class="o">.</span><span class="n">render</span><span class="p">(</span><span class="n">root</span><span class="o">=</span><span class="s2">"srv"</span><span class="p">,</span> <span class="n">area</span><span class="o">=</span><span class="s2">"config"</span><span class="p">,</span> <span class="n">user</span><span class="o">=</span><span class="s2">"ada"</span><span class="p">,</span> <span class="n">filename</span><span class="o">=</span><span class="s2">"cv.pdf"</span><span class="p">)</span>
 <span class="gt">Traceback (most recent call last):</span>
 <span class="w">  </span><span class="c">...</span>
-<span class="gr">wend.errors.InvalidBindingError</span>: <span class="n">area='config': not one of ["'avatars'", "'documents'"]</span>
+<span class="gr">wend.errors.InvalidBindingError</span>: <span class="n">area='config': not one of {'avatars', 'documents'}</span>
 </code></pre></div>
 <h2 id="path-and-absolute-parameters-under">Path and absolute parameters: Under<a class="headerlink" href="#path-and-absolute-parameters-under" title="Permanent link">&para;</a></h2>
 <p>A parameter at the head of an expression, an <a class="autorefs autorefs-internal" title="            wend.AnyPath" href="../../reference/api/wend/#wend.AnyPath"><code>AnyPath</code></a> and an

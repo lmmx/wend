@@ -131,7 +131,7 @@ Where the valid values are known in advance, list them with `choices=`:
 >>> stored.render(root="srv", area="config", user="ada", filename="cv.pdf")
 Traceback (most recent call last):
   ...
-wend.errors.InvalidBindingError: area='config': not one of ["'avatars'", "'documents'"]
+wend.errors.InvalidBindingError: area='config': not one of {'avatars', 'documents'}
 ```
 
 ## Path and absolute parameters: Under

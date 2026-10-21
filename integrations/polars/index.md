@@ -95,7 +95,7 @@ wend.errors.InvalidBindingError: Row 1: split not in choices
 >>> shard.render(root="data", split="val", idx=1, total=2)
 Traceback (most recent call last):
   ...
-wend.errors.InvalidBindingError: split='val': not one of ["'test'", "'train'"]
+wend.errors.InvalidBindingError: split='val': not one of {'test', 'train'}
 ```
 
 A null is always rejected, also where `render` would format `None` as text:

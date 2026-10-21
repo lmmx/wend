@@ -5,7 +5,7 @@ Three groups:
 - today's core behaviour that the entry documents, pinned so that a change
   to it is deliberate;
 - gaps in core, as strict xfails: each passes once core is fixed, and then
-  fails until its marker is removed (the Param equality gap is fixed, #93);
+  fails until its marker is removed (both are fixed: Param equality in #93, reading members back in #94);
 - the private prototype of the proposed rules (`wend._experimental.choices`).
 """
 
@@ -81,7 +81,6 @@ def test_equal_choices_of_different_types_collapse_today():
 # -- gaps in core ----------------------------------------------------------------
 
 
-@pytest.mark.xfail(strict=True, reason="untyped choices read text as str (journal)")
 @pytest.mark.parametrize("members", [{1}, {1.5}, {True}, {None}], ids=repr)
 def test_core_reads_back_every_declared_member(members):
     c = Param("c", choices=members)
@@ -90,7 +89,6 @@ def test_core_reads_back_every_declared_member(members):
         assert e.match_all(e.render(c=m))
 
 
-@pytest.mark.xfail(strict=True, reason="path choices compared with str (journal)")
 def test_core_reads_back_path_valued_choices():
     h = AnyPath("h", choices={PurePosixPath("/a")})
     s = SubPath("s", choices={PurePosixPath("a/b")})

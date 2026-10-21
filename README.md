@@ -34,7 +34,7 @@ uv pip install "wend[fsspec]"  # discovery and inference on object stores
 ## About
 
 For the backstory read the blog series [cog.spin.systems/future-paths][blog], and the
-project journal in [`docs/journal/`](docs/journal/).
+project journal in [`docs/journal/`](https://github.com/lmmx/wend/tree/master/docs/journal/).
 
 [blog]: https://cog.spin.systems/future-paths
 
@@ -131,7 +131,7 @@ A structural operation may eliminate parameters: `(root / split).parent` is `{ro
 value is the same for every valid `split`. Evaluation is non-strict: a sub-expression
 discarded by an operation (everything before an absolute join) is never evaluated.
 
-The precise contract is [docs/SEMANTICS.md](docs/SEMANTICS.md). Hypothesis checks it against
+The precise contract is [docs/SEMANTICS.md](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md). Hypothesis checks it against
 a reference evaluator written from that document alone (`tests/contract_test.py`), and
 against an eager-pathlib oracle (`tests/oracle_test.py`). The document also says which
 guarantees hold by construction and which are only tested.
@@ -190,7 +190,7 @@ CONFIG.resolve(Settings(Path("/actual/root")))  # PosixPath('/actual/root/config
 Pydantic computed fields don't bind, so a computed field can render a path
 from its own model (`CONFIG.resolve(self)`). Keyword bindings override an
 object's fields. The rules are in
-[SEMANTICS.md §3.1–3.2](docs/SEMANTICS.md#31-defaults).
+[SEMANTICS.md §3.1–3.2](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#31-defaults).
 
 ### Counters and anchors
 
@@ -293,7 +293,7 @@ frag = P("cache") / "models"
 [frag.under(b) for b in ("/home/a/.app", "/home/b/.app")]  # one fragment, many bases
 ```
 
-The rules are in [SEMANTICS.md §9](docs/SEMANTICS.md#9-connectivity).
+The rules are in [SEMANTICS.md §9](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#9-connectivity).
 
 ### Conditions
 
@@ -336,7 +336,7 @@ upload.render(root="/srv", rel="../etc/passwd")  # ContainmentError
 
 `File` is a structural fact too: nothing can be joined below a path declared to
 be a file. Checks are point-in-time, not a sandbox: a path can change between
-`check` and `open`. The rules are in [SEMANTICS.md §10](docs/SEMANTICS.md#10-conditions).
+`check` and `open`. The rules are in [SEMANTICS.md §10](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#10-conditions).
 
 ### Unions and queries
 
@@ -378,7 +378,7 @@ for m in (src - tests).where(File, modified_after(yesterday)).glob():
     ...
 ```
 
-The rules are in [SEMANTICS.md §11](docs/SEMANTICS.md#11-unions-and-queries).
+The rules are in [SEMANTICS.md §11](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#11-unions-and-queries).
 
 ### Lineage
 
@@ -410,7 +410,7 @@ ledger.stale(out)  # inputs whose contents changed since out was made
 Content addressing names a path after what it holds. The key is bound like any value,
 so `render` stays pure and `match` reads it back:
 `cache.render(root=..., key=content_key(raw_file))`.
-The rules are in [SEMANTICS.md §13](docs/SEMANTICS.md#13-lineage).
+The rules are in [SEMANTICS.md §13](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#13-lineage).
 
 ### Discovery and lenses
 
@@ -552,7 +552,7 @@ project.validate()  # Report: missing, extra, misfiled, wrong-kind, too-many, al
 Cardinality is per directory: exactly one by default, `optional=True` for at most one,
 and `many=True` for any number. An inferred layout becomes a declaration with
 `from_inferred(infer(root))`. `.source()` writes it out as Python to review and keep.
-The rules are in [SEMANTICS.md §12](docs/SEMANTICS.md#12-schemas).
+The rules are in [SEMANTICS.md §12](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#12-schemas).
 
 ### Layout inference
 
@@ -610,7 +610,7 @@ A path given without a kind (no trailing `/`, not a pair) matches layouts of eit
 
 ### Examples
 
-[`examples/`](examples/) has runnable scripts:
+[`examples/`](https://github.com/lmmx/wend/tree/master/examples/) has runnable scripts:
 - dataset shard manifests and gap detection;
 - source-to-build mapping with staleness checks;
 - a project layout bound per environment;
@@ -643,7 +643,7 @@ A path given without a kind (no trailing `/`, not a pair) matches layouts of eit
   included. For `~/Library/...` conventions, bind the anchor to a value from a
   library such as platformdirs.
 - Conditions are checked at runtime, at the moment `check` runs; type checkers see a
-  plain `PathExpr`. [The conditions journal entry](docs/journal/2026-10-18-conditions-49.md)
+  plain `PathExpr`. [The conditions journal entry](https://github.com/lmmx/wend/blob/master/docs/journal/2026-10-18-conditions-49.md)
   records what static checking could add.
 - An expression's head is never a URL: bind the path that `wend.fs.url_to_fs` gives.
 - On an object store, `check(..., fs=)` cannot tell whether a write would succeed:
@@ -653,7 +653,7 @@ A path given without a kind (no trailing `/`, not a pair) matches layouts of eit
   what the measurements say a native backend would need to beat.
 
 Changes from 0.1 (removed names and changed behaviour) are listed in
-[docs/MIGRATING.md](docs/MIGRATING.md).
+[docs/MIGRATING.md](https://github.com/lmmx/wend/blob/master/docs/MIGRATING.md).
 
 ## Contributing
 
@@ -663,7 +663,7 @@ Contributions are welcome! Please:
 2.  Fork the repo and submit a PR for changes
 3.  Install dev dependencies with `uv sync` and run `pre-commit install`
 4.  Keep the semantic contract and its tests together: a change to
-    [docs/SEMANTICS.md](docs/SEMANTICS.md) comes with the matching change to the
+    [docs/SEMANTICS.md](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md) comes with the matching change to the
     reference evaluator in `tests/contract_test.py`, and the reverse
 
 ## License

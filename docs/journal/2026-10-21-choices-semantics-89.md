@@ -155,6 +155,10 @@ differ in type or `repr`, with a message naming them. §3.1 already treats
 `1`, `True` and `1.0` as different defaults. The cost is that a
 declaration listing both `"train"` and `Split.TRAIN` would raise.
 
+This covers only members the `frozenset` would silently merge (equality
+collisions). Distinct members that merely *render* alike (`{"1", 1}`)
+stay legal, and `match_all` returns both readings (see Decisions).
+
 ### 4. Equal values that render differently (the bool case, generalised)
 
 **[Measured]** 229 accepted bindings render differently from their
@@ -313,9 +317,10 @@ For §8's table:
 
    `type=SomeEnum` could read its members the same way, since an `Enum`
    type is a finite set of members.
-3. **Refuse colliding members** (finding 3) in 0.2.0. A declaration that
-   lists `1` and `True` is almost certainly a mistake, and §3.1 already
-   draws the line.
+3. **Refuse equality-colliding members** (finding 3) in 0.2.0. A
+   declaration that lists `1` and `True` is almost certainly a mistake,
+   and §3.1 already draws the line. Members that only render alike are
+   not refused.
 4. **E, staged.** In 0.2.0, warn when a binding renders unlike its
    representative, naming the value, the field and the two texts. Refuse
    it in a later release. B is rejected:
@@ -337,27 +342,38 @@ For §8's table:
 in strict mode, so the numeric-twins workaround and part of
 `builtin_values` could go.
 
-## Unresolved trade-offs
+## Decisions (owner, 2026-10-21)
 
-- **E's acceptance depends on the field, not the parameter.**
-  `Param.check` would stay context-free, while rendering checks each
-  field. Integrations that call `Param.check` alone (pydantic, frames)
-  would accept bindings that `render` refuses. Is that acceptable, or
-  should E be limited to what a context-free check can see (exact
-  builtin types and members)?
-- **D-canonical's type changes.** `match` would return `Split.TRAIN` where
-  it returned `"train"`. Code comparing with `==`, or treating the value
-  as a `str`, is unaffected; code checking `type(x) is str` is not.
-- **Ambiguity for `{"1", 1}`.** A declaration that today matches quietly
-  would raise `AmbiguousMatchError`. Refusing such declarations outright,
-  as members that render alike, is possible but depends on the field's
-  spec, like E.
-- **Subclasses with their own `__format__`.** E refuses a `str` or `int`
-  subclass that formats unlike its base, which is the point of such a
-  subclass. B would silently ignore its formatting. Neither is free, and
-  C keeps the unreadable path. The entry leans to E because it fails
-  loudly. A project that wants custom formatting can declare its own
-  type, which E leaves alone.
+**[Decision]** The trade-offs this entry left open were decided as
+follows. They are design decisions for future core work, each to land as
+its own focused change, not changes made in this PR:
+
+1. **Faithful rendering is checked per field.** A value's text depends on
+   the field's spec (`True` renders `True` in `{n}` and `1` in `{n:d}`),
+   so E is a field-level guarantee. Parameter-level checks (`Param.check`,
+   and integrations that call only it) enforce only format-independent
+   invariants. The core semantics are not weakened to suit integrations.
+2. **`match` returns the declared member,** including `Enum` and
+   `StrEnum` members (`Split.TRAIN`, not `"train"`). The 13 type changes
+   the audit found are documented and tested when D lands, and every
+   reading stays verified by rendering.
+3. **Custom `__format__` is not banned.** The contract is faithfulness:
+   a value accepted through a choice must render as its member does, in
+   the field at hand. A custom formatter that does so is fine. Accepted
+   values that do not are warned about during a transition, and
+   rejecting those specific bindings is considered after it.
+4. **Legitimate ambiguity is preserved.** Distinct members that render
+   alike (`{"1", 1}`) are allowed, and `match_all` returns each reading;
+   `match` raises `AmbiguousMatchError` as for any ambiguous path. Only
+   accidental conflation is fixed: `Param` equality (finding 1) and
+   members a `frozenset` collapses (finding 3). wend does not require
+   every expression to be invertible.
+
+## Remaining trade-offs
+
+- **Type changes from D-canonical.** Code comparing with `==`, or treating
+  the value as a `str`, is unaffected; code checking `type(x) is str` is
+  not. To be named in the release notes.
 - **Prototype cost.** The prototype matches once per combination of
   members, which is exponential in the number of choice parameters. That
   is fine for tests, not for the matcher; the per-field rule above is

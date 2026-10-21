@@ -613,19 +613,26 @@ class PathExpr(_Cached):
         out.__dict__["tags"] = MappingProxyType({**self.tags, **tags})
         return out
 
-    def check(self, mapping: Any = None, /, **kw: Any) -> Path:
+    def check(self, mapping: Any = None, /, *, fs: Any = None, **kw: Any) -> Path:
         """Render, check every precondition against the filesystem now, and
-        return the path. Raises a `ConditionError` for the first that fails."""
-        from .conditions import realise
+        return the path. Raises a `ConditionError` for the first that fails:
+        `IndeterminateError` when the filesystem cannot say. ``fs`` is a
+        `wend.fs` filesystem (the local disk by default)."""
+        from .conditions import _check_fs_option, realise
 
-        return realise(self, _make_env(mapping, kw), after=False)
+        env = _make_env(mapping, kw)
+        _check_fs_option("check", self, env, fs)
+        return realise(self, env, after=False, fs=fs)
 
-    def confirm(self, mapping: Any = None, /, **kw: Any) -> Path:
+    def confirm(self, mapping: Any = None, /, *, fs: Any = None, **kw: Any) -> Path:
         """Render, check every postcondition against the filesystem now, and
-        return the path. Raises a `ConditionError` for the first that fails."""
-        from .conditions import realise
+        return the path. Raises a `ConditionError` for the first that fails,
+        as `check` does."""
+        from .conditions import _check_fs_option, realise
 
-        return realise(self, _make_env(mapping, kw), after=True)
+        env = _make_env(mapping, kw)
+        _check_fs_option("confirm", self, env, fs)
+        return realise(self, env, after=True, fs=fs)
 
     # -- introspection ------------------------------------------------------
 

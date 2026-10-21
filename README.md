@@ -640,6 +640,9 @@ A path given without a kind (no trailing `/`, not a pair) matches layouts of eit
   plain `PathExpr`. [The conditions journal entry](docs/journal/2026-10-18-conditions-49.md)
   records what static checking could add.
 - An expression's head is never a URL: bind the path that `wend.fs.url_to_fs` gives.
+- On an object store, `check(..., fs=)` cannot tell whether a write would succeed:
+  `Writable` and `Creatable` raise `IndeterminateError` there (a refusal on read-only
+  filesystems such as HTTP, and a pass on the memory filesystem).
 - The Rust backend sketched in the blog series is not implemented; see the journal for
   what the measurements say a native backend would need to beat.
 

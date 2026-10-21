@@ -490,6 +490,28 @@ before anything is looked up, and raises the first condition that fails:
 | `Writable` | `p` exists and `access(p, W_OK)` (with `X_OK` for a directory), or `p` is `Creatable` | capability error |
 | `Creatable` | `p` exists, or its nearest existing ancestor is a directory with `access(·, W_OK \| X_OK)` | capability error |
 
+A check has three outcomes: the condition holds, it is known not to (the
+errors above), or it *cannot be determined*. The last is an indeterminate
+error, never a known failure. Locally, a path that cannot be examined (a
+`stat` that fails other than by the path being missing: no permission to
+look, a symlink loop) is indeterminate.
+
+Checks run on the local disk unless given another filesystem (`fs=`, as
+`glob` takes). On an fsspec filesystem, which has no permission bits, each
+condition is what the store can report:
+
+| condition | holds when | otherwise |
+|---|---|---|
+| `Under(b)` | contained in `b` (a store has no symlinks, so a path resolves to itself) | containment error |
+| `Exists`, `Absent`, `File`, `Dir` | as above, from a metadata lookup | as above; a lookup the store refuses is indeterminate, not absent |
+| `Readable` | an object, on a store whose metadata takes the same permission as the content (S3, GCS, Azure, memory); a directory, as `Listable` | missing-path error; indeterminate on other stores |
+| `Listable` | a directory whose listing succeeds | missing-path, wrong-kind, or capability error if the listing is refused |
+| `Writable`, `Creatable` | the memory filesystem; `Creatable` also when `p` exists | capability error on read-only filesystems (HTTP, archives); indeterminate elsewhere, since a store cannot report whether a write would succeed without writing |
+
+A union's `first` raises an indeterminate error rather than skip an
+alternative it could not check, and a query's condition filter raises it
+rather than drop the path.
+
 Checks describe the filesystem at the moment they run. They are not atomic
 with any later use of the path, and `access` reports the real user's
 permissions. Like `glob`'s symlink policy, they catch mistakes and state

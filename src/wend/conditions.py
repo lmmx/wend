@@ -32,8 +32,8 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 
 from .errors import (
     CapabilityError,
-    ConditionError,
     ContainmentError,
+    IndeterminateError,
     MissingPathError,
     PathExistsError,
     PathOperationError,
@@ -340,7 +340,9 @@ class _Probe:
         except FileNotFoundError, NotADirectoryError:
             return None
         except OSError as e:
-            raise ConditionError(self.path, None, f"could not be checked: {e}") from e
+            raise IndeterminateError(
+                self.path, None, f"could not be checked: {e}"
+            ) from e
 
     @property
     def st(self) -> os.stat_result | None:
@@ -422,27 +424,174 @@ def _check_one(p: _Probe, c: Condition, env: Mapping[str, Any]) -> None:
         raise TypeError(f"Unknown condition {c!r}")
 
 
+# -- Other filesystems --------------------------------------------------------
+#
+# A store has no permission bits, so each capability is what the store can
+# report: True (holds), False (known not to), or None (cannot be determined
+# without exercising it). A condition that cannot be determined raises
+# IndeterminateError; it is never reported as false.
+
+# Stores whose object metadata takes the same permission as the object's
+# content: S3 HEAD needs s3:GetObject, GCS storage.objects.get, Azure blob
+# read. A successful lookup of an object there shows it can be read.
+_METADATA_IS_READ = frozenset(
+    {"s3", "s3a", "gs", "gcs", "abfs", "abfss", "az", "adl", "memory"}
+)
+# Filesystems that never accept writes.
+_READ_ONLY = frozenset({"http", "https", "github", "zip", "tar", "libarchive"})
+# Filesystems that accept every write (nothing to authorise).
+_ALWAYS_WRITABLE = frozenset({"memory"})
+
+
+class _StoreProbe:
+    """One path's state on an fsspec filesystem, looked up once per check.
+
+    Unlike discovery, which reads a path it may not see as absent, a check
+    tells a missing path (None) from one it cannot look at, which raises
+    `IndeterminateError`.
+    """
+
+    def __init__(self, fs: Any, path: str) -> None:
+        from .fs import _protocols
+
+        self.fs = fs
+        self.path = path
+        self.protocols = _protocols(fs.fs)
+        self._kind: Any = ...
+
+    def _unknown(self, c: Any, e: BaseException) -> IndeterminateError:
+        return IndeterminateError(self.path, c, f"could not be checked: {e}")
+
+    @property
+    def kind(self) -> str | None:
+        if self._kind is ...:
+            from .fs import _info_kind
+
+            try:
+                info = self.fs.fs.info(self.fs._path(self.path))
+            except FileNotFoundError, NotADirectoryError:
+                self._kind = None
+            except OSError as e:  # PermissionError among them: not absent
+                raise self._unknown(None, e) from e
+            else:
+                self._kind = _info_kind(info.get("name", ""), info)
+        return self._kind
+
+    def listable(self, c: Condition) -> bool:
+        try:
+            self.fs.fs.ls(self.fs._path(self.path), detail=False)
+        except PermissionError:
+            return False
+        except OSError as e:
+            raise self._unknown(c, e) from e
+        return True
+
+    def readable(self, c: Condition) -> bool | None:
+        if self.kind == "dir":
+            return self.listable(c)
+        return True if self.protocols & _METADATA_IS_READ else None
+
+    def writable(self) -> bool | None:
+        if self.protocols & _READ_ONLY:
+            return False
+        if self.protocols & _ALWAYS_WRITABLE:
+            return True
+        return None
+
+
+def _capability(
+    p: _StoreProbe, c: Condition, ok: bool | None, fails: str, why: str
+) -> None:
+    if ok is None:
+        raise IndeterminateError(p.path, c, f"could not be checked: {why}")
+    if not ok:
+        raise CapabilityError(p.path, c, fails)
+
+
+def _check_store(p: _StoreProbe, c: Condition, env: Mapping[str, Any]) -> None:
+    s = p.path
+    protocol = "/".join(sorted(p.protocols))
+    if isinstance(c, Under):
+        b = c.base._compiled.render(env)
+        if not contained(s, b):  # a store has no symlinks: s resolves to itself
+            raise ContainmentError(s, c, f"is not under {b!r}")
+    elif c is Exists:
+        if p.kind is None:
+            raise MissingPathError(s, c, "does not exist")
+    elif c is Absent:
+        if p.kind is not None:
+            raise PathExistsError(s, c, "already exists")
+    elif c is File:
+        if p.kind not in (None, "file"):
+            raise WrongKindError(s, c, "is not a regular file")
+    elif c is Dir:
+        if p.kind not in (None, "dir"):
+            raise WrongKindError(s, c, "is not a directory")
+    elif c is Readable:
+        if p.kind is None:
+            raise MissingPathError(s, c, "does not exist")
+        why = f"{protocol} metadata does not show whether the content can be read"
+        _capability(p, c, p.readable(c), "is not readable", why)
+    elif c is Listable:
+        if p.kind is None:
+            raise MissingPathError(s, c, "does not exist")
+        if p.kind != "dir":
+            raise WrongKindError(s, c, "is not a directory")
+        _capability(p, c, p.listable(c), "is not listable", "")
+    elif c is Writable or c is Creatable:
+        if c is Creatable and p.kind is not None:
+            return
+        fails = "is not writable" if c is Writable else "cannot be created"
+        why = f"{protocol} storage cannot report whether a write would succeed without writing"
+        _capability(p, c, p.writable(), f"{fails}: {protocol} is read-only", why)
+    else:  # pragma: no cover - every condition is handled above
+        raise TypeError(f"Unknown condition {c!r}")
+
+
 def _order(c: Condition) -> int:
     # Containment first: no other check should touch a path outside its base.
     return -1 if isinstance(c, Under) else _SIMPLE.index(c)
 
 
 def check_conditions(
-    s: str, conds: tuple[Condition, ...], env: Mapping[str, Any]
+    s: str, conds: tuple[Condition, ...], env: Mapping[str, Any], fs: Any = None
 ) -> None:
-    """Raise the first `ConditionError` among ``conds`` for the path ``s``."""
-    p = _Probe(s)
-    for c in sorted(conds, key=_order):
-        _check_one(p, c, env)
+    """Raise the first `ConditionError` among ``conds`` for the path ``s`` on
+    ``fs`` (a `wend.fs` filesystem; the local disk by default)."""
+    from .fs import FsspecFS, LocalFS
+
+    ordered = sorted(conds, key=_order)
+    if fs is None or isinstance(fs, LocalFS):
+        p = _Probe(s)
+        for c in ordered:
+            _check_one(p, c, env)
+    elif isinstance(fs, FsspecFS):
+        q = _StoreProbe(fs, s)
+        for c in ordered:
+            _check_store(q, c, env)
+    else:
+        raise TypeError(
+            f"conditions are checked on the local disk or a wend.fs.FsspecFS, not {fs!r}"
+        )
 
 
-def realise(e: PathExpr, env: Mapping[str, Any], *, after: bool) -> Path:
-    """Render ``e`` and check its preconditions (or, ``after``, postconditions)."""
+def realise(
+    e: PathExpr, env: Mapping[str, Any], *, after: bool, fs: Any = None
+) -> Path:
+    """Render ``e`` and check its preconditions (or, ``after``, postconditions)
+    on ``fs``."""
     s = e.render(env)
     conds = e.conditions
     if conds is not None:
-        check_conditions(s, conds.ensures if after else conds.requires, env)
+        check_conditions(s, conds.ensures if after else conds.requires, env, fs)
     return Path(s)
+
+
+def _check_fs_option(method: str, owner: Any, env: Mapping[str, Any], fs: Any) -> None:
+    """The ``fs=`` option, kept apart from a parameter named ``fs``."""
+    from .errors import _check_option_keywords
+
+    _check_option_keywords(method, owner, env, [("fs", fs, None)])
 
 
 # ---------------------------------------------------------------------------
@@ -503,27 +652,40 @@ class Step:
     def param_names(self) -> frozenset[str]:
         return frozenset().union(*(e.param_names for e in self.paths.values()))
 
+    @property
+    def pattern(self) -> str:
+        return repr(self)
+
     def _realise(
-        self, mapping: Any, kw: dict[str, Any], after: bool
+        self, mapping: Any, kw: dict[str, Any], after: bool, fs: Any
     ) -> dict[str, Path]:
         from ._expr import _make_env
 
         env = _make_env(mapping, kw)
-        return {k: realise(e, env, after=after) for k, e in self.paths.items()}
+        _check_fs_option("confirm" if after else "check", self, env, fs)
+        return {k: realise(e, env, after=after, fs=fs) for k, e in self.paths.items()}
 
-    def check(self, mapping: Any = None, /, **kw: Any) -> dict[str, Path]:
-        """Render every path and check its preconditions, in declaration order."""
-        return self._realise(mapping, kw, after=False)
+    def check(
+        self, mapping: Any = None, /, *, fs: Any = None, **kw: Any
+    ) -> dict[str, Path]:
+        """Render every path and check its preconditions, in declaration order,
+        on ``fs`` (a `wend.fs` filesystem; the local disk by default)."""
+        return self._realise(mapping, kw, False, fs)
 
-    def confirm(self, mapping: Any = None, /, **kw: Any) -> dict[str, Path]:
-        """Render every path and check its postconditions, in declaration order."""
-        return self._realise(mapping, kw, after=True)
+    def confirm(
+        self, mapping: Any = None, /, *, fs: Any = None, **kw: Any
+    ) -> dict[str, Path]:
+        """Render every path and check its postconditions, in declaration order,
+        on ``fs``."""
+        return self._realise(mapping, kw, True, fs)
 
     @contextmanager
-    def __call__(self, mapping: Any = None, /, **kw: Any) -> Iterator[dict[str, Path]]:
-        paths = self.check(mapping, **kw)
+    def __call__(
+        self, mapping: Any = None, /, *, fs: Any = None, **kw: Any
+    ) -> Iterator[dict[str, Path]]:
+        paths = self.check(mapping, fs=fs, **kw)
         yield paths
-        self.confirm(mapping, **kw)
+        self.confirm(mapping, fs=fs, **kw)
 
     def effects(self) -> list[Effect]:
         """The filesystem effects each path declares: ``read``, ``write``,

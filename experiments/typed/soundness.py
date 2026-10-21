@@ -357,42 +357,31 @@ def judge(rt, st) -> str:
 def context_source(programs, rt, static_types, rng):
     """Each runtime-valid expression, inline, where up to three atoms it does
     not declare are demanded (must be errors) and one atom its static type
-    has is demanded (must not be)."""
+    has is demanded (must not be). One function per program keeps each scope
+    small enough for Pyright."""
     lines = (PRELUDE + DEMANDS).splitlines()
     must_fail, must_pass = set(), set()
-    for stmts in programs:
-        for var, expr in stmts:
-            status, f = rt[var]
-            if status != "ok":
-                continue
+    for n, stmts in enumerate(programs):
+        ok = [(v, x) for v, x in stmts if rt[v][0] == "ok"]
+        if not ok:
+            continue
+        lines.append("")
+        lines.append(f"def _p{n}() -> None:")
+        lines.extend(f"    {v} = {x}" for v, x in ok)
+        for var, expr in ok:
+            f = rt[var][1]
             absent = [a for a in ATOMS if a not in f.atoms]
             for a in rng.sample(absent, min(3, len(absent))):
-                lines.append(f"{demand(a)}({expr})")
+                lines.append(f"    {demand(a)}({expr})")
                 must_fail.add(len(lines))
             if f.kind.__name__ != "IsFile":
-                lines.append(f"demand_IsFile({expr})")
+                lines.append(f"    demand_IsFile({expr})")
                 must_fail.add(len(lines))
             st = parse_type(static_types.get(var, ""))
             if isinstance(st, tuple) and st[0]:
-                lines.append(f"{demand(rng.choice(sorted(st[0])))}({expr})")
+                lines.append(f"    {demand(rng.choice(sorted(st[0])))}({expr})")
                 must_pass.add(len(lines))
-    # the expressions refer to earlier variables: define them first
-    defs = [
-        f"{var} = {expr}"
-        for stmts in programs
-        for var, expr in stmts
-        if rt[var][0] == "ok"
-    ]
-    text = (
-        "\n".join(
-            lines[: len((PRELUDE + DEMANDS).splitlines())]
-            + defs
-            + lines[len((PRELUDE + DEMANDS).splitlines()) :]
-        )
-        + "\n"
-    )
-    shift = len(defs)
-    return text, {n + shift for n in must_fail}, {n + shift for n in must_pass}
+    return "\n".join(lines) + "\n", must_fail, must_pass
 
 
 def error_lines(checker: str, path: Path) -> set[int]:
@@ -410,11 +399,14 @@ def error_lines(checker: str, path: Path) -> set[int]:
             capture_output=True,
             text=True,
         )
-        return {
-            d["range"]["start"]["line"] + 1
-            for d in json.loads(out.stdout)["generalDiagnostics"]
-            if d["severity"] == "error"
-        }
+        lines = set()
+        for d in json.loads(out.stdout)["generalDiagnostics"]:
+            if d["severity"] != "error":
+                continue
+            if "range" not in d:  # a file-level failure: report it loudly
+                raise RuntimeError(f"pyright: {d['message']}")
+            lines.add(d["range"]["start"]["line"] + 1)
+        return lines
     out = subprocess.run(
         [
             "uvx",

@@ -23,17 +23,19 @@ authors = [
 classifiers = [
     "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: MIT License",
     "Natural Language :: English",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
     "Programming Language :: Python :: Implementation :: CPython",
 ]
 keywords = [
     "paths",
     "t-strings",
 ]
+license = "MIT"
+license-files = ["LICENSE"]
 requires-python = ">=3.14"
 dependencies = []
 
@@ -48,12 +50,11 @@ pydantic = [
     "pydantic>=2.11",
 ]
 
-[project.license]
-text = "MIT"
-
 [project.urls]
 Homepage = "https://github.com/lmmx/wend"
+Documentation = "https://lmmx.github.io/wend/"
 Repository = "https://github.com/lmmx/wend.git"
+Issues = "https://github.com/lmmx/wend/issues"
 
 [tool.pytest.ini_options]
 testpaths = "tests"

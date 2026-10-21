@@ -1,5 +1,7 @@
 """Correct uses of the typed view: neither checker reports anything."""
 
+from typing import Literal
+
 from common import (
     STATIC,
     Convert,
@@ -17,7 +19,7 @@ from common import (
     write,
 )
 
-from wend._experimental.typed import P
+from wend._experimental.typed import Exists, P, PathExpr
 
 
 def run_step() -> None:
@@ -47,3 +49,13 @@ serve(asset.bind(rel="logo.png").resolve())
 child = data / "x"
 any_path(child)
 any_path(P(STATIC) / "a")
+
+
+# The boundary: a requirement names atoms that must be declared, never ones
+# that must be absent, so only upward-closed properties are expressible. A
+# path that requires exists and ensures exists creates nothing, yet meets a
+# demand for post_exists; whether a step creates is the effect graph's to say.
+def ensures_existence(p: PathExpr[Literal["post_exists"]]) -> None: ...
+
+
+ensures_existence(raw.ensures(Exists))

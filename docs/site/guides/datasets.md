@@ -93,7 +93,7 @@ bindings, and raises the same error for a value that `render` rejects:
 >>> compiled.many([{"split": "val", "idx": 0}])
 Traceback (most recent call last):
   ...
-wend.errors.InvalidBindingError: split='val': not one of ["'test'", "'train'"]
+wend.errors.InvalidBindingError: split='val': not one of {'test', 'train'}
 ```
 
 ## Render several paths per shard

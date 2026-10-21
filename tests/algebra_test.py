@@ -132,6 +132,21 @@ def test_equal_but_differently_rendered_choices_are_different_declarations():
         T(t"{one}") / T(t"{Param('c', choices={True})}")
 
 
+def test_choices_show_as_a_set_of_reprs():
+    split = Segment("split", choices={"train", "test"})
+    assert repr(split) == "Param('split', kind=Kind.SEGMENT, choices={'test', 'train'})"
+    assert repr(Param("c", choices=set())) == "Param('c', choices=set())"
+    with pytest.raises(
+        InvalidBindingError, match=r"^split='val': not one of \{'test', 'train'\}$"
+    ):
+        split.check("val")
+    # A member without a repr still lets the declaration and its errors show.
+    huge = Param("n", choices={10**5000})
+    assert repr(huge) == "Param('n', choices={<int without a repr>})"
+    with pytest.raises(InvalidBindingError, match="not one of"):
+        huge.check(1)
+
+
 def test_fstring_misuse_is_caught():
     with pytest.raises(TypeError, match="t-string"):
         P("/a") / f"chunk_{idx}"

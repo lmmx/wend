@@ -1,0 +1,22 @@
+/* wend's palette. The mark's own colours (teal, deep blue, slate blue) come from the
+   logo; the links use the teal at a shade with at least 4.5:1 contrast on white. */
+:root > * {
+  --md-primary-fg-color: #0f766e;
+  --md-primary-fg-color--light: #14b8a6;
+  --md-primary-fg-color--dark: #115e59;
+  --md-accent-fg-color: #0d9488;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #2dd4bf;
+  --md-primary-fg-color--light: #5eead4;
+  --md-primary-fg-color--dark: #14b8a6;
+  --md-accent-fg-color: #5eead4;
+}
+
+/* Copying a pycon block copies the code only: the prompts (.gp) and the output (.go)
+   are hidden while the copy button reads the text. */
+[data-md-copying] .gp,
+[data-md-copying] .go {
+  display: none;
+}

@@ -1,4 +1,5 @@
 import ".just/commit.just"
+import ".just/docs.just"
 import ".just/ship.just"
 import ".just/test.just"
 

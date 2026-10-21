@@ -10,6 +10,19 @@ edit_uri = "edit/master/docs/site/"
 copyright = "wend is licensed under MIT"
 nav = [
   {"Home" = "index.md"},
+  {"Get started" = [
+    {"Installation" = "getting-started/installation.md"},
+    {"Quickstart" = "getting-started/quickstart.md"}
+  ]},
+  {"Concepts" = [
+    "concepts/index.md",
+    {"Expressions" = "concepts/expressions.md"},
+    {"Parameters" = "concepts/parameters.md"},
+    {"Operations" = "concepts/operations.md"},
+    {"Rendering and matching" = "concepts/matching.md"},
+    {"Relations" = "concepts/relations.md"},
+    {"Effects" = "concepts/effects.md"}
+  ]},
   {"Reference" = [
     {"API reference" = [
       "reference/index.md",
@@ -158,6 +171,19 @@ https://lmmx.github.io/wend/.
 [project.plugins.llmstxt.sections]
 "Start here" = [
   {"index.md" = "Filesystem paths as symbolic expressions built from Python t-strings: render them, match them back, and find them on disk."},
+]
+"Get started" = [
+  {"getting-started/installation.md" = "Install wend with pip or uv: it needs Python 3.14 or later, has no dependencies, and has three optional extras."},
+  {"getting-started/quickstart.md" = "Build a path expression, render it, match a path back to its values, find files with glob, and check a condition, in about ten minutes."},
+]
+"Concepts" = [
+  {"concepts/index.md" = "The idea behind wend: an expression describes a path, and every feature is something done with that description."},
+  {"concepts/expressions.md" = "What a path expression records, and how P, T and / build one from literal text, parameters and t-strings."},
+  {"concepts/parameters.md" = "The four kinds of parameter, the type, choices and default a parameter declares, and why a value bound to a segment parameter cannot traverse."},
+  {"concepts/operations.md" = "Path operations on expressions: which are computed from structure, which wait for bindings, and which are rejected when the expression is built."},
+  {"concepts/matching.md" = "The two directions of an expression: render paths from bindings, and match paths back to verified, typed bindings."},
+  {"concepts/relations.md" = "How an expression keeps the paths it was built from: base, base_rel, child, sibling, cousin, rebase and under."},
+  {"concepts/effects.md" = "Which operations touch the filesystem, how conditions declare what a path must be when it is used, and what the checks do and do not guarantee."},
 ]
 "API reference" = [
   {"reference/index.md" = "wend's public API, module by module, generated from the docstrings."},

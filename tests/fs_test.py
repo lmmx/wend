@@ -1,10 +1,14 @@
 import os
+import tempfile
 from pathlib import Path
 
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from wend import (
     AmbiguousMatchError,
+    File,
     Lens,
     NotStaticError,
     P,
@@ -316,3 +320,220 @@ def test_glob_recurses_through_symlinks_only_when_asked(tmp_path):
     assert [m["rel"] for m in e.glob()] == ["."]
     assert [m["rel"] for m in e.glob(follow_symlinks=True)] == ["."]
     assert sorted(m["rel"] for m in e.glob(recurse_symlinks=True)) == [".", "ext/deep"]
+
+
+# -- a SubPath in the last position (#82) --------------------------------------------
+
+
+@pytest.fixture
+def uploads(tmp_path):
+    for f in [
+        "srv/uploads/ada/cv.pdf",
+        "srv/uploads/ada/docs/a.txt",
+        "srv/uploads/bo/x",
+    ]:
+        p = tmp_path / f
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text("x")
+    (tmp_path / "srv/uploads/bo/empty").mkdir()
+    return tmp_path
+
+
+def test_a_trailing_subpath_reaches_files(uploads):
+    e = P(uploads / "srv/uploads") / Param("user") / SubPath("file")
+    base = str(uploads / "srv/uploads")
+    found = {(m["user"], m["file"]): os.path.relpath(m.path, base) for m in e.glob()}
+    assert found == {
+        ("ada", "."): "ada",
+        ("ada", "cv.pdf"): "ada/cv.pdf",
+        ("ada", "docs"): "ada/docs",
+        ("ada", "docs/a.txt"): "ada/docs/a.txt",
+        ("bo", "."): "bo",
+        ("bo", "empty"): "bo/empty",
+        ("bo", "x"): "bo/x",
+    }
+    files = [(m["user"], m["file"]) for m in e.glob(kind="file")]
+    assert files == [("ada", "cv.pdf"), ("ada", "docs/a.txt"), ("bo", "x")]
+    dirs = [(m["user"], m["file"]) for m in e.glob(kind="dir")]
+    assert dirs == [("ada", "."), ("ada", "docs"), ("bo", "."), ("bo", "empty")]
+    # The same paths, in the same order, as pathlib's own recursive glob.
+    assert [m.path for m in e.glob()] == sorted(str(p) for p in Path(base).glob("*/**"))
+
+
+def test_a_trailing_subpath_at_zero_depth_and_below_a_missing_prefix(uploads):
+    e = P(uploads / "srv/uploads/bo") / SubPath("rest")
+    assert [m["rest"] for m in e.glob()] == [".", "empty", "x"]
+    assert [m["rest"] for m in e.glob(kind="file")] == ["x"]
+    assert list((P(uploads / "nope") / SubPath("rest")).glob()) == []
+    # A file as the fixed prefix is itself the only path, with an empty SubPath,
+    # as match reads it.
+    f = P(uploads / "srv/uploads/bo/x") / SubPath("rest")
+    assert [(m.path, m["rest"]) for m in f.glob()] == [
+        (str(uploads / "srv/uploads/bo/x"), ".")
+    ]
+    assert f.match(uploads / "srv/uploads/bo/x")["rest"] == "."
+    assert list(f.glob(kind="dir")) == []
+
+
+def test_a_subpath_before_other_parts_still_takes_directories_only(uploads):
+    # srv/uploads/ada/cv.pdf is a file: no path continues below it.
+    e = P(uploads / "srv/uploads") / SubPath("rel") / "a.txt"
+    assert [m["rel"] for m in e.glob()] == ["ada/docs"]
+    t = P(uploads / "srv/uploads") / SubPath("rel") / T(t"{Param('name')}")
+    assert {m["rel"] for m in t.glob(kind="file")} == {"ada", "ada/docs", "bo"}
+
+
+def test_a_trailing_subpath_keeps_glob_symlink_policy(tmp_path):
+    root = tmp_path / "root"
+    (root / "real").mkdir(parents=True)
+    (root / "real" / "f.txt").touch()
+    (tmp_path / "outside").mkdir()
+    (tmp_path / "outside" / "g.txt").touch()
+    os.symlink(tmp_path / "outside", root / "dirlink")
+    os.symlink(root / "real" / "f.txt", root / "filelink")
+    os.symlink(tmp_path / "missing", root / "broken")
+    e = P(root) / SubPath("rest")
+    # By default links are yielded as themselves and never descended.
+    assert [m["rest"] for m in e.glob()] == [
+        ".",
+        "broken",
+        "dirlink",
+        "filelink",
+        "real",
+        "real/f.txt",
+    ]
+    assert [m["rest"] for m in e.glob(kind="file")] == ["real/f.txt"]
+    assert [m["rest"] for m in e.glob(kind="dir")] == [".", "real"]
+    # follow_symlinks classifies links by their targets, still without descending.
+    assert [m["rest"] for m in e.glob(kind="file", follow_symlinks=True)] == [
+        "filelink",
+        "real/f.txt",
+    ]
+    assert [m["rest"] for m in e.glob(kind="dir", follow_symlinks=True)] == [
+        ".",
+        "dirlink",
+        "real",
+    ]
+    # recurse_symlinks descends a linked directory and finds the file inside.
+    assert [m["rest"] for m in e.glob(kind="file", recurse_symlinks=True)] == [
+        "dirlink/g.txt",
+        "real/f.txt",
+    ]
+
+
+def test_a_trailing_subpath_terminates_on_link_cycles(tmp_path):
+    (tmp_path / "a").mkdir()
+    (tmp_path / "a" / "f").touch()
+    os.symlink(tmp_path, tmp_path / "a" / "up")
+    e = P(tmp_path) / SubPath("rest")
+    assert [m["rest"] for m in e.glob()] == [".", "a", "a/f", "a/up"]
+    # Recursing through links, the link back up is yielded as itself (as match
+    # reads it) but not descended, so the walk ends.
+    assert [m["rest"] for m in e.glob(recurse_symlinks=True)] == [
+        ".",
+        "a",
+        "a/f",
+        "a/up",
+    ]
+    found = [m["rest"] for m in e.glob(recurse_symlinks=True, kind="file")]
+    assert found == ["a/f"]
+    assert e.match(tmp_path / "a" / "up")["rest"] == "a/up"
+
+
+def test_a_trailing_subpath_with_choices_and_ambiguity(uploads):
+    picked = SubPath("file", choices={"cv.pdf", "docs/a.txt"})
+    e = P(uploads / "srv/uploads") / Param("user") / picked
+    assert [m["file"] for m in e.glob()] == ["cv.pdf", "docs/a.txt"]
+    # Two SubPaths read a file path two ways, as match_all does, so glob reports it.
+    two = P(uploads / "srv/uploads/ada") / SubPath("a") / SubPath("b")
+    report = []
+    found = {m.path for m in two.glob(ambiguous=report.append)}
+    assert str(uploads / "srv/uploads/ada/docs/a.txt") in {r.path for r in report}
+    assert str(uploads / "srv/uploads/ada/docs/a.txt") not in found
+    for r in report:
+        assert len(r.candidates) == len(two.match_all(r.path))
+
+
+def test_unions_and_queries_see_files_below_a_trailing_subpath(uploads):
+    a = P(uploads / "srv/uploads/ada") / SubPath("rest")
+    b = P(uploads / "srv/uploads/bo") / SubPath("rest")
+    files = [m["rest"] for m in (a | b).glob(kind="file")]
+    assert files == ["cv.pdf", "docs/a.txt", "x"]
+    q = a.where(File)
+    assert [m["rest"] for m in q.glob()] == ["cv.pdf", "docs/a.txt"]
+
+
+# glob against match, on random trees: glob yields exactly the existing paths
+# below the walk's start that match reads one way, and reports those it reads
+# several ways.
+
+GLOB_NAMES = ["a", "b", "1", "02", "a.txt", "x.y.z", ".h"]
+glob_trees = st.lists(
+    st.tuples(
+        st.lists(st.sampled_from(GLOB_NAMES), min_size=1, max_size=4), st.booleans()
+    ),
+    max_size=14,
+)
+GLOB_EXPRESSIONS = [
+    (lambda r: P(r) / SubPath("s"), {}),
+    (lambda r: P(r) / SubPath("s"), {"kind": "file"}),
+    (lambda r: P(r) / SubPath("s"), {"kind": "dir"}),
+    (lambda r: P(r) / Param("a") / SubPath("s"), {}),
+    (lambda r: P(r) / "a" / SubPath("s"), {"kind": "file"}),
+    (lambda r: P(r) / SubPath("s") / Param("leaf"), {}),
+    (lambda r: P(r) / SubPath("s") / T(t"{Param('stem')}.txt"), {}),
+    (lambda r: P(r) / SubPath("s") / "a", {}),
+    (lambda r: P(r) / SubPath("s") / SubPath("t"), {}),
+    (lambda r: P(r) / Param("a") / T(t"{Param('n', type=int):d}"), {}),
+]
+
+
+def _consistent(paths):
+    kinds, out = {}, []
+    for parts, is_dir in paths:
+        names = ["/".join(parts[: i + 1]) for i in range(len(parts))]
+        want = ["dir"] * (len(parts) - 1) + ["dir" if is_dir else "file"]
+        if all(kinds.get(p, k) == k for p, k in zip(names, want, strict=True)):
+            kinds.update(zip(names, want, strict=True))
+            out.append(("/".join(parts), is_dir))
+    return out
+
+
+def _existing(root):
+    out = {root: "dir"}
+    for d, dirs, files in os.walk(root):
+        out.update({os.path.join(d, x): "dir" for x in dirs})
+        out.update({os.path.join(d, x): "file" for x in files})
+    return out
+
+
+@settings(max_examples=80, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(paths=glob_trees)
+def test_glob_agrees_with_match_on_random_trees(paths):
+    with tempfile.TemporaryDirectory() as tmp:
+        for p, is_dir in _consistent(paths):
+            q = Path(tmp, p)
+            if is_dir:
+                q.mkdir(parents=True, exist_ok=True)
+            else:
+                q.parent.mkdir(parents=True, exist_ok=True)
+                q.write_text("x")
+        existing = _existing(tmp)
+        for make, options in GLOB_EXPRESSIONS:
+            e = make(tmp)
+            want = options.get("kind")
+            one, several = {}, set()
+            for path, kind in existing.items():
+                if want is not None and kind != want:
+                    continue
+                readings = e.match_all(path, limit=3)
+                if len(readings) == 1:
+                    one[path] = dict(readings[0])
+                elif readings:
+                    several.add(path)
+            report = []
+            found = {
+                m.path: dict(m) for m in e.glob(ambiguous=report.append, **options)
+            }
+            assert found == one, (e, options)
+            assert {r.path for r in report} == several, (e, options)

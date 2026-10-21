@@ -114,6 +114,12 @@ def glob(
     ``SubPath``, skipping any directory already on the current path so that
     link cycles terminate.
 
+    A ``SubPath`` can be empty, so where only ``SubPath`` parameters follow a
+    position, a path can end there on a file (or a link, under the rules
+    above) as well as on a directory: ``P("srv") / SubPath("rest")`` yields
+    the files below ``srv`` as well as its directories, as pathlib's
+    ``srv.glob("**")`` with files does.
+
     This is a traversal policy, not a sandbox. The fixed prefix is resolved
     normally, a yielded link points wherever it points, and the tree can
     change between the walk and any use of its results. Where that matters,
@@ -251,12 +257,35 @@ def _discover(
 ) -> Iterator[Match]:
     parts = e.parts
     n = len(parts)
+    # A SubPath can be empty ("."), so a path can end at position i when every
+    # part from i on is a SubPath: any entry there, not only a directory, can
+    # be the path's last component (#82).
+    ends_here = [True] * (n + 1)
+    for j in range(n - 1, -1, -1):
+        ends_here[j] = ends_here[j + 1] and isinstance(parts[j], Splice)
+
+    def ends(
+        path: str, j: int, env: dict[str, Any]
+    ) -> Iterator[tuple[str, dict[str, Any]]]:
+        """``path`` with the SubPaths from position ``j`` on all empty."""
+        for part in parts[j:]:
+            if not isinstance(part, Splice) or not _accept(part.param, "."):
+                return
+            bound = _unify(env, part.param.name, ".")
+            if bound is None:
+                return
+            env = bound
+        yield path, env
+
+    on_entry = False
     if start < n:
         # One view of the tree below the fixed prefix serves the whole walk,
         # so an object store can list it with one request.
         fs = fs.subtree(base)
         if fs.kind(base) != "dir":
-            return
+            if not ends_here[start] or fs.kind(base, follow_symlinks=False) is None:
+                return
+            on_entry = True
     elif fs.kind(base, follow_symlinks=False) is None:
         return
     scandir, kind_of, dir_key = fs.scandir, fs.kind, fs.dir_key
@@ -269,30 +298,50 @@ def _discover(
             return
         part = parts[i]
         last = i == n - 1
+        # Whether the parts after this one can all be empty.
+        empty_after = ends_here[i + 1]
         if isinstance(part, Seg):
             lit = part.literal
             if lit is not None:
                 child = _child(d, lit)
                 if last:
-                    ok = kind_of(child, follow_symlinks=False) is not None
-                else:
-                    ok = kind_of(child, follow_symlinks=follow_symlinks) == "dir"
-                if ok:
+                    if kind_of(child, follow_symlinks=False) is not None:
+                        yield from walk(child, i + 1, env)
+                elif kind_of(child, follow_symlinks=follow_symlinks) == "dir":
                     yield from walk(child, i + 1, env)
+                elif empty_after and kind_of(child, follow_symlinks=False) is not None:
+                    yield from ends(child, i + 1, env)
                 return
             plan = seg_plan(part)
             for entry in scandir(d):
-                if not last and not _is_dir(entry, follow_symlinks):
+                descend = last or _is_dir(entry, follow_symlinks)
+                if not descend and not empty_after:
                     continue
+                go = walk if descend else ends
                 if plan is not None:
                     env2 = _seg_fast(plan, entry.name, env)
                     if env2 is not None:
-                        yield from walk(_child(d, entry.name), i + 1, env2)
+                        yield from go(_child(d, entry.name), i + 1, env2)
                     continue
                 for env2 in _match_seg(part, entry.name, env):
-                    yield from walk(_child(d, entry.name), i + 1, env2)
+                    yield from go(_child(d, entry.name), i + 1, env2)
             return
         param = part.param
+
+        # Only where nothing after this SubPath needs a directory can an entry
+        # it does not descend into end the path. A regular file is never a
+        # directory, so with kind="dir" only links are considered.
+        links_only = kind == "dir"
+
+        def end_on(
+            d: str, acc: list[str], entry: DirEntry
+        ) -> Iterator[tuple[str, dict[str, Any]]]:
+            """``entry``, not descended into, as the SubPath's last segment."""
+            value = "/".join([*acc, entry.name])
+            if _accept(param, value):
+                env2 = _unify(env, param.name, value)
+                if env2 is not None:
+                    yield from ends(_child(d, entry.name), i + 1, env2)
 
         def splice(
             d: str, acc: list[str], seen: frozenset[Any]
@@ -304,6 +353,8 @@ def _discover(
                     yield from walk(d, i + 1, env2)
             for entry in scandir(d):
                 if not _is_dir(entry, recurse_symlinks):
+                    if empty_after and (not links_only or entry.is_symlink()):
+                        yield from end_on(d, acc, entry)
                     continue
                 child = _child(d, entry.name)
                 if recurse_symlinks:
@@ -315,10 +366,16 @@ def _discover(
                         # Nothing to detect a cycle with: descend only
                         # directories that are not links.
                         if entry.is_symlink():
+                            if empty_after:
+                                yield from end_on(d, acc, entry)
                             continue
                         yield from splice(child, [*acc, entry.name], seen)
                     elif key not in seen:
                         yield from splice(child, [*acc, entry.name], seen | {key})
+                    elif empty_after:
+                        # A link back to a directory on this path: not
+                        # descended, so that the walk terminates.
+                        yield from end_on(d, acc, entry)
                 else:
                     yield from splice(child, [*acc, entry.name], seen)
 
@@ -333,7 +390,8 @@ def _discover(
     render = e._compiled.render
     found: dict[str, dict[str, Any]] = {}
     clashes: dict[str, list[dict[str, Any]]] = {}
-    for path, env in walk(base, start, {}):
+    walked = ends(base, start, {}) if on_entry else walk(base, start, {})
+    for path, env in walked:
         # Unless links are followed, a link is neither a file nor a directory.
         if kind is not None and kind_of(path, follow_symlinks=follow_symlinks) != kind:
             continue

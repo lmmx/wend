@@ -134,6 +134,8 @@ EXPRESSIONS = {
     "bound root": (lambda r: (Param("root") / "data" / split / chunk, {"root": r}), {}),
     "subpath splice": (lambda r: P(r) / "data" / rest / chunk, {}),
     "subpath to dirs": (lambda r: P(r) / "data" / rest, {"kind": "dir"}),
+    "trailing subpath": (lambda r: P(r) / "data" / rest, {}),
+    "trailing subpath to files": (lambda r: P(r) / "data" / rest, {"kind": "file"}),
     "no literal prefix": (lambda r: P(r) / Param("top") / Param("name"), {}),
     "dirs": (lambda r: P(r) / "data" / Param("d"), {"kind": "dir"}),
     "files": (lambda r: P(r) / "data" / Param("d") / Param("f"), {"kind": "file"}),
@@ -143,6 +145,10 @@ EXPRESSIONS = {
     "missing prefix": (lambda r: P(r) / "nope" / Param("x"), {}),
     "file as prefix": (
         lambda r: P(r) / "data" / "train" / "notes.txt" / Param("x"),
+        {},
+    ),
+    "file as prefix of a subpath": (
+        lambda r: P(r) / "data" / "train" / "notes.txt" / rest,
         {},
     ),
     "symlink options": (
@@ -476,6 +482,10 @@ RANDOM_EXPRESSIONS = [
     (lambda r: P(r) / Param("a") / T(t"{n:d}"), {}),
     (lambda r: P(r) / SubPath("r"), {"kind": "dir"}),
     (lambda r: P(r) / SubPath("r") / T(t"{s}.{e2}"), {}),
+    (lambda r: P(r) / SubPath("r"), {}),
+    (lambda r: P(r) / SubPath("r"), {"kind": "file"}),
+    (lambda r: P(r) / Param("a") / SubPath("r"), {}),
+    (lambda r: P(r) / SubPath("r") / SubPath("q"), {}),
 ]
 
 

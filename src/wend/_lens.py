@@ -7,7 +7,7 @@ render the bindings through the other.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Iterator
 from pathlib import Path
 from typing import Any, Literal
 
@@ -34,9 +34,10 @@ class Lens:
     PosixPath('build/pkg/mod.pyc')
 
     Target parameters that the source does not provide are bound per call,
-    by keyword or in a mapping after the path: ``lens(path, run="r1")`` or
-    ``lens(path, {"run": "r1"})``. The path is positional-only, so a
-    parameter may have any name.
+    by keyword or after the path, in a mapping or an object whose fields
+    bind by name (see `wend.bindings`): ``lens(path, run="r1")``,
+    ``lens(path, {"run": "r1"})`` or ``lens(path, job)``. The path is
+    positional-only, so a parameter may have any name.
     """
 
     def __init__(self, source: Any, target: Any) -> None:
@@ -70,9 +71,7 @@ class Lens:
             raise NoMatchError(f"{str(path)!r} does not match {self.source.pattern!r}")
         return dict(m)
 
-    def render(
-        self, path: Any, mapping: Mapping[Any, Any] | None = None, /, **extra: Any
-    ) -> str:
+    def render(self, path: Any, mapping: Any = None, /, **extra: Any) -> str:
         return self._target(self.bindings(path), _make_env(mapping, extra))
 
     def _target(self, env: dict[str, Any], extra: dict[str, Any]) -> str:
@@ -86,22 +85,18 @@ class Lens:
                 raise AmbiguousMatchError(out, self.target.match_all(out))
         return out
 
-    def __call__(
-        self, path: Any, mapping: Mapping[Any, Any] | None = None, /, **extra: Any
-    ) -> Path:
+    def __call__(self, path: Any, mapping: Any = None, /, **extra: Any) -> Path:
         return Path(self.render(path, mapping, **extra))
 
     forward = __call__
 
-    def backward(
-        self, path: Any, mapping: Mapping[Any, Any] | None = None, /, **extra: Any
-    ) -> Path:
+    def backward(self, path: Any, mapping: Any = None, /, **extra: Any) -> Path:
         return self.inverse()(path, mapping, **extra)
 
     def map(
         self,
         paths: Iterable[Any],
-        mapping: Mapping[Any, Any] | None = None,
+        mapping: Any = None,
         /,
         *,
         ambiguous: Literal["raise", "skip"]

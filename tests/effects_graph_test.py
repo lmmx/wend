@@ -213,3 +213,23 @@ def test_steps_a_ledger_cannot_tell_apart_are_refused():
     g = EffectGraph({"one": twin, "two": twin})
     with pytest.raises(ValueError, match="cannot tell them apart"):
         g.compare([])
+
+
+def test_maybe_is_a_dependency_unless_asked_for_proven_ones_only():
+    # d/{p!r} might be d/zz for some value whose repr is zz: no witness, no
+    # proof otherwise. The edge is MAYBE, and a schedule must honour it.
+    p = Param("p")
+    steps = {
+        "a": Step(src=(P("d") / "zz").requires(Readable)),
+        "b": Step(dst=(P("d") / T(t"{p!r}")).ensures(Exists)),
+    }
+    g = EffectGraph(steps)
+    assert [(e.producer.step, e.consumer.step, e.verdict) for e in g.edges] == [
+        ("b", "a", "maybe")
+    ]
+    assert g.dependencies() == {"a": {"b"}, "b": set()}
+    assert g.order() == ["b", "a"]
+    assert g.external_inputs() == []  # possibly supplied, so not external
+    # The lower bound drops it: fine for a report, wrong as a schedule.
+    assert g.dependencies(definite_only=True) == {"a": set(), "b": set()}
+    assert g.order(definite_only=True) == ["a", "b"]

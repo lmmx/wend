@@ -229,6 +229,19 @@ heads. A single regular expression over the whole path was rejected:
 segments are what wend validates (`.`, `..`, `/`), and per-segment
 languages let equality variables attach to segments.
 
+**[Decision]** In the graph, MAYBE is a dependency, and that is a stated
+contract, not an assumption about callers. "A wrong MAYBE only costs an
+optimisation" holds only for a caller that treats MAYBE as a possible
+dependency. One that reads it as "no" can run a consumer before its
+producer.
+
+So `dependencies()`, `cycles()` and `order()` count MAYBE edges by
+default. `definite_only=True` keeps only the edges a witness proves: a
+lower bound for reports, documented as unsafe for scheduling.
+`external_inputs()` and `terminal_outputs()` list a port only when every
+overlap is NO. A test pins all of this on a MAYBE edge, `d/{p!r}` against
+`d/zz`.
+
 **[Decision]** Intersection is exact. A bounded search was rejected
 because it is unsound (counterexample 4).
 
@@ -289,18 +302,46 @@ The audit found two misses before the search pools were widened. Untyped
 parameters are now also sampled with non-string values, and head
 parameters with absolute ones.
 
-**[Fact] A gap in wend's matcher, outside this PR.** The simpler oracle
-grammar still has one missed witness in 3000 pairs: `{root}/True/a` vs
-`/{n}/{q}`, which meet at `/True/a` with `n=True`. The cause is in core
-wend:
+**[Fact] A documented asymmetry in core, not a new bug.** The simpler
+oracle grammar still has one missed witness in 3000 pairs: `{root}/True/a`
+vs `/{n}/{q}`, which meet at `/True/a` with `n=True`.
 - `(P("x") / n).render(n=True)` is `x/True` for `n = Param("n", type=int)`,
   because `bool` passes the `int` check;
-- `.match("x/True")` is None, because `match` reads only integers back.
+- `.match("x/True")` is None.
 
-So `match(render(env))` does not contain `env` for a bool bound to an int
-parameter. Either `type=int` should refuse `bool`, as strict validators
-do, or `match` should read `True` and `False` back. That is a core
-decision and is left alone here.
+The first version of this entry called that a gap in the matcher. It is
+not: SEMANTICS.md §7 says so outright ("an `int` field does not read
+`True`, although `{n:d}` renders it as `1`"). It is a deliberate one-way
+rule: `render` accepts what `isinstance` accepts, and `match` reads values
+of exactly the declared type. Whether `render` should keep accepting
+values that `match` will not read back is a core decision, left alone
+here.
+
+**[Fact] An undocumented gap in core: undeclared-type choices do not
+read back.** Found while checking the above. Every parameter kind fails
+the same way, for the declared members themselves:
+
+```python
+c = Param("c", choices={1})  # no type=
+(P("x") / T(t"{c}.txt")).render(c=1)  # 'x/1.txt'
+(P("x") / T(t"{c}.txt")).match("x/1.txt")  # None
+```
+
+The same happens for:
+- `choices={1.5}`;
+- a whole segment `P("x") / c`;
+- `AnyPath("h", choices={PurePosixPath("/a")})` as a head;
+- `SubPath("s", choices={PurePosixPath("a/b")})`.
+
+Without a declared type, `match` reads the text as the types the spec
+implies (§7), here `str`, and `"1" in {1}` is false. Declaring
+`type=int` (or `float`) avoids it.
+
+§7 lists the cases where `match` is incomplete; this is not among them.
+`overlaps` is unaffected: its witness search falls back to rendering
+finite domains, which is why it never relied on `match` for choices. The
+semantics of `choices` are being investigated separately, without
+changing core behaviour yet.
 
 In strict mode most MAYBEs are honest. For example, a `choices={1, 2}`
 field can be bound to values that format as anything, so a witness may
@@ -349,13 +390,13 @@ be garbage-collection pauses: the worst call with GC disabled was 30 ms.
 
 ## Validation
 
-**[Measured]** The suite now has 817 tests, which pass. That is
-the 777 on #88 plus 40 new ones:
+**[Measured]** The suite now has 818 tests, which pass. That is
+the 777 on #88 plus 41 new ones:
 
 - `tests/overlap_test.py`: 29, including Hypothesis property tests that
   NO is never refuted, YES is always witnessed, and an expression always
   overlaps itself with a YES;
-- `tests/effects_graph_test.py`: 11.
+- `tests/effects_graph_test.py`: 12.
 
 Ruff is clean, and pyright and ty are clean on `src/wend/_experimental`.
 
@@ -413,6 +454,7 @@ build a useful graph, not a scheduler.
    steps.
 5. **Naming.** A name and home in the public API, and whether
    `builtin_values` should be the default for typed parameters.
-6. **The bool decision in core.** Whether `type=int` accepts `bool`
-   (see Limits). Refusing it would make `{n}` exactly digits under
-   `builtin_values`.
+6. **The value semantics in core.** What `type=` and `choices=` promise
+   about rendered text, and whether `match` reads back every path
+   `render` produces for an accepted binding (see Limits). The answer
+   decides how much of `builtin_values` stays an assumption.

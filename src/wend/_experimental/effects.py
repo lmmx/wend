@@ -21,6 +21,16 @@
   as when a pipeline runs all its steps with one environment, which can
   rule edges out that independent bindings allow.
 
+The contract for MAYBE: it is a possible dependency, conflict or hazard,
+and every query treats it as one by default. Only that reading is safe:
+a caller that treats MAYBE as "no" may run dependent steps concurrently,
+skip a rebuild, or call a read output unused. ``definite_only=True``
+keeps only the edges a witness proves (a lower bound for reports); it must
+not decide that two steps are independent or that an order is valid.
+The guarantee is one-sided: a missing edge (every overlap NO) is sound
+under the assumptions below, while a present edge only says the
+declarations do not rule the dependency out.
+
 Identity is lexical. `overlaps` asks whether two expressions render the
 same path *string*; two strings can name one file. ``/srv/data/x`` and
 ``data/x`` do when the working directory is ``/srv``, ``a/../b`` and ``b``
@@ -251,8 +261,11 @@ class EffectGraph:
         return [p for p in self.ports if p.supplies and (p.step, p.name) not in used]
 
     def dependencies(self, *, definite_only: bool = False) -> dict[str, set[str]]:
-        """For each step, the steps whose outputs may supply its inputs
-        (``yes`` edges only, with ``definite_only``)."""
+        """For each step, the steps whose outputs may supply its inputs.
+
+        ``definite_only`` keeps only ``yes`` edges: the dependencies proved
+        by a witness. That is a lower bound, for reporting; use the default
+        (MAYBE counts) to decide what may run independently."""
         deps: dict[str, set[str]] = {s: set() for s in self.steps}
         for e in self.edges:
             if definite_only and e.verdict != "yes":
@@ -279,7 +292,11 @@ class EffectGraph:
     def order(self, *, definite_only: bool = False) -> list[str] | None:
         """The steps in an order where each comes after every step that may
         supply it, and every deleter after the readers of what it deletes;
-        None if there is a cycle (self-loops aside)."""
+        None if there is a cycle (self-loops aside).
+
+        Only the default is a safe schedule: with ``definite_only`` a MAYBE
+        dependency is ignored, so the order may run a consumer before its
+        producer."""
         deps = {
             s: set(d) for s, d in self.dependencies(definite_only=definite_only).items()
         }

@@ -443,3 +443,20 @@ def test_deferred_operations_on_nice_rows(key):
     )
     # pathlib refuses a stem containing a separator on every row.
     assert agrees(DEFERRED[key], df) is (key != "with_stem slash"), key
+
+
+@pytest.mark.parametrize("key", sorted(DEFERRED))
+@pytest.mark.parametrize("value", ["x\x00", "\x00", "a\x00.txt", "s/t\x00.u", "\x00/a"])
+def test_nul_in_a_column_is_refused_as_render_refuses_it(key, value):
+    # §3: no path holds NUL. Literal NUL is refused when the expression is
+    # built (test_no_literal_text_contains_nul), so the lowering only meets
+    # NUL in a column, and must refuse it with render's error.
+    e = DEFERRED[key]
+    nice = {"root": "/data", "sub": "s/t.txt", "seg": "k", "nm": "new"}
+    for column in sorted(e.param_names):
+        row = {**nice, column: value}
+        with pytest.raises(REJECTED) as want:
+            e.render(row)
+        with pytest.raises(REJECTED, match=r"^Row 0: ") as got:
+            resolve_frame(e, pl.DataFrame([row]))
+        assert type(got.value) is type(want.value), (column, got.value, want.value)

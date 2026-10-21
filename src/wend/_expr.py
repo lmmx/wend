@@ -223,6 +223,15 @@ class Text(_Cached):
 
     pieces: tuple[Piece, ...]
 
+    def __post_init__(self) -> None:
+        # Literal text is never NUL (§3), however the Text was built: its
+        # pieces reach paths unchecked (as a stem, or spliced into a t-string).
+        for p in self.pieces:
+            if isinstance(p, str) and "\x00" in p:
+                if has_marker(p):
+                    raise _fstring_error()
+                _check_literal(p)
+
     @property
     def literal(self) -> str | None:
         if not self.pieces:

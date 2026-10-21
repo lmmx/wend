@@ -62,8 +62,6 @@ wend needs Python 3.14 or later.
 pip install wend
 ```
 
-Until the next release, install from GitHub instead, as [Installation](<https://lmmx.github.io/wend/getting-started/installation/index.md>) explains.
-
 The optional integrations are extras: `wend[pydantic]` for path fields on Pydantic models, `wend[fsspec]` for object stores, and `wend[polars]` for resolving whole columns of a DataFrame.
 
 ## What an expression is for
@@ -102,16 +100,6 @@ uv add wend
 ```
 
 The core package has no dependencies.
-
-> [!NOTE]
->
-> **Until the next release**
->
-> These pages describe wend as it is on GitHub. The release on PyPI (0.1.1) predates most of it, so until the next release, install from the repository:
->
-> ```sh
-> pip install "wend @ git+https://github.com/lmmx/wend"
-> ```
 
 ## Extras
 
@@ -5865,7 +5853,6 @@ For a minor or major release, run `just release minor` (or `major`) locally on m
 ## After a release
 
 - The documentation site is published from master on every push, so it already describes the released code.
-- Before the first release after 0.1.1, remove the "Until the next release" note from [Installation](<https://lmmx.github.io/wend/getting-started/installation/index.md>) and the home page, which tell readers to install from GitHub.
 - Add the release's changes to [`docs/MIGRATING.md`](<https://github.com/lmmx/wend/blob/master/docs/MIGRATING.md>) where they change behaviour.
 
 # Project history

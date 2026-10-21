@@ -49,8 +49,6 @@ wend needs Python 3.14 or later.
 pip install wend
 ```
 
-Until the next release, install from GitHub instead, as [Installation](<https://lmmx.github.io/wend/getting-started/installation/index.md>) explains.
-
 The optional integrations are extras: `wend[pydantic]` for path fields on Pydantic models, `wend[fsspec]` for object stores, and `wend[polars]` for resolving whole columns of a DataFrame.
 
 ## What an expression is for

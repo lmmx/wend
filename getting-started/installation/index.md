@@ -14,16 +14,6 @@ uv add wend
 
 The core package has no dependencies.
 
-> [!NOTE]
->
-> **Until the next release**
->
-> These pages describe wend as it is on GitHub. The release on PyPI (0.1.1) predates most of it, so until the next release, install from the repository:
->
-> ```sh
-> pip install "wend @ git+https://github.com/lmmx/wend"
-> ```
-
 ## Extras
 
 Each optional integration is an extra, which installs the library it needs.

@@ -1,3 +1,4 @@
+from decimal import Decimal
 from pathlib import Path, PurePosixPath
 from string.templatelib import Interpolation, Template
 
@@ -115,6 +116,20 @@ def test_typed_and_choice_params():
 def test_conflicting_declarations_are_rejected():
     with pytest.raises(ParamConflictError):
         Param("x") / Param("x", type=int)
+
+
+def test_equal_but_differently_rendered_choices_are_different_declarations():
+    # {1}, {True} and {1.0} are equal sets, but their members render apart,
+    # as defaults do (§3.1); the template cache must not mix them up (#93)
+    one = Param("c", choices={1})
+    assert one != Param("c", choices={True}) and one != Param("c", choices={1.0})
+    assert one == Param("c", choices={1}) and hash(one) == hash(Param("c", choices={1}))
+    assert T(t"x{one}").params["c"].choices == {1}
+    for members in [{True}, {1.0}, {Decimal("1.0")}]:
+        e = T(t"x{Param('c', choices=members)}")
+        assert [type(m) for m in e.params["c"].choices] == [type(next(iter(members)))]
+    with pytest.raises(ParamConflictError):
+        T(t"{one}") / T(t"{Param('c', choices={True})}")
 
 
 def test_fstring_misuse_is_caught():

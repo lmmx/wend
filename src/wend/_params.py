@@ -135,7 +135,7 @@ class Param:
         if self.type is not None:
             extra.append(f"type={getattr(self.type, '__name__', self.type)}")
         if self.choices is not None:
-            extra.append(f"choices={sorted(map(repr, self.choices))}")
+            extra.append(f"choices={_show_choices(self.choices)}")
         if self.default is not NO_DEFAULT:
             extra.append(f"default={self.default!r}")
         return f"Param({self.name!r}{''.join(', ' + e for e in extra)})"
@@ -148,7 +148,7 @@ class Param:
             )
         if self.choices is not None and not _is_choice(value, self.choices):
             raise InvalidBindingError(
-                f"{self.name}={show(value)}: not one of {sorted(map(repr, self.choices))}"
+                f"{self.name}={show(value)}: not one of {_show_choices(self.choices)}"
             )
 
 
@@ -197,6 +197,11 @@ def _same_choices(a: frozenset[Any] | None, b: frozenset[Any] | None) -> bool:
         if m is not n and (type(m) is not type(n) or repr(m) != repr(n)):
             return False
     return True
+
+
+def _show_choices(choices: frozenset[Any]) -> str:
+    """The choices as a set display, sorted by repr so it is deterministic."""
+    return "{" + ", ".join(sorted(map(show, choices))) + "}" if choices else "set()"
 
 
 def _is_choice(value: Any, choices: frozenset[Any]) -> bool:

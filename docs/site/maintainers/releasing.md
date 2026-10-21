@@ -30,8 +30,5 @@ the options of `uv version --bump`.
 
 - The documentation site is published from master on every push, so it already describes
   the released code.
-- Before the first release after 0.1.1, remove the "Until the next release" note from
-  [Installation](../getting-started/installation.md) and the home page, which tell
-  readers to install from GitHub.
 - Add the release's changes to [`docs/MIGRATING.md`](https://github.com/lmmx/wend/blob/master/docs/MIGRATING.md)
   where they change behaviour.

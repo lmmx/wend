@@ -601,7 +601,7 @@ entry, `bind(r / e, env)`. It requires the entry's kind (§10), and also
 
 An entry's matches are the observed paths of its kind that `glob(r / e)`
 finds. For every directory `d` that matches `parent(r / e)` (the one directory,
-when the parent is literal):
+when the parent is literal), unless `d` is hidden or ignored as above:
 - some match must lie at or below `d` when `lo = 1`, otherwise it is a
   *missing* problem. For a fixed-depth entry this means directly in `d`. A
   recursive (`SubPath`) parent matches directories that may hold only

@@ -320,10 +320,54 @@ def _float_candidates(text: str, info: Spec | None) -> list[Any]:
 
 def _literal(text: str) -> list[Any]:
     """The value of the Python literal ``text`` (as ``!r`` and ``!a`` write it)."""
+    if not _could_be_repr(text):
+        return []
     try:
         return [ast.literal_eval(text)]
     except Exception:
         return []
+
+
+# The escapes repr() and ascii() write: in a str \\, \', \t, \n, \r, \x, \u
+# and \U; in bytes the same but \u and \U.
+_STR_ESCAPES = frozenset("\\'tnrxuU")
+_BYTES_ESCAPES = frozenset("\\'tnrx")
+
+
+def _could_be_repr(text: str) -> bool:
+    """Whether ``text`` keeps to what repr() and ascii() write, as far as
+    Python's warnings go: no f- or t-string, no triple quote, no escape repr
+    does not write, and no digit run into a letter (``1if``) outside its
+    strings but an exponent or ``j``. Any other text is no repr, so it has
+    no reading (rendering would not verify one); refusing it here keeps
+    ``literal_eval`` from warning about what Python deprecates (#65). It
+    scans by hand: Python's own tokenizer warns about the same things."""
+    i, n = 0, len(text)
+    while i < n:
+        c = text[i]
+        if c in "'\"":
+            j = i
+            while j and text[j - 1].isalpha():
+                j -= 1
+            prefix = text[j:i].lower()
+            if "f" in prefix or "t" in prefix or text.startswith(c * 3, i):
+                return False
+            raw = "r" in prefix
+            allowed = _BYTES_ESCAPES if "b" in prefix else _STR_ESCAPES
+            i += 1
+            while i < n and text[i] != c:
+                if text[i] == "\\":
+                    if i + 1 == n or not (raw or text[i + 1] in allowed):
+                        return False
+                    i += 1
+                i += 1
+            if i == n:
+                return False  # unterminated
+        elif c.isdigit() and i + 1 < n and text[i + 1].isalpha():
+            if text[i + 1] not in "eEjJ":
+                return False
+        i += 1
+    return True
 
 
 def _construct(tt: Any, texts: list[str]) -> list[Any]:

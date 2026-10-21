@@ -472,6 +472,71 @@ def test_a_signalling_nan_is_read_without_comparing_it():
     assert m is not None and repr(m["x"]) == "Decimal('sNaN')"
 
 
+_ESCAPY = st.text(alphabet="abifo'\"\\xuUN0789tnr{}+ é☃\n", max_size=12)
+
+
+@settings(max_examples=400, deadline=None)
+@given(text=_ESCAPY, prefix=st.sampled_from(["", "b", "r", "rb", "f", "u"]))
+def test_reading_a_repr_never_warns(text, prefix):
+    # Under !r a field reads its text with literal_eval, which warns about
+    # escapes Python deprecates ("\+", "\d", an octal above 0o377) and about
+    # a number run into a word ("1if"). repr never writes either, so such a
+    # text is refused first (#65).
+    import warnings
+
+    z = Param("z")
+    e = T(t"{z!r}")
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        for q in ("'", '"'):
+            e.match_all(f"{prefix}{q}{text}{q}")
+        e.match_all(prefix + text)  # unquoted: "1if" warns too
+    assert not [w for w in caught if issubclass(w.category, SyntaxWarning)]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "'\\+'",
+        "'\\d'",
+        "b'\\u1234'",
+        "'\\400'",
+        "f'\\{'",
+        "f'{1if 2}'",  # an f- or t-string's braces hold code
+        "t'{1if 2}'",
+        "9if",
+        "1if 2",
+        "0in",
+        "(1if 2)",
+    ],
+)
+def test_texts_literal_eval_warns_about_are_refused_quietly(text):
+    import warnings
+
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        assert T(t"{Param('z')!r}").match_all(text) == []
+    assert not [w for w in caught if issubclass(w.category, SyntaxWarning)]
+
+
+@settings(max_examples=300, deadline=None)
+@given(
+    v=st.one_of(
+        st.text(max_size=8),
+        st.binary(max_size=8),
+        st.tuples(st.text(max_size=4), st.binary(max_size=4)),
+    )
+)
+def test_every_repr_and_ascii_reads_back(v):
+    z = Param("z")
+    for e in (T(t"{z!r}"), T(t"{z!a}")):
+        try:
+            text = e.render(z=v)
+        except ValueError:
+            continue  # holds "/" or NUL: not a segment
+        assert v in [r["z"] for r in e.match_all(text)], (e.pattern, text)
+
+
 def test_fast_path_reads_newlines_and_long_numbers():
     e = P("/r") / T(t"{stem}.txt")
     assert e.match("/r/a\nb.txt") == {"stem": "a\nb"}

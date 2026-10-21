@@ -335,7 +335,11 @@ wend's obligations, for every expression `e` and environment `env`:
   - `n` writes the current locale's separators. Its text is read as if
     they were `,` or `_`, or there were none, as in the default C locale.
   - `!r` and `!a` are read with `ast.literal_eval`, so a value whose repr is
-    no literal (`inf`, `nan`, most objects) is not read.
+    no literal (`inf`, `nan`, most objects) is not read. A text that repr
+    could not have written (an escape repr never writes, such as `\+`, an
+    f-string, or a number run into a word, as in `1if`) is refused before
+    `literal_eval`, which would warn about it. Rendering would not verify
+    such a text anyway, so no reading is lost.
 
   In these cases `match` may return one binding where several render to the
   path, rather than raise `AmbiguousMatchError`: it reports ambiguity among

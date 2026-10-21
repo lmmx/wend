@@ -83,21 +83,19 @@ class Param:
         _REGISTRY[id(self)] = self
 
     # A default is part of the declaration, so Params with different defaults
-    # are different (and conflict under one name). Defaults compare by type and
-    # repr as well as by value: 1, True and 1.0 are equal but render apart, and
-    # equal Params must be interchangeable (the template cache relies on it).
+    # are different (and conflict under one name). Defaults and choices compare
+    # by type and repr as well as by value: 1, True and 1.0 are equal but
+    # render apart, and equal Params must be interchangeable (the template
+    # cache relies on it).
     def __eq__(self, other: object) -> bool:
         if self is other:
             return True
         if other.__class__ is not self.__class__:
             return NotImplemented
         o: Param = other  # type: ignore[assignment]
-        if (self.name, self.kind, self.type, self.choices) != (
-            o.name,
-            o.kind,
-            o.type,
-            o.choices,
-        ):
+        if self.name != o.name or self.kind is not o.kind or self.type != o.type:
+            return False
+        if self.choices is not o.choices and not _same_choices(self.choices, o.choices):
             return False
         a, b = self.default, o.default
         return a is b or (type(a) is type(b) and a == b and repr(a) == repr(b))
@@ -182,6 +180,23 @@ def _check_default(p: Param) -> None:
             _segment_text(p.name, d)
     except InvalidBindingError as e:
         raise InvalidBindingError(f"Invalid default for {p.name!r}: {e}") from None
+
+
+def _same_choices(a: frozenset[Any] | None, b: frozenset[Any] | None) -> bool:
+    """Whether two declarations' choices are the same, member by member as
+    defaults are (§3.1: one type, equal, one repr): ``{1}``, ``{True}`` and
+    ``{1.0}`` are equal sets but different choices."""
+    if a is b:
+        return True
+    if a is None or b is None or a != b:
+        return False
+    # Equal sets pair each member with the one member of the other it equals.
+    partner = {m: m for m in b}
+    for m in a:
+        n = partner[m]
+        if m is not n and (type(m) is not type(n) or repr(m) != repr(n)):
+            return False
+    return True
 
 
 def _is_choice(value: Any, choices: frozenset[Any]) -> bool:

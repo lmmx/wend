@@ -5,7 +5,7 @@ Three groups:
 - today's core behaviour that the entry documents, pinned so that a change
   to it is deliberate;
 - gaps in core, as strict xfails: each passes once core is fixed, and then
-  fails until its marker is removed;
+  fails until its marker is removed (the Param equality gap is fixed, #93);
 - the private prototype of the proposed rules (`wend._experimental.choices`).
 """
 
@@ -17,7 +17,7 @@ from pathlib import PurePosixPath
 
 import pytest
 
-from wend import AnyPath, P, Param, SubPath, T, _expr
+from wend import AnyPath, P, Param, SubPath, T
 from wend._experimental import choices as C
 
 
@@ -31,17 +31,6 @@ class One(enum.IntEnum):
 
 class Colour(enum.Enum):
     RED = 1
-
-
-@pytest.fixture(autouse=True)
-def separate_declarations():
-    """Start each test from an empty template cache. Param equality treats
-    choices={1}, {True}, {1.0} and {One.ONE} as equal, so the cache would
-    otherwise hand a test the Param of another test's declaration (see
-    test_core_keeps_each_declaration_of_choices). Only the prototype tests
-    need this; the xfail that records the bug builds both declarations
-    itself, after the clear."""
-    _expr._TEMPLATES.clear()
 
 
 def forms(p):
@@ -109,13 +98,10 @@ def test_core_reads_back_path_valued_choices():
     assert (P("r") / s).match_all("r/a/b")
 
 
-@pytest.mark.xfail(
-    strict=True, reason="Param equality treats {1} and {True} as equal (journal)"
-)
 def test_core_keeps_each_declaration_of_choices():
-    # Param.__eq__ says equal Params must be interchangeable, and compares
-    # defaults strictly but choices with frozenset equality; the template
-    # cache then returns the Param of an earlier, equal declaration.
+    # Param.__eq__ says equal Params must be interchangeable. It compared
+    # defaults strictly but choices with frozenset equality, so the template
+    # cache returned the Param of an earlier, equal declaration (#93).
     first = Param("c", choices={1})
     P("x") / T(t"{first}.txt")
     second = Param("c", choices={True})

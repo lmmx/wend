@@ -118,7 +118,9 @@ keyword on `Segment`, `SubPath`, `AnyPath` and `Absolute`.
 differ only in their defaults are different, so using both under one name is
 a declaration conflict. Two defaults are the same only if they have the same
 type, compare equal and have the same `repr`: `1`, `True` and `1.0` compare
-equal but render apart.
+equal but render apart. Choices compare the same way, member by member:
+`choices={1}`, `{True}` and `{1.0}` are equal sets but different
+declarations.
 
 `d` must be hashable, and must be a valid binding as far as the declaration
 alone decides:

@@ -26,7 +26,7 @@ from __future__ import annotations
 import os
 from collections.abc import Callable, Iterator
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from ._expr import PathExpr, _coerce
 from ._match import Match, _canonical
@@ -37,6 +37,7 @@ from .errors import (
     IndeterminateError,
     InvalidBindingError,
     MissingBindingError,
+    _ambiguity_handler,
 )
 
 
@@ -163,6 +164,13 @@ class Query:
         return pure + [p for p in self.predicates if p not in pure]
 
     def _admit(self, m: Match, preds: list[Any], fs: Any = None) -> Match | None:
+        out = self._patterns(m)
+        return out if out is not None and self._holds(out, preds, fs) else None
+
+    def _patterns(self, m: Match) -> Match | None:
+        """``m`` with the bindings of the ``&`` patterns, if the pattern
+        filters admit it; `AmbiguousMatchError` if a ``&`` pattern reads it
+        two ways that agree with the bindings so far."""
         for d in self.drop:
             if d.match_all(m.path, limit=1):
                 return None
@@ -181,30 +189,63 @@ class Query:
             if len(merged) > 1:
                 raise AmbiguousMatchError(m.path, merged)
             bindings = merged[0]
-        out = m if bindings == m.bindings else _rebind(m, bindings)
+        return m if bindings == m.bindings else _rebind(m, bindings)
+
+    def _holds(self, m: Match, preds: list[Any], fs: Any = None) -> bool:
         for p in preds:
             if isinstance(p, Condition):
                 try:
-                    check_conditions(out.path, (p,), out.bindings, fs)
+                    check_conditions(m.path, (p,), m.bindings, fs)
                 except IndeterminateError:
                     raise  # not known to fail: a filter does not guess
                 except ConditionError, MissingBindingError, InvalidBindingError:
-                    return None
-            elif not p(out):
-                return None
-        return out
+                    return False
+            elif not p(m):
+                return False
+        return True
 
-    def glob(self, mapping: Any = None, /, **kw: Any) -> Iterator[Match]:
+    def glob(
+        self,
+        mapping: Any = None,
+        /,
+        *,
+        ambiguous: Literal["raise", "skip"]
+        | Callable[[AmbiguousMatchError], object] = "raise",
+        **kw: Any,
+    ) -> Iterator[Match]:
         """Discover the source's paths and yield those every filter admits,
         as they are found (see `wend.glob` for the options). Conditions are
         checked on the filesystem the walk reads (``fs=``); a condition that
-        cannot be determined raises `IndeterminateError`."""
+        cannot be determined raises `IndeterminateError`.
+
+        ``ambiguous`` decides, as for `wend.glob`, what happens to a path
+        with more than one reading: one the source reads two ways, which the
+        source's `glob` reports before its first match, or one a ``&``
+        pattern reads two ways, reported when the stream reaches it (as
+        `wend.Lens.map` reports). Neither is yielded.
+        """
         preds = self._order()
         fs = kw.get("fs")
         self._local_predicates_only(preds, fs)
-        for m in self.source.glob(mapping, **kw):
-            out = self._admit(m, preds, fs)
-            if out is not None:
+        found = self.source.glob(mapping, ambiguous=ambiguous, **kw)
+        return self._admitted(found, preds, fs, _ambiguity_handler(ambiguous))
+
+    def _admitted(
+        self,
+        found: Iterator[Match],
+        preds: list[Any],
+        fs: Any,
+        on_ambiguous: Callable[[AmbiguousMatchError], object] | None,
+    ) -> Iterator[Match]:
+        for m in found:
+            try:
+                out = self._patterns(m)
+            except AmbiguousMatchError as error:
+                if on_ambiguous is None:
+                    raise
+                on_ambiguous(error)
+                continue
+            if out is not None and self._holds(out, preds, fs):
                 yield out
 
     def match(self, path: Any, *, fs: Any = None) -> Match | None:

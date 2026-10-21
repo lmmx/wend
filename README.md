@@ -354,7 +354,8 @@ for m in logs.glob(d="/var/log"):  # app.log, app.log.1, app.log.2.gz ...
 ```
 
 `match` and `glob` take every alternative's readings. A path two alternatives
-read is ambiguous, as everywhere in wend.
+read is ambiguous, as everywhere in wend, and `glob(ambiguous=...)` treats it as it
+treats a path one expression reads two ways.
 
 `render` needs a single alternative. `renderings` gives all of them. `first`
 is the explicit, effectful fallback, which picks the first alternative that
@@ -443,8 +444,8 @@ build.backward("site/guide/install.html")  # PosixPath('src/guide/install.md')
 ```
 
 Options are keyword-only: `kind=`, `follow_symlinks=`, `recurse_symlinks=`, `ambiguous=`
-and `fs=` for `glob`, `ambiguous=` for `Lens.map`, and `cls=` for `resolve`. Bindings can
-be keywords too, so:
+and `fs=` for `glob` (on an expression, a union or a query), `ambiguous=` for `Lens.map`,
+and `cls=` for `resolve`. Bindings can be keywords too, so:
 - a parameter that shares an option's name is bound through the positional mapping, which
   accepts any name: `layout.glob({"kind": "raw"}, kind="file")`;
 - for such an expression, a `kind=` keyword without `"kind"` in the mapping could mean

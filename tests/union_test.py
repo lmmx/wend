@@ -210,6 +210,89 @@ def test_glob_reports_a_path_two_alternatives_find(tmp_path):
         list(u.glob(d=tmp_path))
 
 
+@pytest.fixture
+def mixed(tmp_path):
+    """A union and a tree with both kinds of ambiguity: ``a.b.c`` is read two
+    ways by one alternative, ``m.gz`` once by each, and ``z.q.gz`` two ways
+    by the first and once by the second; ``plain.txt`` is read once."""
+    for n in ["a.b.c", "m.gz", "plain.txt", "z.q.gz", "zz"]:
+        (tmp_path / n).write_text("")
+    stem, ext, name = Param("stem"), Param("ext"), Param("name")
+    return U(P(d) / T(t"{stem}.{ext}"), P(d) / T(t"{name}.gz")), tmp_path
+
+
+def test_union_glob_reports_both_kinds_of_ambiguity_in_path_order(mixed):
+    u, tmp = mixed
+    report: list[AmbiguousMatchError] = []
+    found = list(u.glob(d=tmp, ambiguous=report.append))
+    assert [(os.path.basename(m.path), m.alternative) for m in found] == [
+        ("plain.txt", 0)
+    ]
+    assert [os.path.basename(e.path) for e in report] == ["a.b.c", "m.gz", "z.q.gz"]
+    # every reading of each path, by every alternative, as an AltMatch
+    readings = [[(c.alternative, dict(c)) for c in e.candidates] for e in report]
+    root = {"d": tmp}  # given bindings belong to every reading
+    assert readings[1:] == [
+        [(0, {**root, "stem": "m", "ext": "gz"}), (1, {**root, "name": "m"})],
+        [
+            (0, {**root, "stem": "z", "ext": "q.gz"}),
+            (0, {**root, "stem": "z.q", "ext": "gz"}),
+            (1, {**root, "name": "z.q"}),
+        ],
+    ]
+    assert [c.alternative for c in report[0].candidates] == [0, 0]
+    assert all(c.expr == u.alternatives[c.alternative] for c in report[2].candidates)
+
+
+def test_union_glob_skips_or_raises_for_ambiguous_paths(mixed):
+    u, tmp = mixed
+    skipped = [os.path.basename(m.path) for m in u.glob(d=tmp, ambiguous="skip")]
+    assert skipped == ["plain.txt"]
+    # "raise" raises for the first ambiguous path, before any match is yielded
+    walk = u.glob(d=tmp)
+    with pytest.raises(AmbiguousMatchError) as info:
+        next(walk)
+    assert os.path.basename(info.value.path) == "a.b.c"
+    # so does a path two alternatives find, though a.b.c comes first and is
+    # read once here
+    name = Param("name")
+    loose = U(P(d) / T(t"{name}.gz"), P(d) / name)
+    with pytest.raises(AmbiguousMatchError, match="m.gz"):
+        next(loose.glob(d=tmp))
+    with pytest.raises(ValueError, match="ambiguous must be"):
+        u.glob(d=tmp, ambiguous="ignore")  # raised by the call
+
+
+def test_query_glob_takes_ambiguous_for_its_source_and_its_patterns(tmp_path):
+    for n in ["ab1.py", "ab12.py", "zz.py", "t.tar.gz"]:
+        (tmp_path / n).write_text("")
+    x, y = Param("x"), Param("y", type=int)
+    py = P(tmp_path) / T(t"{Param('stem')}.py")
+    # ab12.py is x="ab", y=12 or x="ab1", y=2; zz.py has no reading
+    q = py & P(tmp_path) / T(t"{x}{y:d}.py")
+    report: list[AmbiguousMatchError] = []
+    found = [(m["x"], m["y"]) for m in q.glob(ambiguous=report.append)]
+    assert found == [("ab", 1)]
+    assert [os.path.basename(e.path) for e in report] == ["ab12.py"]
+    assert [(m["x"], m["y"]) for m in q.glob(ambiguous="skip")] == [("ab", 1)]
+    # reported when the stream reaches it
+    stream = q.glob()
+    assert next(stream)["y"] == 1
+    with pytest.raises(AmbiguousMatchError, match="ab12.py"):
+        next(stream)
+    # the source's own ambiguity, and a union source's
+    pair = P(tmp_path) / T(t"{Param('a')}.{Param('b')}")
+    assert [m["a"] for m in (pair - py).glob(ambiguous="skip")] == []
+    report.clear()
+    assert list((pair | py).where(File).glob(ambiguous=report.append)) == []
+    assert [os.path.basename(e.path) for e in report] == [
+        "ab1.py",
+        "ab12.py",
+        "t.tar.gz",
+        "zz.py",
+    ]
+
+
 # -- queries ------------------------------------------------------------------
 
 

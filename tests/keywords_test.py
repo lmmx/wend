@@ -71,6 +71,29 @@ def test_every_glob_option_follows_one_rule(tree, option, value):
     assert [(m[option], m["name"]) for m in found] == [("raw", "a"), ("raw", "b")]
 
 
+@pytest.mark.parametrize(
+    "option, value",
+    [
+        ("kind", "file"),
+        ("follow_symlinks", True),
+        ("recurse_symlinks", True),
+        ("ambiguous", "skip"),
+        ("fs", LocalFS()),
+    ],
+)
+def test_union_and_query_glob_follow_the_same_rule(tree, option, value):
+    # the parameter is in one alternative only; the union has it all the same
+    u = P(tree) / Param(option) / T(t"{name}.txt") | P(tree) / "none" / name
+    for source in (u, u.where(lambda m: True)):
+        with pytest.raises(TypeError, match=f"{option!r} is both an option"):
+            source.glob(**{option: value})  # raised by the call
+        found = source.glob({option: "raw"}, **{option: value})
+        assert [(m[option], m["name"]) for m in found] == [("raw", "a"), ("raw", "b")]
+        # left unbound and not named by a keyword, it is discovered as usual
+        found = [(m[option], m["name"]) for m in source.glob()]
+        assert found == [("cooked", "c"), ("cooked", "d"), ("raw", "a"), ("raw", "b")]
+
+
 def test_a_parameter_named_cls_resolves_through_the_mapping():
     img = T(t"train/{Param('cls')}/{Param('img')}.jpg")
     assert img.resolve({"cls": "n01"}, img="a") == Path("train/n01/a.jpg")

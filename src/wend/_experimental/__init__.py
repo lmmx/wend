@@ -9,4 +9,6 @@ investigates and what it has not established.
   path (YES with a verified witness, NO by a sound argument, or MAYBE).
 - `wend._experimental.effects`: a graph of what a set of steps
   (`wend.Step`) declare they read and write, built from `Step.effects` and overlap.
+- `wend._experimental.choices`: prototypes of proposed rules for
+  ``choices=``: reading members back, and faithful rendering.
 """

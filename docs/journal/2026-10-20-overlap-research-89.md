@@ -337,11 +337,18 @@ Without a declared type, `match` reads the text as the types the spec
 implies (§7), here `str`, and `"1" in {1}` is false. Declaring
 `type=int` (or `float`) avoids it.
 
-§7 lists the cases where `match` is incomplete; this is not among them.
-`overlaps` is unaffected: its witness search falls back to rendering
-finite domains, which is why it never relied on `match` for choices. The
-semantics of `choices` are being investigated separately, without
-changing core behaviour yet.
+For a template field, §7's limit "an untyped field reads only the types
+its spec implies" covers this, but nothing warns that a declared member
+can be unreadable. For a whole segment, a head or a SubPath, no limit
+covers it. `overlaps` is unaffected: its witness search falls back to
+rendering finite domains, which is why it never relied on `match` for
+choices.
+
+[The choices entry](2026-10-21-choices-semantics-89.md) investigates the
+semantics without changing core. It found that 43 of 108 bindings of a
+declared member do not read back. It also found two further core bugs:
+`Param` equality conflates `choices={1}` and `{True}`, and equal members
+collapse at declaration.
 
 In strict mode most MAYBEs are honest. For example, a `choices={1, 2}`
 field can be bound to values that format as anything, so a witness may
@@ -390,8 +397,9 @@ be garbage-collection pauses: the worst call with GC disabled was 30 ms.
 
 ## Validation
 
-**[Measured]** The suite now has 818 tests, which pass. That is
-the 777 on #88 plus 41 new ones:
+**[Measured]** At the time of this entry the suite had 818 tests, all
+passing. That was the 777 on #88 plus 41 new ones (the choices entry adds
+more):
 
 - `tests/overlap_test.py`: 29, including Hypothesis property tests that
   NO is never refuted, YES is always witnessed, and an expression always

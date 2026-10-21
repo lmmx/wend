@@ -23,6 +23,18 @@ nav = [
     {"Relations" = "concepts/relations.md"},
     {"Effects" = "concepts/effects.md"}
   ]},
+  {"Guides" = [
+    {"Datasets and shards" = "guides/datasets.md"},
+    {"Pipeline steps" = "guides/pipelines.md"},
+    {"Mapping between trees" = "guides/lenses.md"},
+    {"Untrusted input" = "guides/untrusted-input.md"},
+    {"Lineage and caching" = "guides/lineage.md"},
+    {"Settings and anchors" = "guides/settings.md"}
+  ]},
+  {"Integrations" = [
+    {"Pydantic" = "integrations/pydantic.md"},
+    {"Polars" = "integrations/polars.md"}
+  ]},
   {"Reference" = [
     {"API reference" = [
       "reference/index.md",
@@ -184,6 +196,18 @@ https://lmmx.github.io/wend/.
   {"concepts/matching.md" = "The two directions of an expression: render paths from bindings, and match paths back to verified, typed bindings."},
   {"concepts/relations.md" = "How an expression keeps the paths it was built from: base, base_rel, child, sibling, cousin, rebase and under."},
   {"concepts/effects.md" = "Which operations touch the filesystem, how conditions declare what a path must be when it is used, and what the checks do and do not guarantee."},
+]
+"Guides" = [
+  {"guides/datasets.md" = "Declare a sharded dataset's layout once, render every shard path in bulk, list the shards that exist with glob, and find the missing ones."},
+  {"guides/pipelines.md" = "Declare what a pipeline step reads and writes with requires and ensures, run it as a Step, and see what a second run and a failed run do."},
+  {"guides/lenses.md" = "Map source paths to output paths and back with a Lens, find the outputs that are stale or orphaned, and see why a lossless lens refuses two sources for one target."},
+  {"guides/untrusted-input.md" = "Build paths from values that come from outside the program: bind them to segment and SubPath parameters, keep path parameters under a base with Under, and know what the checks do not protect."},
+  {"guides/lineage.md" = "Explain how a path expression was derived, record which files each pipeline step made from which with a Ledger, find what is stale, and name cache entries after their inputs with content_key."},
+  {"guides/settings.md" = "Declare an application's paths once with defaults, bind them from a settings object such as a dataclass, a Pydantic model or a named tuple, override with keywords, and start paths from the home, working and XDG directories."},
+]
+"Integrations" = [
+  {"integrations/pydantic.md" = "Validate the path fields of a Pydantic model against a wend expression with PathOf: accept a path or its bindings, get a Match back, use conditions as validators, and read the errors."},
+  {"integrations/polars.md" = "Render an expression for every row of a Polars DataFrame with resolve_frame: what it validates, what it lowers to Polars, what it refuses, and the fallback with compile().many."},
 ]
 "API reference" = [
   {"reference/index.md" = "wend's public API, module by module, generated from the docstrings."},

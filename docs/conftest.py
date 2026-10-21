@@ -76,7 +76,15 @@ class MarkdownExamples(pytest.Item):
                 where = f"{self.path.relative_to(SITE.parent.parent)}:{line}"
                 if lang == "python":
                     try:
-                        code = compile("\n" * (line - 1) + body, str(self.path), "exec")
+                        # dont_inherit: without it the page's code would run under this
+                        # module's `from __future__ import annotations`, and a dataclass
+                        # in it fails (its string annotations need a module to resolve in).
+                        code = compile(
+                            "\n" * (line - 1) + body,
+                            str(self.path),
+                            "exec",
+                            dont_inherit=True,
+                        )
                         exec(code, globs)  # noqa: S102
                     except Exception:
                         raise ExampleError(

@@ -400,7 +400,7 @@ digests:
 
 ```py
 ledger = Ledger("data/.lineage.jsonl")
-with ledger.run(convert, root="data", day="mon") as p:  # a Step; outputs are recorded
+with ledger.run(convert, root="data", name="a") as p:  # a Step; outputs are recorded
     ...
 ledger.upstream(out)  # what out was made from
 ledger.downstream(raw_file)  # what to rebuild when raw_file changes

@@ -226,8 +226,8 @@ parent rule, which the concrete tracker lacks.
 
 | mutant | rejected by |
 |---|---|
-| cancel prefixes even under different heads | the generated soundness property |
-| relation: coincidence only, not above or below | the generated soundness property |
+| cancel prefixes even under different heads | the generated commutation property; the soundness property only under some seeds |
+| relation: coincidence only, not above or below | the generated commutation property, and two unit tests; the soundness property only under some seeds |
 | derive a child's existence from its parent's | the generated soundness property |
 | must-equal: same head and length only | the generated soundness property |
 | independence ignores the other step's reads | the generated commutation property |
@@ -249,6 +249,12 @@ written (addendum A.1). All eleven are in the committed mutation harness
 > generated properties at 250 examples." **[Narrowed]** by the audit (addendum A.1):
 > it omitted the mutants no test rejected. Revised here in place after the owner's
 > review.
+
+> *Before:* the first two rows read "the generated soundness property". **[Narrowed]**
+> when the committed mutation harness (#115) ran them, in its own versions of the
+> mutants: the soundness property rejected them under 1 and 2 of 5 seeds, each run with
+> an empty example database; the commutation property under 5 of 5. One run's kill by
+> a property can be luck (research index).
 
 ## 5. Limits
 

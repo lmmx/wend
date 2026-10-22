@@ -28,6 +28,17 @@ The tests are `tests/fresh_test.py`, `publish_test.py`, `consistency_test.py`,
 Labels: **[Fact]**, **[Measured]**, **[Proven]**, **[Interpretation]**,
 **[Conjecture]**, **[Proposal]**.
 
+> **Audit, 2026-10-22.** The text below is kept as written. [The addendum](#addendum-audit-2026-10-22)
+> and [the synthesis](2026-10-22-synthesis.md) refute or narrow five of its claims:
+> - exchange with `expect` prevents a lost update (false for three writers);
+> - no observer can know a snapshot is coherent (true of observers; read leases are not
+>   one);
+> - `Sealed` is an immutable snapshot (a copy can be torn);
+> - a draft is unnameable (another process can name it);
+> - a held generation is coherent (only if nothing writes into it).
+>
+> The addendum also records which tests show less than the text says.
+
 ---
 
 ## 1. Freshness: what can be known, observed, or only promised
@@ -368,3 +379,149 @@ as "no failure". The harness now reports collection errors.
 - inotify and `mmap`: the [man-pages change](https://git.tldp.org/LDP/man-pages/src/commit/7a8110f6af9f3f7f76b7ff6f054cbad64b5de83a)
   recording that `mmap`, `msync` and `munmap` produce no events.
 - `open(2)` (`O_TMPFILE`), `rename(2)` (`renameat2`), `link(2)`, `fsync(2)`.
+
+---
+
+## Addendum: audit (2026-10-22)
+
+This entry was audited against the code, the tests and the session record. The audit's
+strongest findings were re-run before being written here, and the synthesis that
+followed (`2026-10-22-synthesis.md`) settled several of them.
+
+### A.1 Refuted or narrowed
+
+- **[Refuted] §2: "A lost update is prevented, at the price of a withdrawn version being
+  visible".** True for two writers only.
+  - With three writers, 126 of the 420 schedules of the exchange-and-validate protocol
+    end with a writer told "published" whose version is gone, and the name holding a
+    version whose writer was told "conflict".
+  - The kernel agrees on the shortest such schedule.
+  - The undo is itself an unconditional exchange, and it moves a third writer's version
+    into a temporary name that the cleanup unlinks.
+  - Synthesis §2 has the trace, the exhaustive count, and why: consensus numbers. The
+    module docstring no longer calls it "a compare-and-swap after the fact".
+- **[Narrowed] §3: "No observer can know that two files were copied coherently".** The
+  proof stands, and it quantifies over *observers*. A read lease is not one. Re-run here:
+  - `F_SETLEASE` is refused while any process has the file open for writing, including a
+    process holding only a dirty shared mapping, its descriptor closed;
+  - while the lease is held, an open for writing waits, or fails with `O_NONBLOCK`, and
+    the break is visible to the holder.
+
+  So the writer that leaves no trace of its *change* is visible as a *capability*.
+  `collect(observer="lease")` and `Run(lease=True)` give a coherent snapshot by
+  exclusion, with privilege (ownership or `CAP_LEASE`) and on a local filesystem
+  (synthesis §4.2). §3's table and the "needs coordination" column should read *needs
+  cooperation, or the privilege to exclude*.
+- **[Narrowed] §1 and §3: the traceless writer is bounded by writeback.** Re-run here:
+  - a write into a page already dirty leaves `ctime` alone;
+  - `msync` leaves it alone too;
+  - the first write after writeback moves it.
+
+  The writer is invisible only while its page stays dirty. Anyone's `sync` or `fsync`,
+  or periodic writeback, ends that. The model's premise holds only between writebacks.
+- **[Refuted] §3's table: "an immutable snapshot of one input: yes: `Sealed`".** A
+  `Sealed` copy cannot change, but it can be a state the file never had. A copy is one
+  `pread`, and under a writer through a mapping, 244 of 300 reads of a 64-page file
+  mixed two versions (synthesis §4.3). Every test here used one-page files. The §3
+  model's assumption that "each read of a file happens at one instant" is false for
+  multi-page files.
+- **[Refuted] §7: "a draft is unnameable until published".** Another process can name
+  it: `linkat("/proc/<pid>/fd/N", ..., AT_SYMLINK_FOLLOW)` gives the `O_TMPFILE` a name,
+  partial contents and all, and the name survives the writer's death. Re-run here:
+  - an unprivileged process of the same uid can do it, unless the writer has made itself
+    non-dumpable;
+  - root always can.
+
+  §4 rule 2 conceded only that such a process can "reach" the draft.
+- **[Narrowed] §3: "[Proven] a held generation is coherent".** Its assumption, "nothing
+  writes into a published generation", binds *every* writer, not only the producer, and
+  nothing enforced it: members were ordinary mode-0644 files. Synthesis §3 shows a held
+  generation read through its directory returning bytes rewritten in place. It also
+  builds what enforces the assumption: `Store`, with manifests checked on every read and
+  optionally immutable members.
+- **[Refuted] §2: "Publication was atomic in every case: old or new, never torn".** It
+  contradicts its own row "the name, with 0 bytes". The *name* changed atomically; what
+  it named could be empty after a crash.
+- **[Narrowed] §3: "Wait-free snapshots need writers' help (Afek et al., 1993)".** Afek
+  et al. build wait-free snapshots in which each update embeds a scan, so writers help.
+  Whether helping is *necessary* is not what that paper proves.
+- **[Refuted] §6: "The rename-over test was added because the name check survived at
+  first".** Per the session record, the test was written in the same command as the
+  first mutant run, before it. The only "survivor" was the mutant that did not compile.
+- **[Fact]** The 9bc511c module docstring said the durability protocol "is argued, not
+  tested here". `tests/durability_test.py` existed by then. The synthesis branch
+  corrects the docstring.
+
+### A.2 How the prototype was developed
+
+None of these steps appears above.
+
+- **Name events move `ctime`.** `current()` was false straight after publication. The
+  fingerprint had been taken before `linkat`, and linking raises the link count, which
+  moves `ctime`. The fix was to fingerprint after publication, and to add `intact`,
+  because a published object is reachable by others.
+
+  The held-object test then expected an unchanged fingerprint after a rename-over, and
+  failed: losing a name drops the link count and moves `ctime`. Consequences:
+  - a metadata revalidation reports a name-only event as "changed";
+  - an observation is valid only after the observer's own last name operation.
+- **The `refused` verdict and its cost.** A write through a hard link made `revalidate`
+  raise `ContainmentError`, because #112's one-name rule refuses the object; the verdict
+  `refused` was added for that case. The unrecorded cost: any second name, from
+  `cp -al` or a backup tool, makes `current()` false, and `stale()`/`invalidated()`
+  then put everything downstream in doubt. The result is false doubt, never false
+  confidence.
+- **A descriptor leak.** `_reader` kept one descriptor per fingerprint until the draft
+  was spent. `_fingerprint` replaced it.
+- **Keys.** `Run.published` and `Run.derivations` were keyed by port name, so a second
+  step's `dst` overwrote the first's and broke the chain. They were keyed by path before
+  the commit. `Run.confirmed` kept the same defect until the synthesis.
+- **The double collect.** The first `collect` compared only the held objects'
+  fingerprints, and was blind to a rename over the name. That was found by reasoning,
+  not by a mutant, and the second pass now resolves names again.
+- **A vacuous assertion was removed.**
+  `Run(".").io.check("does/not/matter/../x", frozenset())` resolves nothing when no
+  atoms are checked, so it could not have refused `..`.
+
+### A.3 Tests that show less than the text says
+
+- **The crash model** (`test_what_survives_a_crash_just_after_publication`):
+  - it asserts two of the seven rows ("draft, durable" → new; "draft creating, directory
+    synced only" → 0 bytes) and accepts any outcome for the other five. Their "old" and
+    "new" in §2's table come from two sets of three runs, read from printed output;
+  - it is skipped unless run as root, and CI runs as an ordinary user;
+  - the mutant runs never included it: the "no directory sync" mutant was killed by the
+    monkeypatched call-order test, and no "no file sync" mutant was run;
+  - the cause of ext4 flushing data on a rename over a file is presumably
+    `auto_da_alloc`. Neither is named, and neither was tested with `noauto_da_alloc`;
+  - `exchange` and `Generation.commit` were never crashed;
+  - the journal replay is `e2fsck -p` on a copy taken while the image was still mounted,
+    not a mount as §2 says.
+- **The observer table's "contents" column** credits the digest with two detections it
+  did not make. `replace_name` writes the same bytes, so a pure SHA-256 observer would
+  miss "a new file renamed over the name": that ✓ comes from comparing identities. The
+  hard-link ✓ comes from the `refused` verdict. The harness's "digest" observer is
+  digest, plus identity, plus refusal.
+- **Four cells of §2's first table, labelled [Measured], have no test:**
+  - a draft refused when `out/` was a link before the write;
+  - a direct write landing outside after a swap;
+  - a temporary name's `rename` clobbering a file created after the check;
+  - temporary-name writers interleaving "each whole".
+- **The busy-producer test lacked its control.** Under the same producer, readers going
+  by name saw 91–95 mixtures per run in the audit's probe, against 0 for readers holding
+  the generation. The test's power is real, but it was not shown.
+- **`collect`** takes its first-pass digest from one read and its copy from another. A
+  change between the two is never scheduled.
+- **The mutation harness** lives in the session's scratch space, not the repository, and
+  covered the publish, consistency and fresh tests only.
+
+### A.4 Cross-links
+
+- "Durable" here means surviving a crash. In
+  `2026-10-22-confinement-is-not-consistency.md` §3 it means persisting across changes
+  of names.
+- `invalidated()` keys its graph by rel-path strings. That is sound only under the
+  lexical identity that #110 assumes and #112's confinement enforces.
+- #112 probed a read lease on an idle file and recorded "notice, not prevention". A.1
+  shows the other half, refusal while a writer exists.
+- The current classification of every guarantee is `2026-10-22-synthesis.md` §6.

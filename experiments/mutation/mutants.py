@@ -45,6 +45,14 @@ EVENTS = "src/wend/_experimental/events.py"
 LEASES = "tests/leases_test.py"
 PUBLISH = "src/wend/_experimental/publish.py"
 DRAFTS = "tests/drafts_test.py"
+IDENTITY = "src/wend/_experimental/identity.py"
+CONFINED_SRC = "src/wend/_experimental/confined.py"
+KNOWLEDGE_SRC = "src/wend/_experimental/knowledge.py"
+CONFINED = "tests/confined_test.py"
+ALIASING = "tests/aliasing_test.py"
+KNOWLEDGE = "tests/knowledge_test.py"
+PUBLISH_TEST = "tests/publish_test.py"
+CONSISTENCY = "tests/consistency_test.py"
 
 
 @dataclass(frozen=True)
@@ -257,6 +265,192 @@ MUTANTS = [
             "test_a_draft_claimed_by_another_process_is_detected_and_left",
             "test_a_draft_claimed_as_its_claim_is_made_is_left",
         ),
+    ),
+    # -- confined runs (2026-10-22-confined-runs.md §3) ----------------------
+    Mutant(
+        "confined: symlinks allowed (no RESOLVE_NO_SYMLINKS)",
+        IDENTITY,
+        "    RESOLVE = RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_XDEV\n",
+        "    RESOLVE = RESOLVE_BENEATH | RESOLVE_NO_XDEV\n",
+        (CONFINED, ALIASING),
+        killed_by=("test_an_alias_inside_the_root_is_refused_not_only_escapes",),
+    ),
+    Mutant(
+        "confined: mounts crossed (no RESOLVE_NO_XDEV)",
+        IDENTITY,
+        "    RESOLVE = RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_XDEV\n",
+        "    RESOLVE = RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS\n",
+        (CONFINED,),
+        killed_by=(
+            "test_a_confined_run_never_reaches_outside_the_root",
+            "test_each_move_escapes_a_plain_run_and_is_refused_by_a_confined_one",
+            "test_deleting_a_tree_does_not_descend_into_a_mount_below_it",
+        ),
+    ),
+    Mutant(
+        "confined: deletion enters subdirectories by a plain O_NOFOLLOW open",
+        CONFINED_SRC,
+        "            sub = openat2(fd, entry.name, os.O_RDONLY | os.O_DIRECTORY, Beneath.RESOLVE)\n",
+        "            sub = os.open(entry.name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW, dir_fd=fd)\n",
+        (CONFINED,),
+        killed_by=("test_deleting_a_tree_does_not_descend_into_a_mount_below_it",),
+    ),
+    Mutant(
+        "confined: parents made by os.makedirs on the path string",
+        CONFINED_SRC,
+        '        fd = self._dir("")\n        for part in head.split("/") if head else ():\n            if make:\n',
+        '        fd = self._dir("")\n        if make and head:\n'
+        "            os.makedirs(os.path.join(self.root, head), exist_ok=True)\n"
+        '        for part in head.split("/") if head else ():\n            if False:\n',
+        (CONFINED,),
+        killed_by=("test_making_parents_does_not_follow_a_link_on_the_way",),
+    ),
+    Mutant(
+        "confined: creation not exclusive",
+        CONFINED_SRC,
+        "            flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL\n",
+        "            flags = os.O_WRONLY | os.O_CREAT\n",
+        (CONFINED,),
+        killed_by=("test_a_confined_run_of_the_plan_is_a_checked_plain_run",),
+    ),
+    Mutant(
+        "confined: the plan kept after a step fails",
+        CONFINED_SRC,
+        "        if not all(done):\n            elide = {}\n",
+        "        if False:\n            elide = {}\n",
+        (CONFINED,),
+        killed_by=("test_a_confined_run_of_the_plan_is_a_checked_plain_run",),
+    ),
+    Mutant(
+        "confined: hard-linked files allowed",
+        CONFINED_SRC,
+        "            if s.st_nlink != 1:\n",
+        "            if False:\n",
+        (CONFINED,),
+        killed_by=(
+            "test_a_confined_run_never_reaches_outside_the_root",
+            "test_writing_a_hard_linked_file_refuses_before_truncating",
+        ),
+    ),
+    Mutant(
+        "confined: objects of any kind allowed",
+        CONFINED_SRC,
+        "        elif not st.S_ISDIR(s.st_mode):\n",
+        "        elif False:\n",
+        (CONFINED,),
+        killed_by=("test_a_planted_fifo_is_refused_at_once_and_blocks_a_plain_read",),
+    ),
+    Mutant(
+        "confined: truncation at the open, before the judgement",
+        CONFINED_SRC,
+        '        with os.fdopen(self._open(rel, os.O_WRONLY), "wb") as f:\n            f.truncate()\n',
+        '        with os.fdopen(self._open(rel, os.O_WRONLY | os.O_TRUNC), "wb") as f:\n            pass\n',
+        (CONFINED,),
+        killed_by=("test_writing_a_hard_linked_file_refuses_before_truncating",),
+    ),
+    Mutant(
+        "confined: blocking opens",
+        CONFINED_SRC,
+        "        fd = self.b.open(rel, flags | os.O_NONBLOCK)\n",
+        "        fd = self.b.open(rel, flags)\n",
+        (CONFINED,),
+        killed_by=("test_a_planted_fifo_is_refused_at_once_and_blocks_a_plain_read",),
+    ),
+    # -- knowledge (2026-10-22-knowledge-states.md, its addendum) -------------
+    Mutant(
+        "knowledge: learn nothing",
+        KNOWLEDGE_SRC,
+        "            self.facts.add(Fact(a, path))\n",
+        "            pass\n",
+        (KNOWLEDGE,),
+        killed_by=(
+            "test_the_analysis_knows_exactly_what_the_worked_pipeline_establishes",
+            "test_a_mutation_forgets_the_path_its_parents_and_children",
+        ),
+    ),
+    Mutant(
+        "knowledge: never forget",
+        KNOWLEDGE_SRC,
+        "        region = self._may_create(mutated)\n",
+        "        return\n        region = self._may_create(mutated)\n",
+        (KNOWLEDGE,),
+        killed_by=("test_every_known_fact_holds_at_every_entry",),
+    ),
+    Mutant(
+        "knowledge: forget only the mutated path",
+        KNOWLEDGE_SRC,
+        "            if not affected(mutated, f.path)\n",
+        "            if f.path != mutated\n",
+        (KNOWLEDGE,),
+        killed_by=("test_every_known_fact_holds_at_every_entry",),
+    ),
+    Mutant(
+        "knowledge: learn a port's preconditions before every check has passed",
+        KNOWLEDGE_SRC,
+        "            entries.append(Entry(name, port, p, known, frozenset(todo)))\n",
+        "            entries.append(Entry(name, port, p, known, frozenset(todo)))\n"
+        "            k.learn(req, p)\n",
+        (KNOWLEDGE,),
+        # a sound refinement, rejected by asserting the rule as designed
+        killed_by=(
+            "test_the_tracker_knows_the_same_and_learns_nothing_from_a_failed_entry",
+        ),
+    ),
+    # -- aliasing (2026-10-22-aliasing.md §8, addendum A.2) -------------------
+    Mutant(
+        "aliasing: creation keyed by the first missing entry",
+        IDENTITY,
+        '    if atom in ("create", "write") and t.obj is None:\n',
+        "    if False:\n",
+        (ALIASING,),
+        # equivalent once #111 is merged: then expected to survive
+        killed_by=("test_a_missing_paths_creation_is_judged_where_the_check_looks",),
+    ),
+    # -- publication and consistency (2026-10-22-publication-and-consistency.md)
+    Mutant(
+        "publish: exchange ignores expect",
+        PUBLISH,
+        "                    if expect is not None and previous != expect:\n",
+        "                    if False:\n",
+        (PUBLISH_TEST,),
+        killed_by=("test_exchange_with_expect_undoes_a_lost_update_but_was_visible",),
+    ),
+    Mutant(
+        "publish: no directory sync",
+        PUBLISH,
+        "        if durable:\n            os.fsync(self.dirfd)\n",
+        "",
+        (PUBLISH_TEST,),
+        killed_by=(
+            "test_the_durability_protocol_syncs_the_file_then_publishes_then_syncs_the_directory",
+        ),
+    ),
+    Mutant(
+        "collect: names not resolved again",
+        FRESH,
+        "                if observe(io, r, content=False).ident != before.ident:\n",
+        "                if False:\n",
+        (CONSISTENCY,),
+        killed_by=(
+            "test_a_name_renamed_over_between_the_collects_is_seen_by_its_name",
+        ),
+    ),
+    Mutant(
+        "collect: its watch ignored",
+        FRESH,
+        "        if watch is not None and watch.changed():\n",
+        "        if False:\n",
+        (CONSISTENCY,),
+        killed_by=("test_which_observer_accepts_a_snapshot_that_never_existed",),
+    ),
+    Mutant(
+        "collect: the digest from one read, the copy from another",
+        FRESH,
+        "            fp, data = _copy(fd)\n",
+        "            fp = fingerprint(fd, content=True)\n"
+        "            data = os.pread(fd, fp.size, 0)\n",
+        (CONSISTENCY,),
+        killed_by=("test_a_collect_observes_the_bytes_it_copies",),
     ),
 ]
 

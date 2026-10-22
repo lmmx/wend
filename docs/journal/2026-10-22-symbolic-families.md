@@ -15,10 +15,12 @@ The prototype is `wend._experimental.families`, with tests in
 Labels: **[Fact]**, **[Measured]**, **[Proven]**, **[Interpretation]**,
 **[Conjecture]**.
 
-> **Audit, 2026-10-22.** The text below is kept as written. [The addendum](#addendum-audit-2026-10-22)
-> records that three rules had no test that could fail and that no test asserted
-> what the analysis knows (both now fixed), corrects §4's measurements, narrows
-> §1.1's evidence, and records the development this entry left out.
+> **Audit, 2026-10-22.** The corrected claims are now revised in place, with their
+> earlier wording kept beside each, marked *Before*.
+> [The addendum](#addendum-audit-2026-10-22) records that three rules had no test that
+> could fail and that no test asserted what the analysis knows (both now fixed),
+> corrects §4's measurements, narrows §1.1's evidence, and records the development
+> this entry left out.
 
 ---
 
@@ -44,11 +46,23 @@ pattern prints. Even the two shapes where the pattern is ambiguous
 validation: a head parameter and a first segment render the same text wherever both
 accept the value.
 
-**[Measured]** A probe took 6,000 terms from the contract strategy. It re-declared
-every parameter at random (untyped, `Segment`, `AnyPath`, `type=str`, defaults kept)
-and rebuilt the term from its pattern. In the 2,325 cases where both renders
-succeeded, they were equal every time; in the other 1,573, one render failed. This is
-evidence, not a proof.
+**[Measured]** A probe took 6,000 terms from the contract strategy; about 2,100 never
+built (addendum A.3). It ran in #106's worktree, because it needs `patterns.parse`,
+which this stack does not have. It re-declared parameters at random (untyped,
+`Segment`, `AnyPath`, `type=str`, defaults kept) and rebuilt the term from its
+pattern. Its `"int"` re-declaration was a no-op. Hypothesis found two failures in the
+probe itself, and the fix fell back to the original declaration, which lowered the
+real re-declaration rate. In the 2,325 cases where both renders succeeded, they were
+equal every time; in the other 1,573, one render failed. It compared `e` with
+`parse(e.pattern)` only: two independently built expressions with equal patterns,
+which is how the analysis uses must-equal, are tested once (`raw_day` against
+`raw_day2`). This is evidence, not a proof.
+
+> *Before:* "A probe took 6,000 terms from the contract strategy. It re-declared every
+> parameter at random (untyped, `Segment`, `AnyPath`, `type=str`, defaults kept) and
+> rebuilt the term from its pattern." **[Narrowed]** by the audit (addendum A.3): the
+> probe was weaker than this said, in five ways. Revised here in place after the
+> owner's review.
 
 **[Fact]** `must_equal` sees through construction. `(P(root) / "raw").joinpath(T(t"{Param('day', type=str)}.csv"))`
 must-equals `P(root) / "raw" / T(t"{day}.csv")`. Syntactic equality would not see
@@ -146,8 +160,14 @@ of its own declared paths.
 - So each step sees the same state in either order, makes the same changes, and the
   changes are disjoint. The final trees are equal, and so is each step's outcome.
 
-This is an argument, not a proof checked by a machine. The test below checks its
-conclusion.
+This is an argument, not a proof checked by a machine. The test below checks part of
+its conclusion: each step's outcome, and the final tree's shape (each path and its
+kind). Every body writes constant text, so the order of writes is invisible to it
+(addendum A.1).
+
+> *Before:* "The test below checks its conclusion." **[Narrowed]** by the audit
+> (addendum A.1): it compares only the tree's shape, and the bodies' constant text hides
+> the order of writes. Revised here in place after the owner's review.
 
 ## 4. Measured
 
@@ -179,10 +199,24 @@ modelled on the tree under the first binding.
 | known by the family analysis, for every binding | 867 |
 | adjacent pairs / judged independent | 1,926 / 234 |
 
-**[Interpretation]** The family analysis knows 57% of what the concrete tracker knows
-for one binding. That is the price of quantifying over all bindings when families can
-collide: with `name` possibly equal to `day`, or `base` possibly the raw directory,
-a mutation has to forget more.
+**[Interpretation]** The family analysis knows 867 atoms for every binding, and the
+concrete tracker 1,534 for one. That is a ratio of counts, not a subset, and two
+effects pull in opposite directions (addendum A.2). One is the price of quantifying
+over all bindings when families can collide: with `name` possibly equal to `day`, or
+`base` possibly the raw directory, a mutation has to forget more. The other is the
+derived parent rules, which make the analysis know facts the tracker never learns.
+
+**[Measured]** In the audit's run of 1,000 modelled pipelines, the family analysis
+knew 903 atoms and the tracker 1,395. Both knew 720: 52% of what the tracker knew. Of
+what the family analysis knew, 183 (20%) were known *only* by it, all from the
+derived parent rules.
+
+> *Before:* "The family analysis knows 57% of what the concrete tracker knows for one
+> binding. That is the price of quantifying over all bindings when families can
+> collide: with `name` possibly equal to `day`, or `base` possibly the raw directory,
+> a mutation has to forget more." **[Refuted]** by the audit (addendum A.2): 57% is a
+> ratio of counts, not a subset, and the derived parent rules pull the other way.
+> Revised here in place after the owner's review.
 
 On simpler families it can know more than the tracker. In an earlier run, before the
 colliding families were added, it knew 809 atoms against 726, through the derived
@@ -199,10 +233,22 @@ parent rule, which the concrete tracker lacks.
 | independence ignores the other step's reads | the generated commutation property |
 | forget treats MAYBE as NO | only a targeted test |
 | must-equal ignores defaults | only a targeted test |
+| forget ignores the parents a mutation may make | none, at first; since the audit, a targeted test |
+| independence ignores the parents a creation may make | none, at first; since the audit, a targeted test |
+| made parents bounded where none is known to exist | none: it survives (addendum A.1) |
+| learn nothing | none of the properties; since the audit, the worked pipeline's oracle |
 
-**[Fact]** The last two survived the generated properties at 250 examples. They needed
-a MAYBE that is a real overlap (`up` against `sub` when `name=raw`), and an unbound
-`day` with two different defaults. The targeted tests that reject them are kept.
+**[Fact]** Two of the first seven survived the generated properties at 250 examples.
+They needed a MAYBE that is a real overlap (`up` against `sub` when `name=raw`), and an
+unbound `day` with two different defaults. The targeted tests that reject them are
+kept. The last four rows were not in this table: no test rejected them when it was
+written (addendum A.1). All eleven are in the committed mutation harness
+(`experiments/mutation/mutants.py`, on #115).
+
+> *Before:* the table had the first seven rows only, and "The last two survived the
+> generated properties at 250 examples." **[Narrowed]** by the audit (addendum A.1):
+> it omitted the mutants no test rejected. Revised here in place after the owner's
+> review.
 
 ## 5. Limits
 
@@ -212,7 +258,14 @@ spellings and concurrent writers are the subject of the next entry, which tests 
 on disk.
 
 **[Fact]** Must-equal is a conjecture with evidence. Prefix cancellation and the
-derived rules are proven. Commutation is argued and tested.
+derived rules are proven, relative to overlap's NO being sound under wend's rendering
+rules and to rendering being deterministic (addendum A.4). Commutation is argued, and
+tested for outcomes and the tree's shape (§3).
+
+> *Before:* "Prefix cancellation and the derived rules are proven. Commutation is
+> argued and tested." **[Narrowed]** by the audit (addendum A.1, A.4): the proofs
+> inherit overlap's soundness, and the test sees only the tree's shape. Revised here in
+> place after the owner's review.
 
 **[Fact]** A MAYBE from overlap (deferred operations, conversions, untyped formatted
 fields) forgets. So a pipeline built from such expressions knows little, but what it

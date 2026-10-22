@@ -177,9 +177,47 @@ devices).
 | draft, published, *only the directory* synced, creating | **the name, with 0 bytes** |
 
 **Revised in place, after the owner's review.**
-- **Every row is asserted.** Before, two rows were asserted and any outcome accepted for
-  the rest, whose entries came from printed output (A.3). Each of the seven gave the
-  same outcome in 10 runs here, and in 3 more with `auto_da_alloc` named.
+- **What the test asserts: guaranteed, permitted, demonstrated.**
+  - **Guaranteed, asserted strictly.** The protocol promises one outcome only: the full
+    protocol keeps the new version.
+  - **Permitted, asserted as a set.** For every other row the test asserts the outcome
+    is one the syncs permit. A synced file renamed without a directory sync leaves the
+    old or the new version, never a partial one. A directory sync commits the name, so
+    "directory synced only" never shows the old version.
+  - **Demonstrated, required once.** The two counterexamples (a durable name with 0
+    bytes, creating; and replacing without `auto_da_alloc`) must appear at least once
+    in 5 attempts. They are not required every time.
+- **[Measured]** The table above is what happened, and each row gave the same outcome
+  in 10 runs here, and in 3 more with `auto_da_alloc` named. It stays as observation,
+  not requirement.
+  - **Under load, the same.** A writer kept producing 3 GB of dirty pages without
+    syncing, pushing writeback the whole time. Every row's outcome was again the same in
+    10 runs, and the tests passed in 10 of 10.
+  - The window between the protocol and the copy is short, because everything else is
+    synced just before the protocol. So writeback did not land in it here.
+  - That stability belongs to this model on this machine, not to the protocol: an absent
+    sync permits loss, and does not promise it.
+- **[Refuted], my own revision: "every row is asserted".** For a while each of the
+  seven rows was asserted to have exactly its observed outcome. But an absent sync
+  permits loss; it does not make loss certain. An unsynced write reaches the device
+  whenever writeback runs, which no test controls. So the exact assertions tested
+  writeback timing on this machine, not the protocol, and under another load they could
+  fail with nothing wrong. They were replaced by the three kinds above. A full-suite run
+  at #115's head then failed once, intermittently; the investigation is in the
+  research index.
+
+  > *Before:* "**Every row is asserted.** Before, two rows were asserted and any outcome
+  > accepted for the rest, whose entries came from printed output (A.3). Each of the
+  > seven gave the same outcome in 10 runs here, and in 3 more with `auto_da_alloc`
+  > named."
+- **The model, scoped.** "A crash" here is a copy of the image taken unsynced while it is
+  mounted, then journal replay by `e2fsck -p`. That is not a power failure. A real device
+  can reorder or lose writes it acknowledged, and nothing here models that. Every
+  conclusion is about this model.
+- **Deterministic crash testing** would replay prefixes of a recorded block-write log
+  (`dm-log-writes`, as xfstests and CrashMonkey do). That would enumerate crash states
+  instead of sampling one. Device-mapper is absent here, and present on the CI runners:
+  a candidate for the privileged job.
 - **The mechanism is tested, not presumed.** With `noauto_da_alloc`, the replacing row
   loses its contents just as the creating row does
   (`test_without_auto_da_alloc_replacing_loses_the_contents_too`). Both syncs are needed,
@@ -553,7 +591,7 @@ None of these steps appears above.
 
 **What became of each, after the owner's review:**
 - **The crash model:**
-  - every row asserted;
+  - guaranteed, permitted and demonstrated outcomes asserted as such;
   - `auto_da_alloc` tested;
   - the replay described as done (§2);
   - run as root in CI's privileged job (#115).

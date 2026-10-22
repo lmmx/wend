@@ -317,19 +317,45 @@ def immutable_supported(tmp_path: Path) -> bool:
         p.unlink()
 
 
+# A writer holding a shared mapping made before the flag: the page faulted in
+# (clean), or written with the byte already there (dirty). It writes once told
+# the flag is set.
+MAPPED = r"""
+import mmap, sys
+fd, dirty = int(sys.argv[1]), sys.argv[2] == "dirty"
+m = mmap.mmap(fd, 4096)
+b = m[0:1]
+if dirty:
+    m[0:1] = b
+print("mapped", flush=True)
+sys.stdin.readline()
+m[0:1] = b"X"
+"""
+
+
 @pytest.mark.privileged
 def test_immutable_members_refuse_every_writer_tried(store, tmp_path):
     if not immutable_supported(tmp_path):
         pytest.skip("needs CAP_LINUX_IMMUTABLE on a filesystem with FS_IMMUTABLE_FL")
     io, s = store
     d = tmp_path / "reports" / "v000001"
-    # a writer that got in before the flag: a descriptor and a shared mapping
+    # writers that got in before the flag: a descriptor, and shared mappings
     early: dict[str, object] = {}
+    mapped: dict[str, subprocess.Popen[str]] = {}
 
     def before_flag(*a, **k):
         if "fd" not in early:  # just before the first flag is set
             hidden = next(d.parent.glob(".v*"))
-            early["fd"] = os.open(hidden / "by_sku.csv", os.O_RDWR)
+            fd = early["fd"] = os.open(hidden / "by_sku.csv", os.O_RDWR)
+            for page in ("clean", "dirty"):
+                c = mapped[page] = subprocess.Popen(
+                    [sys.executable, "-c", MAPPED, str(fd), page],
+                    pass_fds=(fd,),
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    text=True,
+                )
+                assert c.stdout is not None and c.stdout.readline() == "mapped\n"
         return real(*a, **k)
 
     real = pub._set_immutable
@@ -356,7 +382,12 @@ def test_immutable_members_refuse_every_writer_tried(store, tmp_path):
             with pytest.raises(PermissionError):
                 act()
             assert move
-        # through a shared mapping made with the early descriptor: SIGBUS
+        # through a shared mapping made before the flag, its page clean or
+        # dirty: SIGBUS
+        for page, c in mapped.items():
+            c.communicate("go\n", timeout=30)
+            assert (page, c.returncode) == (page, -signal.SIGBUS)
+        # and through one made after it with the early descriptor: SIGBUS
         child = subprocess.run(
             [sys.executable, "-c", f"import mmap; mmap.mmap({fd}, 4096)[0:1] = b'X'"],
             pass_fds=(fd,),

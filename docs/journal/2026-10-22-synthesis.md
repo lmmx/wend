@@ -283,10 +283,22 @@ pin those objects' *contents*.
      | write through a shared mapping made before the flag (page clean or dirty) | `SIGBUS` |
      | a new shared writable mapping from a descriptor opened before | allowed; the first write `SIGBUS` |
 
-   - **[Conjecture]** The mechanism of the `SIGBUS`: setting the flag writes back the
-     file's pages and write-protects them, so the next write through any mapping faults,
-     and the fault is refused for an immutable inode. This was not read in the kernel
-     source.
+     Every row is asserted by the test, except the probe's four moves. The two mappings
+     made before the flag were added to the test when `docs/SEMANTICS.md` §14 was checked
+     against it: until then they rested on a probe of this session, and the test made
+     its only mapping after the flag.
+   - **[Fact]** The mechanism of the `SIGBUS`, read in Linux 6.18's source.
+     `ext4_ioctl_setflags` (`fs/ext4/ioctl.c`), when it sets the flag on a regular file,
+     waits for direct I/O and writes back the file's dirty pages, "so any subsequent
+     attempt to write to the file (particularly mmap pages) will come through the
+     filesystem and fail". `ext4_page_mkwrite` (`fs/ext4/inode.c`) returns
+     `VM_FAULT_SIGBUS` for an immutable inode. So it is ext4's behaviour, not the VFS's;
+     another filesystem need not do the same.
+
+     > *Before:* "**[Conjecture]** The mechanism of the `SIGBUS`: setting the flag writes
+     > back the file's pages and write-protects them, so the next write through any
+     > mapping faults, and the fault is refused for an immutable inode. This was not read
+     > in the kernel source."
    - **[Interpretation]** Here a privilege closes the one channel that §4 found invisible
      to every observer.
    - Limits:
@@ -515,6 +527,9 @@ death), and take the writer's descriptor with `pidfd_getfd`. **[Measured]** Who 
 | another process, same uid, unprivileged | reads, writes, names, takes | none of these |
 | another uid, unprivileged | none of these | none of these |
 | root | reads, writes, names, takes | reads, writes, names, takes |
+
+Without Yama. Under Yama's `ptrace_scope` 1 the same uid takes the descriptor only from
+an ancestor of the writer (drafts §7, the Yama item, measured on CI).
 
 A draft is therefore private against other uids, and against the same uid only if the
 run is non-dumpable. That is a process-wide setting, which a library should not change.

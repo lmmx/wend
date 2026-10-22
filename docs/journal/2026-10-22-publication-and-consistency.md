@@ -175,6 +175,7 @@ devices).
 | draft, published without syncs | the old version |
 | draft, published, *only the directory* synced, replacing | the new version, through ext4's `auto_da_alloc`; with `noauto_da_alloc`, **the name with 0 bytes** |
 | draft, published, *only the directory* synced, creating | **the name, with 0 bytes** |
+| draft, file synced, published, directory synced | **the new version** |
 
 **Revised in place, after the owner's review.**
 - **What the test asserts: guaranteed, permitted, demonstrated.**
@@ -220,22 +221,28 @@ devices).
   a candidate for the privileged job.
 - **The mechanism is tested, not presumed.** With `noauto_da_alloc`, the replacing row
   loses its contents just as the creating row does
-  (`test_without_auto_da_alloc_replacing_loses_the_contents_too`). Both syncs are needed,
+  (`test_without_auto_da_alloc_replacing_can_lose_the_contents_too`). Both syncs are needed,
   the file's and then the directory's. The heuristic is no part of the protocol.
 - **The replay is described as it was done.** Before, the text said the copy was
   "mounted, replaying the journal". In fact `e2fsck -p` replays it, on a copy taken
   while the image was mounted.
 - **Still never crashed:** `exchange` and `Generation.commit`.
-| draft, file synced, published, directory synced | **the new version** |
 
-**[Interpretation]** Publication was atomic in every case: old or new, never torn.
-Durability needed both syncs:
+**[Interpretation]** Every publication observed changed the name atomically: the name
+led to the old object or to the new one, never to a mixture of the two. The new
+object's *contents* are another matter: a name that led to the new object could find
+it empty. Durability needed both syncs:
 - **the directory's**, after publication: without it the publication is lost;
 - **the file's**, before: without it a new name can survive with no contents.
 
 ext4 masks the second only when a rename replaces a file. That is the dependence on
 filesystem-specific "persistence properties" that Pillai et al. measured. This crash
 model has no device that reorders its own writes or loses a volatile cache.
+
+> *Before:* "Publication was atomic in every case: old or new, never torn." **[Narrowed]**
+> when the table was repaired, after the owner's review: two of its rows are a name
+> leading to the new object with 0 bytes, which is neither. The atomicity is of the
+> name, not of the contents.
 
 ## 3. Consistency across steps
 
@@ -559,7 +566,9 @@ None of these steps appears above.
 
 ### A.3 Tests that show less than the text says
 
-- **The crash model** (`test_what_survives_a_crash_just_after_publication`):
+- **The crash model** (`test_what_survives_a_crash_just_after_publication`, as it was
+  then; since ee103d6, `test_a_crash_leaves_only_what_the_protocol_permits` and two
+  demonstrations):
   - it asserts two of the seven rows ("draft, durable" → new; "draft creating, directory
     synced only" → 0 bytes) and accepts any outcome for the other five. Their "old" and
     "new" in §2's table come from two sets of three runs, read from printed output;

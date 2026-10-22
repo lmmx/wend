@@ -135,20 +135,25 @@ def crash_after(tmp_path: Path, protocol, options: str = "") -> bytes | None:
         subprocess.run(["umount", str(seen)], check=True)
 
 
-# What each protocol left, on this kernel and ext4, the same in each of 10
-# runs (and 3 more with auto_da_alloc named). Only "draft, durable" is
-# promised by the protocol; the rest are asserted so that a change is seen.
-LEFT = {
-    "direct, no sync": "old",
-    "rename, no sync": "old",
-    "rename, file synced": "old",  # the rename itself was lost
-    "draft, not durable": "old",
-    "draft, durable": "new",
-    # ext4's auto_da_alloc flushes a file's data when it is renamed over
-    # another; see the test below for what remains without it
-    "draft replacing, directory synced only": "new",
-    # the counterexample: the name made durable, its contents not
-    "draft creating, directory synced only": "partial (0 bytes)",
+# What a crash may leave, by what each protocol synced. The model: the image
+# is copied, unsynced, while mounted; its journal is replayed by e2fsck. An
+# unsynced write reaches the device whenever writeback runs, which no test
+# controls, so an absent sync permits loss and does not make it certain.
+# Only "draft, durable" promises one outcome. For the rest the test asserts
+# the outcome is one the syncs permit, never that a particular one occurred.
+PERMITTED = {
+    # nothing synced: either version, or the truncated file part-written
+    "direct, no sync": {"old", "new", "partial"},
+    "rename, no sync": {"old", "new", "partial"},
+    "draft, not durable": {"old", "new", "partial"},
+    # the file synced, the rename not: the rename is lost or kept whole
+    "rename, file synced": {"old", "new"},
+    # the full protocol: file, publication, directory
+    "draft, durable": {"new"},
+    # the directory synced commits the name, never the file's data: the new
+    # name, its contents written back or not
+    "draft replacing, directory synced only": {"new", "partial"},
+    "draft creating, directory synced only": {"new", "partial"},
 }
 
 
@@ -164,19 +169,48 @@ def outcome(got: bytes | None) -> str:
     )
 
 
+def kind(o: str) -> str:
+    return "partial" if o.startswith("partial") else o
+
+
 @pytest.mark.parametrize("name", list(PROTOCOLS))
-def test_what_survives_a_crash_just_after_publication(tmp_path, name):
-    assert outcome(crash_after(tmp_path, PROTOCOLS[name])) == LEFT[name]
+def test_a_crash_leaves_only_what_the_protocol_permits(tmp_path, name):
+    o = outcome(crash_after(tmp_path, PROTOCOLS[name]))
+    assert kind(o) in PERMITTED[name], o
 
 
-def test_without_auto_da_alloc_replacing_loses_the_contents_too(tmp_path):
-    # What hid the counterexample for "replace": with ext4's auto_da_alloc
-    # off, a publication made durable by the directory's sync alone leaves
-    # the name with 0 bytes, as creating does. Both syncs are needed: the
-    # file's, then the directory's; the heuristic is no part of the protocol.
-    got = crash_after(
-        tmp_path,
-        PROTOCOLS["draft replacing, directory synced only"],
-        ",noauto_da_alloc",
+# The counterexamples, as demonstrations: each shows a loss *can* happen, so
+# each tries a few times and requires it once, not every time (writeback may
+# reach the device first; crash_after syncs everything else just before the
+# protocol, which makes that rare). On this machine each loss occurred in
+# every attempt of 10, 3 and 5 (journal §2).
+ATTEMPTS = 5
+
+
+def demonstrate(tmp_path: Path, name: str, options: str = "") -> list[str]:
+    seen = []
+    for i in range(ATTEMPTS):
+        d = tmp_path / str(i)
+        d.mkdir()
+        seen.append(outcome(crash_after(d, PROTOCOLS[name], options)))
+        if seen[-1] == "partial (0 bytes)":
+            break
+    return seen
+
+
+def test_a_name_made_durable_without_its_contents_can_be_left_empty(tmp_path):
+    # Creating, with only the directory synced: the name survives the crash
+    # and its contents need not. Both syncs are needed.
+    seen = demonstrate(tmp_path, "draft creating, directory synced only")
+    assert "partial (0 bytes)" in seen, seen
+
+
+def test_without_auto_da_alloc_replacing_can_lose_the_contents_too(tmp_path):
+    # What hid the counterexample for "replace": ext4's auto_da_alloc flushes
+    # a file's data when it is renamed over another. With it off, replacing
+    # with only the directory synced can leave the name empty, as creating
+    # does. The heuristic is no part of the protocol.
+    seen = demonstrate(
+        tmp_path, "draft replacing, directory synced only", ",noauto_da_alloc"
     )
-    assert outcome(got) == "partial (0 bytes)"
+    assert "partial (0 bytes)" in seen, seen

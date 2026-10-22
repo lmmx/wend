@@ -176,7 +176,7 @@ timeless guarantee*.
 
 ## 6. Whether `Held` gives what its type claims
 
-**[Measured]** From `tests/events_test.py` (13 tests) and `tests/held_test.py`:
+**[Measured]** From `tests/events_test.py` (14 tests) and `tests/held_test.py`:
 
 | after the hold | the held input |
 |---|---|
@@ -185,12 +185,24 @@ timeless guarantee*.
 | another name is linked to it | the same object, now with two names; the one-name rule held at the open, not since |
 | its `path` is opened again after a replacement | another object: `path` is only the name it was opened by |
 | an outside file is swapped in as a hard link, between the check and the hold | refused: the hold judges the object on its own descriptor |
+| a directory is swapped in, between the check and the hold | refused: the hold judges the kind on its own descriptor (added after the run model's specification; before, the step was entered) |
 | it is sealed, then the file is rewritten | the sealed copy keeps the original contents; writing to it is refused (`EPERM`) |
 
-**[Fact]** `Held[Literal["read"], IsFile]` claims a regular file (an inode's type never
-changes) and read access (the descriptor was opened read-only). Both hold while it is
-open. It claims nothing about contents, size, names, or the number of names. A
+**[Fact]** `Held[Literal["read"], IsFile]` claims a regular file and read access. The
+hold judges both on its own descriptor: it refuses anything but a regular file, and
+the descriptor was opened read-only. An inode's type never changes, so both hold while
+it is open. It claims nothing about contents, size, names, or the number of names. A
 function that needs unchanging contents asks for `Sealed`.
+
+> *Before:* "`Held[Literal["read"], IsFile]` claims a regular file (an inode's type never
+> changes) and read access (the descriptor was opened read-only). Both hold while it is
+> open." **[Refuted]** when `docs/SEMANTICS.md` §14 was checked against the code. The
+> hold judged confinement on its descriptor, and a directory is confined. So the kind
+> rested on the check of `File`, made through an earlier open. A directory swapped in
+> between the two opens was held, and the body was handed it, typed as a file
+> (`events_test::test_a_swap_between_the_check_and_the_hold_is_judged_at_the_hold`,
+> the directory case, which fails on the earlier code). The type's claim was unchanged;
+> what was missing was the judgement that makes it true.
 
 **[Measured]** Three mutants of the layer, each rejected:
 
@@ -199,8 +211,9 @@ function that needs unchanging contents asks for `Sealed`.
 | `known` always true | the invalidation test |
 | no write seal | the sealed-copy test |
 | inputs held without the object judgement | only the swap-between-check-and-hold test |
+| inputs held without the kind judgement | only that test's directory case |
 
-The last one survived at first. The check of `Readable` already judges the object, so
+The object judgement's mutant survived at first. The check of `Readable` already judges the object, so
 the hold's own judgement matters only in the race between the two opens, which no
 test produced until one was written for it.
 

@@ -132,16 +132,18 @@ def test_a_descriptor_open_for_writing_cannot_hold_one(tmp_path):
 
 
 def test_a_filesystem_whose_files_change_without_writers_is_refused(tmp_path):
-    # The kernel grants a lease on /proc/uptime, which changes with no writer
-    # at all, its size always 0: the lease would vouch for a copy no writer
-    # disturbed, which is not one version. Leases refuses what it has not
-    # shown to change only through its files.
+    # Before Linux 7.0 the kernel grants a lease on /proc/uptime, which changes
+    # with no writer at all, its size always 0: the lease would vouch for a
+    # copy no writer disturbed, which is not one version. Leases refuses what
+    # it has not shown to change only through its files. The refusal is its
+    # own, before asking: from 7.0 the kernel refuses too, with the same errno.
     fd = os.open("/proc/uptime", os.O_RDONLY)
     try:
         assert fresh.filesystem(fd) not in fresh.LEASABLE
         with pytest.raises(Unleasable) as e:
             Leases([fd])
         assert e.value.errno == errno.EINVAL
+        assert "need not exclude every change" in str(e.value.strerror)
         assert lease_of(fd) == "none"
     finally:
         os.close(fd)
@@ -154,12 +156,16 @@ def test_a_filesystem_whose_files_change_without_writers_is_refused(tmp_path):
 
 
 KERNEL_LEASES_PROC = """
-    import fcntl, json, os, signal, time
+    import errno, fcntl, json, os, signal, time
     signal.signal(signal.SIGIO, signal.SIG_IGN)
     # the process's own status: its own, so leasable without privilege; it
     # counts the context switches a sleep makes
     fd = os.open("/proc/self/status", os.O_RDONLY)
-    fcntl.fcntl(fd, 1024, fcntl.F_RDLCK)
+    try:
+        fcntl.fcntl(fd, 1024, fcntl.F_RDLCK)
+    except OSError as e:
+        print(json.dumps({"refused": errno.errorcode.get(e.errno, str(e.errno))}))
+        raise SystemExit(0)
     a = os.pread(fd, 4096, 0)
     time.sleep(0.05)
     b = os.pread(fd, 4096, 0)
@@ -168,10 +174,22 @@ KERNEL_LEASES_PROC = """
 """
 
 
-def test_the_kernel_leases_a_proc_file_that_changes_under_the_lease():
+# Up to Linux 6.19 the kernel leases a file whose filesystem has no
+# ->setlease, through generic_setlease; from 7.0 a filesystem must opt in,
+# and procfs does not (kernel_setlease returns -EINVAL). Which one a kernel
+# does is its own, since a vendor kernel may carry either, so both are
+# permitted. A lease granted on a file that then holds still is not: the
+# status changes across the sleep (docs/journal/2026-10-22-leases.md §3.4).
+PROC_LEASE = (
+    {"refused": "EINVAL"},
+    {"leased": True, "size": 0, "changed": True},
+)
+
+
+def test_a_proc_file_is_refused_a_lease_or_changes_under_it():
     r = host(KERNEL_LEASES_PROC)
     assert r.returncode == 0, r.stderr
-    assert json.loads(r.stdout) == {"leased": True, "size": 0, "changed": True}
+    assert json.loads(r.stdout) in PROC_LEASE
 
 
 def test_leases_are_all_or_none(files):

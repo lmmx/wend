@@ -140,7 +140,7 @@ def test_a_bind_mount_is_one_directory():
                 )
                 results.append(stale(t))
         finally:
-            subprocess.run(["umount", str(r / "m")])
+            subprocess.run(["umount", "-l", str(r / "m")])
         by_string, by_entry = results
         assert by_string and not by_entry
 
@@ -160,7 +160,7 @@ def test_deleting_a_directory_reached_through_a_bind_mount():
             assert not stale(t)
             assert not t.knowledge.knows("exists", resolve(str(r / "m" / "x")))
         finally:
-            subprocess.run(["umount", str(r / "m")])
+            subprocess.run(["umount", "-l", str(r / "m")])
 
 
 def test_facts_about_a_missing_path_are_facts_about_its_first_missing_entry():
@@ -471,7 +471,7 @@ def test_a_missing_paths_creation_is_judged_where_the_check_looks():
             with pytest.raises(ConditionError):
                 drive(t, [("make", Step(x=P(str(b.path)).requires(Creatable)), None)])
         finally:
-            subprocess.run(["umount", str(r / "far")])
+            subprocess.run(["umount", "-l", str(r / "far")])
 
 
 def test_a_symlinked_stage_directory_is_flagged():
@@ -589,7 +589,7 @@ def test_beneath_refuses_a_mount_crossing_and_dotdot(tmp_path):
             assert not resolve(str(tmp_path / "m" / "x")).alias_free(str(tmp_path))
             os.close(b.open("d/x"))
         finally:
-            subprocess.run(["umount", str(tmp_path / "m")])
+            subprocess.run(["umount", "-l", str(tmp_path / "m")])
 
 
 def test_a_held_file_is_checked_and_used_as_one(tmp_path):

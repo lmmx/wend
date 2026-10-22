@@ -59,6 +59,7 @@ __all__ = [
     "IdentityKnowledge",
     "IdentityTracker",
     "Trace",
+    "openat2",
     "resolve",
 ]
 
@@ -370,6 +371,21 @@ class _OpenHow(ctypes.Structure):
     ]
 
 
+_syscall = ctypes.CDLL(None, use_errno=True).syscall
+
+
+def openat2(dirfd: int, path: str, flags: int, resolve: int, mode: int = 0o666) -> int:
+    """``openat2(2)``: ``path`` opened relative to ``dirfd`` under ``resolve``."""
+    how = _OpenHow(flags | os.O_CLOEXEC, mode if flags & os.O_CREAT else 0, resolve)
+    fd = _syscall(
+        _SYS_OPENAT2, dirfd, os.fsencode(path), ctypes.byref(how), ctypes.sizeof(how)
+    )
+    if fd < 0:
+        e = ctypes.get_errno()
+        raise OSError(e, os.strerror(e), path)
+    return fd
+
+
 class Beneath:
     """A directory, and paths below it opened as ``openat2`` (Linux 5.6)
     resolves them with ``RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS |
@@ -384,25 +400,21 @@ class Beneath:
     def __init__(self, root: str) -> None:
         self.root = root
         self.fd = os.open(root, os.O_PATH | os.O_DIRECTORY)
-        self._syscall = ctypes.CDLL(None, use_errno=True).syscall
 
-    def open(self, rel: str, flags: int = os.O_RDONLY, mode: int = 0o666) -> int:
+    def open(
+        self,
+        rel: str,
+        flags: int = os.O_RDONLY,
+        mode: int = 0o666,
+        *,
+        at: int | None = None,
+    ) -> int:
+        """``rel`` below the root (or below the directory ``at``, itself
+        opened beneath the root)."""
         if rel.startswith("/") or ".." in rel.split("/"):
             raise ValueError(f"{rel!r} is not a path below the root")
-        how = _OpenHow(
-            flags | os.O_CLOEXEC, mode if flags & os.O_CREAT else 0, self.RESOLVE
-        )
-        fd = self._syscall(
-            _SYS_OPENAT2,
-            self.fd,
-            os.fsencode(rel),
-            ctypes.byref(how),
-            ctypes.sizeof(how),
-        )
-        if fd < 0:
-            e = ctypes.get_errno()
-            raise OSError(e, os.strerror(e), rel)
-        return fd
+        dirfd = self.fd if at is None else at
+        return openat2(dirfd, rel or ".", flags, self.RESOLVE, mode)
 
     def stat(self, rel: str) -> os.stat_result:
         fd = self.open(rel, os.O_PATH)

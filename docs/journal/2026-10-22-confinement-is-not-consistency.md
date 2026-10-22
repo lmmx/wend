@@ -13,7 +13,8 @@ entries; this one keeps the argument.
 Labels: **[Fact]**, **[Measured]**, **[Proven]**, **[Interpretation]**,
 **[Conjecture]**, **[Proposal]**.
 
-> **Audit, 2026-10-22.** The text below is kept as written. [The addendum](#addendum-audit-2026-10-22)
+> **Audit, 2026-10-22.** Corrected claims are now revised in place, with their earlier
+> wording kept beside each, marked *Before*. [The addendum](#addendum-audit-2026-10-22)
 > corrects §2 (what `RESOLVE_NO_XDEV` buys; the FIFO did not pass every check), marks
 > §7's narrowed claim as an extension of the owner's sentence, and points to the later
 > entries that answered §3–§4's open questions. One of those answers changes this
@@ -92,19 +93,32 @@ so each object opened is judged on its descriptor, which no later rename can red
 | **a FIFO planted at an input's name** | blocked indefinitely | **first version: blocked**; now refused at once |
 
 **[Fact]** The last two rows are counterexamples to the first confined executor, found
-in testing the owner's caution that confinement is not identity. Each passed every
-check: the path really is beneath the root, with no link and no mount. The kernel's
+in testing the owner's caution that confinement is not identity. The hard link passed
+every check: the path really is beneath the root, with no link and no mount. The FIFO
+did not: its probe checked only `exists` and `read`, and the pipelines' read role
+declares `File`, which refuses a FIFO in both executors. It is a hazard when the plan
+elides `File`, or when a FIFO is swapped in after the check (addendum A.1). The kernel's
 resolution flags constrain *paths*; the objects at the end of them need their own
 judgement.
 
+> *Before:* "Each passed every check: the path really is beneath the root, with no link
+> and no mount." **[Refuted]** for the FIFO by the audit (addendum A.1): its probe
+> checked only `exists` and `read`, and `File` refuses a FIFO. Revised here in place
+> after the owner's review.
+
 **[Fact]** Mutating each defence shows what each buys:
-- `RESOLVE_BENEATH` alone stops every *escape* tried;
+- `RESOLVE_BENEATH` stops links that leave the root, and `NO_XDEV` stops mounts that
+  do (addendum A.1);
 - `NO_SYMLINKS` and `NO_XDEV` guard the plan's lexical identity inside the root;
 - the one-name rule guards against hard-linked objects;
 - the kind rule guards against FIFOs;
 - non-blocking opens keep the kind rule reachable (with blocking opens, the suite hung
   on the FIFO);
 - truncating after the judgement keeps a refused file intact.
+
+> *Before:* "`RESOLVE_BENEATH` alone stops every *escape* tried" **[Refuted]** by the
+> audit (addendum A.1): without `RESOLVE_NO_XDEV`, a bind mount below the root leads
+> outside, and the mutant escapes. Revised here in place after the owner's review.
 
 Every mutant is rejected by a test.
 
@@ -126,6 +140,9 @@ Every mutant is rejected by a test.
 | **Freshness of checked facts** | a fact checked earlier still holds | a closed world, not enforceable; immutable objects; re-checking | any other writer | dataflow only; kernel immutability probed |
 | **Consistency across steps** | every step sees one state of the tree | nothing here | — | open |
 | **Durable guarantees of held objects** | facts that survive whatever happens to names | descriptor semantics | content, size, names | tested (below) |
+
+Here *durable* means persisting across changes of names. In #114 it means surviving a
+crash; the two are unrelated (addendum A.1).
 
 **[Measured]** What a held descriptor keeps, on this kernel (ext4,
 `tests/held_test.py`):
@@ -156,9 +173,14 @@ It does not freeze contents, size, or the object's names.
 | `O_TMPFILE` then `linkat` | tested | an output nameless until whole, then published |
 | `renameat2(RENAME_NOREPLACE)` | tested | publish without clobbering (`EEXIST`) |
 | `renameat2(RENAME_EXCHANGE)` | probed | swap two names atomically |
-| read lease (`F_SETLEASE`) | probed: granted | per fcntl(2), a writer's open is delayed and the holder notified: notice, not prevention |
+| read lease (`F_SETLEASE`) | probed: granted | per fcntl(2), a writer's open is delayed and the holder notified: notice, not prevention, of a writer who arrives later; and the lease is refused while any process has the file open for writing, so together they give an interval in which no writer exists (addendum A.2; synthesis §4.2) |
 | reflink snapshot (`FICLONE`) | probed: `ENOTSUP` on ext4 | a copy-on-write snapshot of contents |
 | fs-verity | probed: `ENOTSUP` here | contents read-only and verified for ever |
+
+> *Before:* "per fcntl(2), a writer's open is delayed and the holder notified: notice,
+> not prevention" **[Narrowed]** by the audit (addendum A.2): that holds of a writer who
+> arrives later, and it missed that a read lease is refused while any process has the
+> file open for writing. Revised here in place after the owner's review.
 
 ## 4. What remains unsolved
 
@@ -242,11 +264,24 @@ execution has to provide. They form one architecture:
 
 **[Fact]** The confined-runs entry first answered "can symbolic overlap reasoning
 support sound pre-execution analysis of actual pipelines?" with *yes, for atoms of
-names*. That overstated it. What the evidence supports is narrower:
+names*. That overstated it. What the evidence supports is narrower, in the owner's
+sentence:
 
 > Confined execution prevented the tested path-resolution attacks from escaping the
-> workspace, and the tested object attacks too once objects were judged on their
-> descriptors, while preserving the behaviour of honest runs.
+> workspace while preserving the behaviour of honest runs.
+
+This entry extends it: the tested object attacks were prevented too, once objects were
+judged on their descriptors (addendum A.1). "Honest runs" also needs a precondition
+since objects are judged. An honest tree with a multiply linked file or a special file
+below the root is refused confined and read plain (`2026-10-22-confined-runs.md`,
+addendum A.2).
+
+> *Before:* "Confined execution prevented the tested path-resolution attacks from
+> escaping the workspace, and the tested object attacks too once objects were judged on
+> their descriptors, while preserving the behaviour of honest runs." **[Narrowed]** by
+> the audit (addendum A.1): the clause on object attacks extends the owner's sentence
+> and was not marked as one, and honest runs need a precondition. Revised here in place
+> after the owner's review.
 
 The plan's conclusions remain facts about the past (*it was true*). Confinement adds
 *which path*, and holding adds *which object*. *It remains true* is still provided only

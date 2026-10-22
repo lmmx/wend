@@ -54,6 +54,8 @@ KNOWLEDGE = "tests/knowledge_test.py"
 PUBLISH_TEST = "tests/publish_test.py"
 CONSISTENCY = "tests/consistency_test.py"
 EVENTS_TEST = "tests/events_test.py"
+FAMILIES_SRC = "src/wend/_experimental/families.py"
+FAMILIES = "tests/families_test.py"
 
 
 @dataclass(frozen=True)
@@ -407,6 +409,106 @@ MUTANTS = [
     ),
     # -- aliasing (2026-10-22-aliasing.md §8, addendum A.2) -------------------
     Mutant(
+        "families: prefixes cancelled even under different heads",
+        FAMILIES_SRC,
+        "    if not must_equal(ha, hb) or isinstance(a.head, Deferred):\n",
+        "    if isinstance(a.head, Deferred):\n",
+        (FAMILIES,),
+        killed_by=("test_what_the_analysis_knows_holds_and_what_it_refutes_fails",),
+    ),
+    Mutant(
+        "families: relation is coincidence only, not above or below",
+        FAMILIES_SRC,
+        '    above or below it."""\n    if must_equal(a, b):\n',
+        '    above or below it."""\n    return coincide(a, b)\n    if must_equal(a, b):\n',
+        (FAMILIES,),
+        killed_by=("test_what_the_analysis_knows_holds_and_what_it_refutes_fails",),
+    ),
+    Mutant(
+        "families: a child's existence derived from its parent's",
+        FAMILIES_SRC,
+        "                    must_equal(p, e) for p in _parents(f.expr)\n",
+        "                    must_equal(p, f.expr) for p in _parents(e)\n",
+        (FAMILIES,),
+        killed_by=("test_what_the_analysis_knows_holds_and_what_it_refutes_fails",),
+    ),
+    Mutant(
+        "families: must-equal by head and length only",
+        FAMILIES_SRC,
+        "    return a.pattern == b.pattern and _defaults(a) == _defaults(b)\n",
+        "    return PathExpr(a.head, ()).pattern == PathExpr(b.head, ()).pattern and "
+        "len(a.parts) == len(b.parts)\n",
+        (FAMILIES,),
+        killed_by=("test_what_the_analysis_knows_holds_and_what_it_refutes_fails",),
+    ),
+    Mutant(
+        "families: independence ignores the other step's reads",
+        FAMILIES_SRC,
+        '            for e in b.paths.values():\n                if relation(e, m) != "no":\n',
+        "            for e in b.paths.values():\n"
+        "                if not e.declares.verbs & MUTATING:\n"
+        "                    continue\n"
+        '                if relation(e, m) != "no":\n',
+        (FAMILIES,),
+        killed_by=("test_adjacent_independent_steps_commute",),
+    ),
+    Mutant(
+        "families: forget treats MAYBE as NO",
+        FAMILIES_SRC,
+        '            if relation(f.expr, m) != "no":\n                continue\n',
+        '            if relation(f.expr, m) == "yes":\n                continue\n',
+        (FAMILIES,),
+        killed_by=("test_a_mutation_related_only_by_maybe_still_forgets",),
+    ),
+    Mutant(
+        "families: must-equal ignores defaults",
+        FAMILIES_SRC,
+        "    return a.pattern == b.pattern and _defaults(a) == _defaults(b)\n",
+        "    return a.pattern == b.pattern\n",
+        (FAMILIES,),
+        killed_by=("test_different_defaults_are_different_paths",),
+    ),
+    Mutant(
+        "families: learn nothing",
+        FAMILIES_SRC,
+        "                self.facts.append(FamilyFact(a, _plain(e)))\n",
+        "                pass\n",
+        (FAMILIES,),
+        killed_by=(
+            "test_the_worked_pipeline_knows_refutes_and_commutes_what_its_table_shows",
+        ),
+    ),
+    Mutant(
+        "families: forget ignores made parents",
+        FAMILIES_SRC,
+        "                and _may_be_below(f.expr, made)\n",
+        "                and False\n",
+        (FAMILIES,),
+        killed_by=(
+            "test_making_a_path_forgets_creatability_below_the_parents_it_may_make",
+        ),
+    ),
+    Mutant(
+        "families: independence ignores made parents",
+        FAMILIES_SRC,
+        '                if e.declares.requires & {"create", "write"} and _may_be_below(e, made):\n',
+        "                if False:\n",
+        (FAMILIES,),
+        killed_by=("test_independence_sees_the_parents_a_creation_may_make",),
+    ),
+    Mutant(
+        "families: made parents bounded where none is known to exist",
+        FAMILIES_SRC,
+        "            out.append(p)\n        return None\n",
+        "            out.append(p)\n        return out\n",
+        (FAMILIES,),
+        survives=(
+            "no construction was found in which the bounded and unbounded readings "
+            "differ; overlap answers coarsely for head parameters, which masks it "
+            "(families addendum A.1)"
+        ),
+    ),
+    Mutant(
         "aliasing: creation keyed by the first missing entry",
         IDENTITY,
         '    if atom in ("create", "write") and t.obj is None:\n',
@@ -415,7 +517,131 @@ MUTANTS = [
         # equivalent once #111 is merged: then expected to survive
         killed_by=("test_a_missing_paths_creation_is_judged_where_the_check_looks",),
     ),
+    Mutant(
+        "aliasing: absent follows a final symlink",
+        IDENTITY,
+        '        return ("l", t.lfinal) if t.lfinal is not None else ("d", t.is_dir)\n',
+        '        return ("f", t.final) if t.final is not None else ("d", t.is_dir)\n',
+        (ALIASING,),
+        killed_by=("test_absent_does_not_follow_a_final_symlink",),
+    ),
+    Mutant(
+        "aliasing: a path below a file is the file",
+        IDENTITY,
+        "            below = DirEntry(_ident(os.stat(cand)), todo[0])\n",
+        "            return trace(final, None, todo)\n"
+        "            below = DirEntry(_ident(os.stat(cand)), todo[0])\n",
+        (ALIASING,),
+        killed_by=(
+            "test_below_a_file_is_not_the_file",
+            "test_keyed_by_what_checks_read_every_known_atom_holds",
+        ),
+    ),
+    Mutant(
+        "aliasing: a final symlink not followed",
+        IDENTITY,
+        "        if st.S_ISLNK(s.st_mode):\n",
+        "        if st.S_ISLNK(s.st_mode) and todo:\n",
+        (ALIASING,),
+        killed_by=(
+            "test_keyed_by_what_checks_read_every_known_atom_holds",
+            "test_an_output_made_as_a_symlink_follows_its_target",
+        ),
+    ),
+    Mutant(
+        "aliasing: no entry clause",
+        IDENTITY,
+        "    if m.final is not None and m.final in f.entries:\n",
+        "    if False:\n",
+        (ALIASING,),
+        killed_by=(
+            "test_keyed_by_what_checks_read_every_known_atom_holds",
+            "test_with_aliases_eliding_known_checks_changes_nothing",
+        ),
+    ),
+    Mutant(
+        "aliasing: no directory clause",
+        IDENTITY,
+        "    return m.is_dir is not None and m.is_dir in f.dirs\n",
+        "    return False\n",
+        (ALIASING,),
+        killed_by=("test_deleting_a_directory_reached_through_a_bind_mount",),
+    ),
+    Mutant(
+        "aliasing: no object clause",
+        IDENTITY,
+        "    if m.obj is not None and m.obj == f.obj:\n",
+        "    if False:\n",
+        (ALIASING,),
+        killed_by=(
+            "test_two_names_of_one_object_are_forgotten_together",
+            "test_hard_links_keep_the_atoms_and_break_content",
+        ),
+    ),
+    Mutant(
+        "aliasing: alias_free ignores symlinks",
+        IDENTITY,
+        "        if any(x.startswith(below) for x in self.links):\n",
+        "        if False:\n",
+        (ALIASING,),
+        killed_by=(
+            "test_the_kernel_agrees_with_the_model_on_what_is_alias_free",
+            "test_on_an_alias_free_run_string_keyed_knowledge_is_exact",
+        ),
+    ),
+    Mutant(
+        "aliasing: alias_free ignores ..",
+        IDENTITY,
+        "        if any(x == r or x.startswith(below) for x in self.ups):\n",
+        "        if False:\n",
+        (ALIASING,),
+        killed_by=(
+            "test_the_kernel_agrees_with_the_model_on_what_is_alias_free",
+            "test_on_an_alias_free_run_string_keyed_knowledge_is_exact",
+        ),
+    ),
+    Mutant(
+        "aliasing: alias_free ignores mounts",
+        IDENTITY,
+        '        return "*" not in mounts and not any(\n',
+        "        return True or not any(\n",
+        (ALIASING,),
+        killed_by=(
+            "test_a_bind_mount_is_one_directory",
+            "test_beneath_refuses_a_mount_crossing_and_dotdot",
+        ),
+    ),
+    Mutant(
+        "aliasing: alias_free takes the root as spelled",
+        IDENTITY,
+        "        r = os.path.realpath(root)\n",
+        "        r = root\n",
+        (ALIASING,),
+        killed_by=(
+            "test_alias_freedom_is_judged_below_the_root_however_it_is_spelled",
+        ),
+    ),
     # -- publication and consistency (2026-10-22-publication-and-consistency.md)
+    Mutant(
+        "publish: a draft has a name from the start (no O_TMPFILE)",
+        PUBLISH,
+        '                ".", os.O_TMPFILE | os.O_WRONLY | os.O_CLOEXEC, 0o644, dir_fd=self.dirfd\n',
+        '                ".draft", os.O_CREAT | os.O_WRONLY | os.O_CLOEXEC, 0o644, dir_fd=self.dirfd\n',
+        (PUBLISH_TEST, CONSISTENCY),
+        killed_by=(
+            "test_what_a_writer_killed_halfway_leaves_behind",
+            "test_a_failed_draft_leaves_nothing",
+            "test_a_derivation_names_what_changed_and_what_superseded_it",
+        ),
+    ),
+    Mutant(
+        "publish: a derivation ignores its output",
+        PUBLISH,
+        "        if not self.output.current(io):\n",
+        "        if False:\n",
+        (CONSISTENCY,),
+        killed_by=("test_a_derivation_names_what_changed_and_what_superseded_it",),
+    ),
     Mutant(
         "publish: exchange ignores expect",
         PUBLISH,

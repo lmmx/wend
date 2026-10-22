@@ -327,6 +327,22 @@ def _take(fds: Sequence[int], timeout: float) -> str:
     return lines[0]
 
 
+def _copy(fd: int) -> tuple[Fingerprint, bytes]:
+    """The contents of ``fd``, read once, and its fingerprint with the digest
+    of exactly those bytes: an observation and a copy taken by separate reads
+    can describe two versions."""
+    s = os.fstat(fd)
+    chunks, off = [], 0
+    while chunk := os.pread(fd, 1 << 20, off):
+        chunks.append(chunk)
+        off += len(chunk)
+    data = b"".join(chunks)
+    digest = hashlib.sha256(data).hexdigest()
+    return Fingerprint(
+        (s.st_dev, s.st_ino), s.st_size, s.st_mtime_ns, s.st_ctime_ns, digest
+    ), data
+
+
 def collect(
     io: Confined,
     rels: Sequence[str],
@@ -356,9 +372,8 @@ def collect(
         content = observer in ("digest", "meta+digest")
         first, copies = [], {}
         for i, (r, fd) in enumerate(zip(rels, fds, strict=True)):
-            fp = fingerprint(fd, content=True)
+            fp, data = _copy(fd)
             first.append(fp)
-            data = os.pread(fd, fp.size, 0)
             copies[r] = Sealed(data, fp.ident)
             if between:
                 between("first", i)

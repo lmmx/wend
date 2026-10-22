@@ -2,6 +2,7 @@
 writing the final name directly, writing a temporary name and renaming it,
 and a nameless draft published in one system call."""
 
+import errno
 import os
 import shutil
 import signal
@@ -323,3 +324,66 @@ def test_a_failed_draft_leaves_nothing(root):
         io.close()
     assert os.listdir(root / "out") == []
     shutil.rmtree(root / "out")
+
+
+# -- the cells of the journal's §2 table that had no test (its audit, A.3) -------
+
+
+def test_a_link_put_before_the_write_sends_a_direct_write_outside_and_refuses_a_draft(
+    tmp_path,
+):
+    root, outside = tmp_path / "root", tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    (root / "out").symlink_to(outside)  # out/ swapped before the write began
+    direct(root, pause=0)
+    assert (outside / "final.csv").read_bytes() == WHOLE  # written outside
+    (outside / "final.csv").unlink()
+    io = Confined(str(root))
+    try:
+        # its directory is opened beneath the root, with no symlinks: openat2
+        # refuses the link with ELOOP (a plain OSError here, where the check
+        # path raises ContainmentError)
+        with pytest.raises(OSError) as e:
+            Draft(io, "out")
+        assert e.value.errno == errno.ELOOP
+    finally:
+        io.close()
+    assert list(outside.iterdir()) == []
+
+
+def test_a_temporary_names_rename_clobbers_a_file_made_after_the_check(root):
+    final = root / "out" / "final.csv"
+    assert not final.exists()  # the check
+    final.write_bytes(b"theirs")  # another writer, after it
+    temp_name(root, pause=0)
+    assert final.read_bytes() == WHOLE  # rename replaced theirs
+
+
+def test_temporary_name_writers_interleaved_each_land_whole_if_their_names_differ(
+    root,
+):
+    final = root / "out" / "final.csv"
+    a, b = b"A" * 2048, b"B" * 2048
+    # one temporary name, opened exclusively as temp_name does: the second
+    # writer cannot start while the first is writing
+    tmp = root / "out" / ".final.csv.tmp"
+    fa = open(tmp, "xb")
+    fa.write(a[:1024])
+    with pytest.raises(FileExistsError):
+        open(tmp, "xb")
+    fa.close()
+    tmp.unlink()
+    # a temporary name each: interleaved, and each lands whole
+    ta, tb = root / "out" / ".a.tmp", root / "out" / ".b.tmp"
+    fa = open(ta, "xb")
+    fa.write(a[:1024])
+    fa.flush()
+    with open(tb, "xb") as fb:
+        fb.write(b)
+    os.rename(tb, final)
+    assert final.read_bytes() == b
+    fa.write(a[1024:])
+    fa.close()
+    os.rename(ta, final)
+    assert final.read_bytes() == a  # whole; the last renamed wins

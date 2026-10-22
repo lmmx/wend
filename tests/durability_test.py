@@ -103,7 +103,7 @@ PROTOCOLS = {
 }
 
 
-def crash_after(tmp_path: Path, protocol) -> bytes | None:
+def crash_after(tmp_path: Path, protocol, options: str = "") -> bytes | None:
     img, mnt, copy, seen = (
         tmp_path / "fs.img",
         tmp_path / "mnt",
@@ -114,7 +114,7 @@ def crash_after(tmp_path: Path, protocol) -> bytes | None:
     seen.mkdir()
     subprocess.run(["truncate", "-s", "64M", str(img)], check=True)
     subprocess.run(["mkfs.ext4", "-q", "-F", str(img)], check=True)
-    if not _ok("mount", "-o", "loop,commit=60", str(img), str(mnt)):
+    if not _ok("mount", "-o", "loop,commit=60" + options, str(img), str(mnt)):
         pytest.skip("cannot loop-mount here")
     try:
         (mnt / "out").mkdir()
@@ -135,10 +135,25 @@ def crash_after(tmp_path: Path, protocol) -> bytes | None:
         subprocess.run(["umount", str(seen)], check=True)
 
 
-@pytest.mark.parametrize("name", list(PROTOCOLS))
-def test_what_survives_a_crash_just_after_publication(tmp_path, name):
-    got = crash_after(tmp_path, PROTOCOLS[name])
-    outcome = (
+# What each protocol left, on this kernel and ext4, the same in each of 10
+# runs (and 3 more with auto_da_alloc named). Only "draft, durable" is
+# promised by the protocol; the rest are asserted so that a change is seen.
+LEFT = {
+    "direct, no sync": "old",
+    "rename, no sync": "old",
+    "rename, file synced": "old",  # the rename itself was lost
+    "draft, not durable": "old",
+    "draft, durable": "new",
+    # ext4's auto_da_alloc flushes a file's data when it is renamed over
+    # another; see the test below for what remains without it
+    "draft replacing, directory synced only": "new",
+    # the counterexample: the name made durable, its contents not
+    "draft creating, directory synced only": "partial (0 bytes)",
+}
+
+
+def outcome(got: bytes | None) -> str:
+    return (
         "new"
         if got == NEW
         else "old"
@@ -147,13 +162,21 @@ def test_what_survives_a_crash_just_after_publication(tmp_path, name):
         if got is None
         else f"partial ({len(got)} bytes)"
     )
-    print(f"{name}: {outcome}")
-    if name == "draft, durable":
-        assert outcome == "new"  # the only protocol that promises it
-    elif name == "draft creating, directory synced only":
-        # The counterexample: the name was made durable, its contents not.
-        # (Replacing hides this on ext4, which flushes data on a rename over
-        # a file.) Both syncs are needed: the file's, then the directory's.
-        assert outcome == "partial (0 bytes)"
-    else:
-        assert outcome in ("new", "old", "missing") or outcome.startswith("partial")
+
+
+@pytest.mark.parametrize("name", list(PROTOCOLS))
+def test_what_survives_a_crash_just_after_publication(tmp_path, name):
+    assert outcome(crash_after(tmp_path, PROTOCOLS[name])) == LEFT[name]
+
+
+def test_without_auto_da_alloc_replacing_loses_the_contents_too(tmp_path):
+    # What hid the counterexample for "replace": with ext4's auto_da_alloc
+    # off, a publication made durable by the directory's sync alone leaves
+    # the name with 0 bytes, as creating does. Both syncs are needed: the
+    # file's, then the directory's; the heuristic is no part of the protocol.
+    got = crash_after(
+        tmp_path,
+        PROTOCOLS["draft replacing, directory synced only"],
+        ",noauto_da_alloc",
+    )
+    assert outcome(got) == "partial (0 bytes)"

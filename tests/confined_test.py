@@ -570,9 +570,28 @@ def test_writing_a_hard_linked_file_refuses_before_truncating(tmp_path):
 def test_a_planted_fifo_is_refused_at_once_and_blocks_a_plain_read(tmp_path):
     os.mkfifo(tmp_path / "x")
     io = Confined(str(tmp_path))
-    try:
-        with pytest.raises(ConditionError, match="neither a regular file"):
+    # In a thread with a deadline: an open that blocks (the "blocking opens"
+    # mutant) then fails this test in a second, instead of hanging the suite.
+    outcome: list[BaseException | None] = []
+
+    def confined_read() -> None:
+        try:
             io.read_bytes("x")
+            outcome.append(None)
+        except BaseException as e:
+            outcome.append(e)
+
+    t = threading.Thread(target=confined_read, daemon=True)
+    t.start()
+    t.join(1.0)
+    try:
+        if t.is_alive():
+            with open(tmp_path / "x", "wb"):  # release it, then fail
+                pass
+            t.join(1.0)
+            pytest.fail("the confined open blocked on the FIFO")
+        assert len(outcome) == 1 and isinstance(outcome[0], ConditionError)
+        assert "neither a regular file" in str(outcome[0])
     finally:
         io.close()
     t = threading.Thread(

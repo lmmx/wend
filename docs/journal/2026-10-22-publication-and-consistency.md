@@ -58,16 +58,28 @@ Labels: **[Fact]**, **[Measured]**, **[Proven]**, **[Interpretation]**,
 **[Measured]** Which observer sees which move of another writer (`tests/fresh_test.py`,
 each cell a test; Linux 6.18, ext4). ✓ means the change was seen.
 
-| another writer's move | metadata | contents | both | watch |
-|---|---|---|---|---|
-| same-size rewrite | ✓ | ✓ | ✓ | ✓ |
-| rewrite, then `mtime` restored with `utime` | ✓ (`ctime` moved) | ✓ | ✓ | ✓ |
-| change, then change back | ✓ | | ✓ | ✓ |
-| a new file renamed over the name | ✓ | ✓ | ✓ | ✓ |
-| a write through a hard link | ✓ | ✓ | ✓ | ✓ |
-| `mmap`, first write to a clean page | ✓ | ✓ | ✓ | |
-| `mmap`, write to an already dirty page | | ✓ | ✓ | |
-| `mmap`, dirty page changed and changed back | | | | |
+| another writer's move | metadata | contents | digest + identity | both | watch |
+|---|---|---|---|---|---|
+| same-size rewrite | ✓ | ✓ | ✓ | ✓ | ✓ |
+| rewrite, then `mtime` restored with `utime` | ✓ (`ctime` moved) | ✓ | ✓ | ✓ | ✓ |
+| change, then change back | ✓ | | | ✓ | ✓ |
+| a new file renamed over the name (the same bytes) | ✓ | | ✓ | ✓ | ✓ |
+| a write through a hard link | ✓ | ✓ | ✓ | ✓ | ✓ |
+| `mmap`, first write to a clean page | ✓ | ✓ | ✓ | ✓ | |
+| `mmap`, write to an already dirty page | | ✓ | ✓ | ✓ | |
+| `mmap`, dirty page changed and changed back | | | | | |
+
+**Revised in place, after the owner's review.** The table had one "contents" column,
+filled by an observer that also compared which object the name meant, and counted a
+refusal to open it as a change. It is now two columns:
+- **contents**: the bytes at the name, and nothing else;
+- **digest + identity**: what the harness had measured all along.
+
+A pure digest misses a new file with the same bytes renamed over the name; only identity
+sees it. It does see the hard-link write, because the bytes changed. (There the refusal
+was a second route to the same detection.)
+
+> *Before:* a single "contents" column, with ✓ for the rename and the hard link (A.3).
 
 **[Measured]** Timestamps here are fine-grained. In a probe on this machine, none of
 4,000 same-size rewrites left `(mtime, ctime)` unchanged, whether or not anyone looked
@@ -114,13 +126,21 @@ synced before publication and the directory after.
 |---|---|---|---|
 | a reader polling the name sees a partial file | **yes** | no | no |
 | the writer killed half way (`SIGKILL`) leaves | a partial file at the final name | an orphaned temporary file | **nothing** |
-| `out/` swapped for a link out of the root before the write | writes outside | writes outside (the temporary name is made by path) | refused (the directory is held beneath the root) |
+| `out/` swapped for a link out of the root before the write | writes outside | writes outside (the temporary name is made by path) | refused: `openat2` with no symlinks fails, `ELOOP` (a plain `OSError`, where the check path raises `ContainmentError`) |
 | `out/` moved, and a link put in its place, *during* the write | — | — | published into the held directory, wherever it now is; `at_path` is false |
 | another writer creates the name after our check | clobbered | clobbered (`rename` replaces) | `"create"` refuses (`EEXIST`) and their file survives |
-| two writers of one name, interleaved | **a file neither wrote** | each whole | each whole; the last published wins |
+| two writers of one name, interleaved | **a file neither wrote** | each whole, if their temporary names differ; with one temporary name opened exclusively, the second cannot start (`EEXIST`) | each whole; the last published wins |
 
 **[Measured]** Readers polling a name that 8 writers replaced 160 times saw only whole
 versions.
+
+**Revised in place, after the owner's review.** Four cells of the table were labelled
+[Measured] with no test (A.3). Each has one now, in `tests/publish_test.py`:
+- a direct write landing outside after a swap, and a draft refused;
+- a temporary name's `rename` clobbering a file made after the check;
+- temporary-name writers interleaving.
+
+The last refined its cell: "each whole" needs a temporary name per writer.
 
 **[Fact] The intended object, not the intended path.** Publication is into the directory
 *object* held when the draft was made. If another writer moves that directory, the
@@ -143,8 +163,9 @@ both needs coordination, such as a lock all writers take.
 devices).
 - **The setup.** An ext4 image is loop-mounted, committing its journal only every 60 s.
   The old version is synced first.
-- **The crash.** Straight after the publication, the image is copied without any sync.
-  The copy is mounted, replaying the journal. Three runs gave the same result:
+- **The crash.** Straight after the publication, the image is copied without any sync,
+  while it is still mounted. `e2fsck -p` replays the copy's journal, and the copy is
+  then mounted read-only. Ten runs gave the same result:
 
 | protocol | what the crash left |
 |---|---|
@@ -152,8 +173,21 @@ devices).
 | temporary name and `rename`, nothing synced | the old version |
 | temporary name and `rename`, the file synced | the old version: the rename itself was lost |
 | draft, published without syncs | the old version |
-| draft, published, *only the directory* synced, replacing | the new version (ext4 flushes data on a rename over a file) |
+| draft, published, *only the directory* synced, replacing | the new version, through ext4's `auto_da_alloc`; with `noauto_da_alloc`, **the name with 0 bytes** |
 | draft, published, *only the directory* synced, creating | **the name, with 0 bytes** |
+
+**Revised in place, after the owner's review.**
+- **Every row is asserted.** Before, two rows were asserted and any outcome accepted for
+  the rest, whose entries came from printed output (A.3). Each of the seven gave the
+  same outcome in 10 runs here, and in 3 more with `auto_da_alloc` named.
+- **The mechanism is tested, not presumed.** With `noauto_da_alloc`, the replacing row
+  loses its contents just as the creating row does
+  (`test_without_auto_da_alloc_replacing_loses_the_contents_too`). Both syncs are needed,
+  the file's and then the directory's. The heuristic is no part of the protocol.
+- **The replay is described as it was done.** Before, the text said the copy was
+  "mounted, replaying the journal". In fact `e2fsck -p` replays it, on a copy taken
+  while the image was mounted.
+- **Still never crashed:** `exchange` and `Generation.commit`.
 | draft, file synced, published, directory synced | **the new version** |
 
 **[Interpretation]** Publication was atomic in every case: old or new, never torn.
@@ -228,7 +262,9 @@ current generation in one `renameat2`.
   one generation of every file, while a commit happened between its reads. A reader
   going by name read `(A1, B2)`.
 - **Under a busy producer**, with 59 generations committed while 3 readers held and
-  read, no reader saw a mixture.
+  read, no reader saw a mixture. **Revised in place:** the test now has its control.
+  Under the same producer, 3 readers going by name see mixtures, in 5 of 5 runs here.
+  Without the control, a producer too slow to interleave would have passed too.
 - **Outputs published one by one**, each replaced whole, were seen half-updated.
 - **Reclaiming a generation a reader still holds** makes the reader's next read fail
   (`ENOENT`). It is never a wrong read, because a removed directory takes no new entries.
@@ -514,6 +550,26 @@ None of these steps appears above.
   change between the two is never scheduled.
 - **The mutation harness** lives in the session's scratch space, not the repository, and
   covered the publish, consistency and fresh tests only.
+
+**What became of each, after the owner's review:**
+- **The crash model:**
+  - every row asserted;
+  - `auto_da_alloc` tested;
+  - the replay described as done (§2);
+  - run as root in CI's privileged job (#115).
+
+  Not done: `exchange` and `Generation.commit` crashed; the "no file sync" mutant.
+- **The observer table:** split into contents and digest + identity (§1).
+- **The four cells:** tested (§2). One was refined: "each whole" needs a temporary name
+  per writer.
+- **The busy producer:** its control added (§3).
+- **`collect`: a defect, not only a gap.** **[Measured]** A change after the first
+  digest's read, undone before the second pass, gave a copy of a version no observation
+  saw, and `collect` reported it coherent.
+  `test_a_collect_observes_the_bytes_it_copies` schedules exactly that, and fails on the
+  earlier code. Now the first observation's digest is taken from the copied bytes
+  themselves.
+- **The harness:** `experiments/mutation/mutants.py` on #115.
 
 ### A.4 Cross-links
 

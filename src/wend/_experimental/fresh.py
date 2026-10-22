@@ -17,13 +17,22 @@ Three observers, none of which sees every change:
 "unchanged" means *unchanged as observed at the two moments*. `collect`
 is the double collect of the shared-memory snapshot literature, over
 files: sound only if the observer sees every change, which none here does.
+
+`Leases` is not an observer but an exclusion: a read lease is granted only
+while no process has the file open for writing (through a descriptor or a
+shared writable mapping), and any later open for writing breaks it. With
+``observer="lease"``, `collect` copies inside an interval in which no
+writer exists, which no observer can establish (see
+docs/journal/2026-10-22-synthesis.md §4).
 """
 
 from __future__ import annotations
 
 import ctypes
+import fcntl
 import hashlib
 import os
+import signal
 import struct
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -34,7 +43,16 @@ from .confined import Confined
 from .events import Sealed
 
 
-__all__ = ["Fingerprint", "Verdict", "Watch", "collect", "observe", "revalidate"]
+__all__ = [
+    "Busy",
+    "Fingerprint",
+    "Leases",
+    "Verdict",
+    "Watch",
+    "collect",
+    "observe",
+    "revalidate",
+]
 
 Verdict = Literal["unchanged", "changed", "replaced", "gone", "refused"]
 
@@ -146,7 +164,49 @@ class Watch:
 
 # -- several inputs at once ----------------------------------------------------
 
-Observer = Literal["meta", "digest", "meta+digest", "watch"]
+Observer = Literal["meta", "digest", "meta+digest", "watch", "lease"]
+
+F_SETSIG, F_SETLEASE, F_GETLEASE = 10, 1024, 1025
+
+
+class Busy(BlockingIOError):
+    """A process has the file open for writing: no lease, so no snapshot now."""
+
+
+class Leases:
+    """Read leases on open files, all or none. While `unbroken`, no process
+    has had any of them open for writing since they were taken, so their
+    contents could not change. Needs the files' owner or ``CAP_LEASE``, and
+    a filesystem with leases (local ones; not NFS). A writer is delayed, not
+    refused: its open waits until the lease is given up (or, after
+    ``/proc/sys/fs/lease-break-time`` seconds, broken by the kernel)."""
+
+    def __init__(self, fds: Sequence[int]) -> None:
+        self.fds: list[int] = []
+        try:
+            for fd in fds:
+                # A break is announced to the holder by a signal, SIGIO by
+                # default, whose default action ends the process. Announce
+                # it with one whose default is to ignore, then to no one:
+                # `unbroken` reads the break from the lease itself.
+                fcntl.fcntl(fd, F_SETSIG, signal.SIGURG)
+                try:
+                    fcntl.fcntl(fd, F_SETLEASE, fcntl.F_RDLCK)
+                except BlockingIOError:
+                    raise Busy("a process has it open for writing") from None
+                self.fds.append(fd)
+                fcntl.fcntl(fd, fcntl.F_SETOWN, 0)
+        except BaseException:
+            self.release()
+            raise
+
+    def unbroken(self) -> bool:
+        return all(fcntl.fcntl(fd, F_GETLEASE) == fcntl.F_RDLCK for fd in self.fds)
+
+    def release(self) -> None:
+        for fd in self.fds:
+            fcntl.fcntl(fd, F_SETLEASE, fcntl.F_UNLCK)
+        self.fds = []
 
 
 def collect(
@@ -161,11 +221,20 @@ def collect(
     between the two (a double collect). Were the observer to see every
     change, the copies would be the state of every input at one instant;
     ``between(phase, i)`` runs after each input in each phase, where another
-    writer can act."""
+    writer can act.
+
+    With ``observer="lease"`` nothing is inferred from observation: every
+    input is leased before the first copy (`Busy` if any has a writer), and
+    the copies are coherent if every lease is unbroken after the last check
+    and each name still means the object copied."""
     fds = [io._open(r, os.O_RDONLY) for r in rels]
-    watch = Watch(fds) if observer == "watch" else None
-    content = observer in ("digest", "meta+digest")
+    watch = leases = None
     try:
+        if observer == "watch":
+            watch = Watch(fds)
+        if observer == "lease":
+            leases = Leases(fds)  # raises Busy while any writer exists
+        content = observer in ("digest", "meta+digest")
         first, copies = [], {}
         for i, (r, fd) in enumerate(zip(rels, fds, strict=True)):
             fp = fingerprint(fd, content=True)
@@ -191,9 +260,13 @@ def collect(
                 between("second", i)
         if watch is not None and watch.changed():
             coherent = False
+        if leases is not None and not leases.unbroken():
+            coherent = False  # a writer asked for the file during the copies
         return copies, coherent
     finally:
         if watch is not None:
             watch.close()
+        if leases is not None:
+            leases.release()
         for fd in fds:
             os.close(fd)

@@ -1,7 +1,8 @@
-"""Run Pyright and ty on positive.py and negative.py (the typed core and its
-three guarantees) and compare their errors
-with the ``# E:`` markers: positive.py must have none, and negative.py must
-have an error on exactly the marked lines, in both checkers.
+"""Run Pyright and ty on the typed core and its three guarantees
+(this directory) and on the synthesis pipeline (experiments/synthesis), and
+compare their errors with the ``# E:`` markers: each file must have an error
+on exactly its marked lines (none, for a file without markers), in both
+checkers.
 
     uv run python experiments/typed_core/check.py
 
@@ -23,7 +24,13 @@ HERE = Path(__file__).resolve().parent
 PYTHON = sys.executable
 
 
-def pyright(files: list[Path]) -> dict[str, set[int]]:
+SUITES = {
+    HERE: ["common.py", "positive.py", "negative.py"],
+    HERE.parent / "synthesis": ["pipeline.py", "misuse.py"],
+}
+
+
+def pyright(files: list[Path], cwd: Path) -> dict[str, set[int]]:
     out = subprocess.run(
         [
             "uvx",
@@ -36,7 +43,7 @@ def pyright(files: list[Path]) -> dict[str, set[int]]:
         ],
         capture_output=True,
         text=True,
-        cwd=HERE,
+        cwd=cwd,
     )
     report = json.loads(out.stdout)
     errs: dict[str, set[int]] = {}
@@ -48,7 +55,7 @@ def pyright(files: list[Path]) -> dict[str, set[int]]:
     return errs
 
 
-def ty(files: list[Path]) -> dict[str, set[int]]:
+def ty(files: list[Path], cwd: Path) -> dict[str, set[int]]:
     out = subprocess.run(
         [
             "uvx",
@@ -63,7 +70,7 @@ def ty(files: list[Path]) -> dict[str, set[int]]:
         ],
         capture_output=True,
         text=True,
-        cwd=HERE,
+        cwd=cwd,
     )
     errs: dict[str, set[int]] = {}
     for line in out.stdout.splitlines():
@@ -84,25 +91,21 @@ def marked(path: Path, checker: str) -> set[int]:
 
 
 def main() -> int:
-    files = [HERE / "common.py", HERE / "positive.py", HERE / "negative.py"]
     ok = True
-    for checker, run in (("pyright", pyright), ("ty", ty)):
-        expected = {
-            "common.py": set(),
-            "positive.py": marked(HERE / "positive.py", checker),
-            "negative.py": marked(HERE / "negative.py", checker),
-        }
-        got = run(files)
-        for name, want in expected.items():
-            have = got.get(name, set())
-            missing, extra = sorted(want - have), sorted(have - want)
-            status = "ok" if not (missing or extra) else "MISMATCH"
-            ok &= status == "ok"
-            print(
-                f"{checker:8s} {name:12s} {status}  expected {len(want)}, got {len(have)}"
-                + (f"  missing {missing}" if missing else "")
-                + (f"  unexpected {extra}" if extra else "")
-            )
+    for where, names in SUITES.items():
+        files = [where / n for n in names]
+        for checker, run in (("pyright", pyright), ("ty", ty)):
+            got = run(files, where)
+            for f in files:
+                want, have = marked(f, checker), got.get(f.name, set())
+                missing, extra = sorted(want - have), sorted(have - want)
+                status = "ok" if not (missing or extra) else "MISMATCH"
+                ok &= status == "ok"
+                print(
+                    f"{checker:8s} {f.name:12s} {status}  expected {len(want)}, got {len(have)}"
+                    + (f"  missing {missing}" if missing else "")
+                    + (f"  unexpected {extra}" if extra else "")
+                )
     return 0 if ok else 1
 
 

@@ -12,9 +12,19 @@ from .._kinds import C, Checked, Confirmed, IsFile, K, Unspecified
 from ..conditions import Step
 from .confined import Confined
 from .knowledge import Knowledge
-from .publish import Derivation, Draft, Published
+from .publish import Derivation, Draft, Published, Version, VersionDraft
 
-__all__ = ["Held", "Holds", "Makes", "Run", "Sealed", "Spec", "Uses", "seal"]
+__all__ = [
+    "Commits",
+    "Held",
+    "Holds",
+    "Makes",
+    "Run",
+    "Sealed",
+    "Spec",
+    "Uses",
+    "seal",
+]
 
 CC = TypeVar("CC")
 KX = TypeVar("KX", bound=Unspecified)
@@ -26,6 +36,7 @@ class Held(Generic[C, K]):  # noqa: UP046
     path: str  # the name it was opened by: reopening it may reach another object
     fd: int
     access: frozenset[str]
+    used: list[str]  # a digest of what each read returned
     @property
     def ident(self) -> tuple[int, int]: ...
     @property
@@ -84,6 +95,24 @@ class Makes:
     @overload
     def __get__(self, obj: Spec, owner: type[Any] | None = None) -> Draft: ...
 
+class Commits:
+    """Only an expression declaring a directory, there once made, can hold
+    versions."""
+
+    immutable: bool
+    def __init__(
+        self,
+        expr: PathExpr[Literal["dir", "post_dir", "post_exists"], Unspecified],
+        *,
+        immutable: bool = False,
+    ) -> None: ...
+    @overload
+    def __get__(
+        self, obj: None, owner: type[Any] | None = None
+    ) -> PathExpr[Literal["dir", "post_dir", "post_exists"], Unspecified]: ...
+    @overload
+    def __get__(self, obj: Spec, owner: type[Any] | None = None) -> VersionDraft: ...
+
 class Spec:
     def __init__(self, entered: Mapping[str, Any]) -> None: ...
     @classmethod
@@ -95,10 +124,11 @@ class Run:
     io: Confined
     knowledge: Knowledge
     epoch: int
-    confirmed: dict[str, Confirmed[Any, Any]]
-    published: dict[str, Published]  # by output path below the root
+    confirmed: dict[str, Confirmed[Any, Any]]  # by path below the root
+    published: dict[str, Published | Version]  # by output (or store) path
     derivations: list[Derivation]
-    def __init__(self, root: str) -> None: ...
+    lease: bool
+    def __init__(self, root: str, *, lease: bool = False) -> None: ...
     def known(self, event: Checked[Any, Any] | Confirmed[Any, Any]) -> bool:
         """Not invalidated by this run's steps: conditional on no other writer."""
     def enter[S: Spec](

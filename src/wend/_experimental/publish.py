@@ -12,9 +12,13 @@ one system call, under a policy:
   readers see the whole old object or the whole new one, never a mixture;
 - ``"exchange"``: ``renameat2(RENAME_EXCHANGE)``, which swaps the two and
   so sees the object it replaced. With ``expect``, the object the caller
-  last observed there, it is a compare-and-swap after the fact: if another
-  writer published in between, the exchange is undone and `Conflict`
-  raised. Readers may have seen the withdrawn version meanwhile.
+  last observed there, it is *exchange-and-validate*, an optimistic
+  protocol and **not** a compare-and-swap: if another writer published in
+  between, the exchange is undone and `Conflict` raised. Readers may see
+  the withdrawn version meanwhile, and with three or more concurrent
+  writers the undo, itself an unconditional exchange, can remove another
+  writer's publication (docs/journal/2026-10-22-synthesis.md has the
+  schedule). `Store` gives the conditional publication this cannot.
 
 Publication spends the capability: the draft's descriptor is closed, so the
 writer cannot change what it published (anyone else with write access to
@@ -31,6 +35,8 @@ opens them one name at a time may see two.
 from __future__ import annotations
 
 import ctypes
+import fcntl
+import hashlib
 import os
 import secrets
 from collections.abc import Sequence
@@ -48,7 +54,14 @@ __all__ = [
     "Derivation",
     "Draft",
     "Generation",
+    "InUse",
+    "Inconsistent",
+    "Modified",
+    "Pinned",
     "Published",
+    "Store",
+    "Version",
+    "VersionDraft",
     "invalidated",
     "renameat2",
 ]
@@ -59,6 +72,12 @@ RENAME_NOREPLACE, RENAME_EXCHANGE = 1, 2
 
 class Conflict(FileExistsError):
     """Another writer published at the name since the caller observed it."""
+
+
+class Inconsistent(RuntimeError):
+    """What a step used is not what its derivation would record: an input
+    read differently from how it was observed at entry, or not the object
+    the run itself published."""
 
 
 def renameat2(olddirfd: int, old: str, newdirfd: int, new: str, flags: int) -> None:
@@ -325,7 +344,7 @@ class Derivation:
     input, and the output itself, and names what no longer matches. Like any
     observation it detects; it cannot see a change that was undone."""
 
-    output: Published
+    output: Published | Version
     inputs: dict[str, Fingerprint]
 
     def stale(self, io: Confined) -> dict[str, str]:
@@ -337,16 +356,16 @@ class Derivation:
             if (v := revalidate(fp, io, rel)) != "unchanged"
         }
         if not self.output.current(io):
-            rel = (
-                f"{self.output.directory}/{self.output.name}"
-                if self.output.directory
-                else self.output.name
+            # a name can be published over; a version can only be modified
+            out[_rel(self.output)] = (
+                "superseded" if isinstance(self.output, Published) else "modified"
             )
-            out[rel] = "superseded"
         return out
 
 
-def _rel(p: Published) -> str:
+def _rel(p: Published | Version) -> str:
+    if isinstance(p, Version):
+        return p.rel
     return f"{p.directory}/{p.name}" if p.directory else p.name
 
 
@@ -362,8 +381,267 @@ def invalidated(derivations: Sequence[Derivation], io: Confined) -> dict[str, se
     while grew:
         grew = False
         for out, d in by_output.items():
-            ups = {i for i in d.inputs if i in doubt}
+            ups = {
+                i
+                for i in d.inputs
+                if i in doubt or any(i.startswith(f"{o}/") for o in doubt)
+            }
             if not ups <= doubt.get(out, set()):
                 doubt.setdefault(out, set()).update(ups)
                 grew = True
     return doubt
+
+
+# -- versioned generations ---------------------------------------------------
+
+
+class Modified(ValueError):
+    """A member of a pinned version does not hold what its manifest says."""
+
+
+class InUse(BlockingIOError):
+    """A reader holds the version: it cannot be reclaimed yet."""
+
+
+@dataclass(frozen=True)
+class Version:
+    """A claimed version: the event of its commit, and the digest of its
+    manifest, which is all a reader needs to verify every member later."""
+
+    store: str
+    n: int
+    manifest: str
+
+    @property
+    def rel(self) -> str:
+        return f"{self.store}/{Store.PREFIX}{self.n:06d}"
+
+    def current(self, io: Confined) -> bool:
+        """Whether every member still reads as committed (a version is never
+        superseded, only modified or reclaimed)."""
+        try:
+            with Pinned(io, self.rel, self.manifest) as p:
+                for name in p.manifest:
+                    p.read(name)
+        except Modified, OSError, WendError:
+            return False
+        return True
+
+
+class Store:
+    """Versions of a set of outputs, in one directory, never overwritten.
+    Version ``n`` is claimed by renaming a filled hidden directory to
+    ``v{n:06d}`` with ``RENAME_NOREPLACE``: if another writer claimed ``n``
+    first the rename fails, and nothing of this version was ever visible.
+    With readers taking the highest version as current, a claim of ``n``
+    is "replace the current version if it is still ``n - 1``": the
+    identity-conditioned compare-and-swap that exchange cannot give.
+
+    Each version holds a ``MANIFEST`` (one ``name sha256`` line per member);
+    its commit returns a `Version` carrying the manifest's digest, for
+    readers to check against (`pin`). The protocol, which writers must
+    follow (docs/journal/2026-10-22-synthesis.md §3): claim only the version
+    after the one read as latest; never write into a claimed version; never
+    reclaim the latest; reclaim only through `reclaim`."""
+
+    PREFIX = "v"
+
+    def __init__(self, io: Confined, rel: str) -> None:
+        self.io, self.rel = io, rel
+
+    def versions(self) -> list[int]:
+        return sorted(
+            int(n[1:])
+            for n in self.io.listdir(self.rel)
+            if n.startswith(self.PREFIX) and n[1:].isdigit()
+        )
+
+    def latest(self) -> int | None:
+        vs = self.versions()
+        return vs[-1] if vs else None
+
+    def begin(self, base: int | None) -> VersionDraft:
+        """A new version derived from ``base`` (``None`` for the first): it
+        will claim ``base + 1``."""
+        return VersionDraft(self, 1 if base is None else base + 1)
+
+    def pin(self, version: int, *, manifest: str | None = None) -> Pinned:
+        """Hold version ``version`` (see `Pinned`)."""
+        return Pinned(self.io, f"{self.rel}/{self.PREFIX}{version:06d}", manifest)
+
+    def reclaim(self, version: int) -> None:
+        """Remove a version no reader holds. Refused (`InUse`) while a
+        `Pinned` reader holds its lease; a reader that pins afterwards finds
+        no manifest and fails closed. Members made immutable are released
+        first (which needs ``CAP_LINUX_IMMUTABLE``)."""
+        if version == self.latest():
+            raise ValueError(f"version {version} is the latest: it is current")
+        name = f"{self.PREFIX}{version:06d}"
+        parentfd = self.io._dir(self.rel)
+        vfd = self.io._dir(f"{self.rel}/{name}")
+        try:
+            try:
+                fcntl.flock(vfd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                raise InUse(f"version {version} is pinned by a reader") from None
+            _set_immutable(vfd, False)
+            names = os.listdir(vfd)
+            # the manifest first: from here on a pin fails, not a read
+            for m in sorted(names, key=lambda m: m != "MANIFEST"):
+                mfd = openat2(vfd, m, os.O_RDONLY | os.O_NONBLOCK, Beneath.RESOLVE)
+                try:
+                    _set_immutable(mfd, False)
+                finally:
+                    os.close(mfd)
+                os.unlink(m, dir_fd=vfd)
+            os.rmdir(name, dir_fd=parentfd)
+        finally:
+            os.close(vfd)
+            os.close(parentfd)
+
+
+def _digest(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
+
+
+class VersionDraft:
+    """The next version of a `Store`, filled in a hidden directory: each
+    member is a `Draft`, published there under ``"create"``."""
+
+    def __init__(self, store: Store, n: int) -> None:
+        self.store, self.n = store, n
+        self.parentfd = store.io._dir(store.rel)
+        self.hidden = f".{store.PREFIX}{n:06d}.draft-{secrets.token_hex(6)}"
+        os.mkdir(self.hidden, 0o755, dir_fd=self.parentfd)
+        self.dir = f"{store.rel}/{self.hidden}"
+        self.members: dict[str, str] = {}
+        self.spent = False
+
+    def add(self, name: str, data: bytes) -> None:
+        if self.spent:
+            raise ValueError("this version was committed or abandoned")
+        if name == "MANIFEST":
+            raise ValueError("MANIFEST is the version's own")
+        d = Draft(self.store.io, self.dir)
+        d.write(data)
+        d.publish(_name(name), policy="create")
+        self.members[name] = _digest(data)
+
+    def commit(self, *, immutable: bool = False) -> Version:
+        """Claim the version. Raises `Conflict` if another writer claimed it;
+        nothing of this version was visible. With ``immutable`` (needs
+        ``CAP_LINUX_IMMUTABLE``), every member is made immutable before the
+        claim and the version directory after it (an immutable directory
+        cannot be renamed): from then on no write, truncation, rename,
+        unlink or link reaches them, through any descriptor or mapping,
+        until the flag is cleared."""
+        if self.spent:
+            raise ValueError("this version was committed or abandoned")
+        text = "".join(f"{n} {h}\n" for n, h in sorted(self.members.items())).encode()
+        d = Draft(self.store.io, self.dir)
+        d.write(text)
+        d.publish("MANIFEST", policy="create")
+        genfd = self.store.io._dir(self.dir)
+        claimed = False
+        try:
+            if immutable:
+                for m in [*self.members, "MANIFEST"]:
+                    mfd = openat2(genfd, m, os.O_RDONLY, Beneath.RESOLVE)
+                    try:
+                        _set_immutable(mfd)
+                    finally:
+                        os.close(mfd)
+            os.fsync(genfd)
+            name = f"{self.store.PREFIX}{self.n:06d}"
+            try:
+                renameat2(
+                    self.parentfd, self.hidden, self.parentfd, name, RENAME_NOREPLACE
+                )
+            except FileExistsError:
+                raise Conflict(
+                    f"version {self.n} was claimed by another writer"
+                ) from None
+            claimed = True
+            os.fsync(self.parentfd)
+            if immutable:
+                _set_immutable(genfd)  # the same directory, now claimed
+        finally:
+            os.close(genfd)
+            # Unclaimed, for any reason, it is removed: flagged members too,
+            # which nothing else could delete.
+            self._spend() if claimed else self.abandon()
+        return Version(self.store.rel, self.n, _digest(text))
+
+    def abandon(self) -> None:
+        """Give up the version: its hidden directory is removed."""
+        if self.spent:
+            return
+        genfd = self.store.io._dir(self.dir)
+        try:
+            for m in os.listdir(genfd):
+                mfd = openat2(genfd, m, os.O_RDONLY | os.O_NONBLOCK, Beneath.RESOLVE)
+                try:
+                    _set_immutable(mfd, False)
+                finally:
+                    os.close(mfd)
+        finally:
+            os.close(genfd)
+        self.store.io.delete(self.dir)
+        self._spend()
+
+    def _spend(self) -> None:
+        os.close(self.parentfd)
+        self.spent = True
+
+
+FS_IOC_GETFLAGS, FS_IOC_SETFLAGS, FS_IMMUTABLE_FL = 0x80086601, 0x40086602, 0x10
+
+
+def _set_immutable(fd: int, on: bool = True) -> None:
+    flags = ctypes.c_long(0)
+    fcntl.ioctl(fd, FS_IOC_GETFLAGS, flags)
+    new = flags.value | FS_IMMUTABLE_FL if on else flags.value & ~FS_IMMUTABLE_FL
+    if new != flags.value:  # clearing a flag never set needs no capability
+        fcntl.ioctl(fd, FS_IOC_SETFLAGS, ctypes.c_long(new))
+
+
+class Pinned:
+    """A held version: its directory object, a shared lease on it, and its
+    manifest as read once at pinning (checked against ``manifest``, the
+    digest its commit returned, when the reader has it). Every member is
+    read relative to the held directory, never by path again, and checked
+    against the manifest before it is returned: a reader never uses bytes
+    the version did not publish. A member changed since is refused
+    (`Modified`), not read."""
+
+    def __init__(self, io: Confined, rel: str, manifest: str | None) -> None:
+        self.dirfd = io._dir(rel)
+        try:
+            fcntl.flock(self.dirfd, fcntl.LOCK_SH)  # the lease `reclaim` respects
+            text = read_in(self.dirfd, "MANIFEST")
+            if manifest is not None and _digest(text) != manifest:
+                raise Modified(f"{rel}: its MANIFEST is not the one committed")
+        except BaseException:
+            os.close(self.dirfd)
+            raise
+        self.manifest: dict[str, str] = {}
+        for line in text.decode().splitlines():
+            name, _, digest = line.partition(" ")
+            self.manifest[name] = digest
+
+    def read(self, name: str) -> bytes:
+        if name not in self.manifest:
+            raise Modified(f"{name}: not a member of this version")
+        data = read_in(self.dirfd, name)
+        if _digest(data) != self.manifest[name]:
+            raise Modified(f"{name}: not the contents its version published")
+        return data
+
+    def close(self) -> None:
+        os.close(self.dirfd)  # and with it the lease
+
+    def __enter__(self) -> Pinned:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()

@@ -25,6 +25,7 @@ from wend import (
     T,
 )
 from wend._experimental.events import Held, Holds, Run, Spec, Uses, seal
+from wend._experimental.publish import Inconsistent
 from wend.errors import ConditionError
 
 
@@ -69,7 +70,7 @@ def test_a_step_gives_events_and_holds_its_input(tree):
         assert s.dst.__dict__["atoms"] == {"absent", "create"}
         Path(s.dst).parent.mkdir()
         Path(s.dst).write_bytes(s.src.read().upper())
-    made = run.confirmed["dst"]
+    made = run.confirmed["out/a.csv"]
     assert isinstance(made, Confirmed) and not isinstance(made, Checked)
     assert made.__dict__["epoch"] > s.dst.__dict__["epoch"]
     assert run.known(made)
@@ -116,16 +117,19 @@ def test_a_held_input_keeps_its_object_whatever_happens_to_its_name(tree, move):
 
 def test_a_held_input_does_not_keep_its_contents_but_a_sealed_copy_does(tree):
     run = Run(str(tree))
-    with run.enter(Convert, env(tree)) as s:
-        sealed = seal(s.src)
-        (tree / "raw" / "a.csv").write_bytes(b"theirs")  # another writer
-        assert s.src.read() == b"theirs"  # same object, new contents
-        assert sealed.read() == b"mine"  # the copy cannot change
-        assert sealed.source == s.src.ident
-        with pytest.raises(PermissionError):
-            os.pwrite(sealed.fd, b"X", 0)
-        Path(s.dst).parent.mkdir()
-        Path(s.dst).write_bytes(b"done")
+    # The step read two versions of its input; its derivation could record
+    # only one, so the run refuses it at exit.
+    with pytest.raises(Inconsistent, match="changed while the step read it"):
+        with run.enter(Convert, env(tree)) as s:
+            sealed = seal(s.src)
+            (tree / "raw" / "a.csv").write_bytes(b"theirs")  # another writer
+            assert s.src.read() == b"theirs"  # same object, new contents
+            assert sealed.read() == b"mine"  # the copy cannot change
+            assert sealed.source == s.src.ident
+            with pytest.raises(PermissionError):
+                os.pwrite(sealed.fd, b"X", 0)
+            Path(s.dst).parent.mkdir()
+            Path(s.dst).write_bytes(b"done")
     sealed.close()
 
 

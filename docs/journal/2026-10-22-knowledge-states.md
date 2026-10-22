@@ -14,10 +14,12 @@ SEMANTICS.md §10.1).
 Labels: **[Fact]**, **[Measured]**, **[Proven]**, **[Interpretation]**,
 **[Conjecture]**, **[Proposal]**.
 
-> **Audit, 2026-10-22.** The text below is kept as written. [The addendum](#addendum-audit-2026-10-22)
-> corrects §2 (containment is forgotten in its physical half), §3 (assumption 2's
-> scope), §4 (what the properties can detect) and §6 (what a type certifies, and what
-> `known()` means), and records how the model was developed.
+> **Audit, 2026-10-22.** The corrected claims are now revised in place, with their
+> earlier wording kept beside each, marked *Before*.
+> [The addendum](#addendum-audit-2026-10-22) corrects §2 (containment is forgotten in
+> its physical half), §3 (assumption 2's scope), §4 (what the properties can detect)
+> and §6 (what a type certifies, and what `known()` means), and records how the model
+> was developed.
 
 ---
 
@@ -52,10 +54,17 @@ with two updates, as in a gen/kill dataflow analysis:
     a parent of `m` the mutation may make. Those are the parents below the deepest
     one known to exist, or all of them if none is.
 
-**[Fact]** Containment is never forgotten: it is a property of the rendered string,
-which `render` enforces (§10). `Tracker.run(name, step, env)` performs these updates
-around a real step: checks, learn, body, forget, confirm, learn. Forgetting runs even
-when the body raises.
+**[Fact]** Only the lexical half of containment is never forgotten: it is a property
+of the rendered string, which `render` enforces (§10). §10's `Under` also requires the
+realpath to stay below the base, and a symlink made later ends that (addendum A.1;
+`2026-10-22-confined-runs.md` §4). `Tracker.run(name, step, env)` performs these
+updates around a real step: checks, learn, body, forget, confirm, learn. Forgetting
+runs even when the body raises.
+
+> *Before:* "Containment is never forgotten: it is a property of the rendered string,
+> which `render` enforces (§10)." **[Refuted]** by the audit (addendum A.1): only the
+> lexical half is; a symlink made later ends the physical half. Revised here in place
+> after the owner's review.
 
 **[Fact]** `analyse(steps, env)` computes the same updates before anything runs,
 assuming every earlier step completed. It reports, for each port at each entry:
@@ -98,8 +107,23 @@ fact in the knowledge holds of the filesystem:
    through the declared mutations of the steps' rendered paths. No other process
    acts, and no body writes a path it does not declare.
 2. Identity is lexical. Two different rendered strings name different files: no
-   symlink, hard link, case or `..` aliasing among the paths involved. This is the
-   caveat `EffectGraph.lexical_caveats` already reports.
+   symlink, case or `..` aliasing among the paths involved.
+   `EffectGraph.lexical_caveats` reports relative paths and `..` only. Its own
+   docstring says it cannot see case or symlinks, and neither analysis calls it. A
+   relative and an absolute spelling of one file are also outside both analyses
+   (addendum A.1). **[Interpretation]** Hard links need not be excluded: atoms are
+   properties of names and of the objects they reach, so two names of one object do
+   not make a string-keyed fact false (`2026-10-22-aliasing.md` §1 and §5).
+
+   > *Before:* "Two different rendered strings name different files: no symlink, hard
+   > link, case or `..` aliasing among the paths involved." **[Narrowed]** by the audit
+   > (addendum A.1): two names of one object do not make a string-keyed fact false.
+   > Revised here in place after the owner's review.
+
+   > *Before:* "This is the caveat `EffectGraph.lexical_caveats` already reports."
+   > **[Refuted]** by the audit (addendum A.1): that method reports relative paths and
+   > `..` only, and neither analysis calls it. Revised here in place after the owner's
+   > review.
 3. A mutation of `m` changes nothing outside `m`, the paths below it, and the
    parents it makes.
 
@@ -156,9 +180,17 @@ required atoms were already known. All 255 refuted predictions failed, as predic
 
 - **The `file`/`dir` mutant.** No role requires `File` or `Dir` without `Exists`, so
   the generated pipelines never reach the case. The unit test covers it.
-- **The undetected mutant is equivalent, and sound.** The facts it learns did pass
-  their own checks, and a step that fails at entry mutates nothing. Adopting it would
-  make the model slightly more precise.
+- **The undetected mutant is sound, but not equivalent.** The facts it learns did pass
+  their own checks, and a step that fails at entry mutates nothing. But it learns facts
+  the rule does not, so it knows more. Adopting it would make the model slightly more
+  precise. No property here can tell a sound refinement from the rule (addendum A.1):
+  soundness checks that what is known is true, not that what is true is known; and
+  agreement compares `analyse` with `Tracker`, which share `Knowledge`. That is
+  self-consistency, not an oracle.
+
+  > *Before:* "The undetected mutant is equivalent, and sound." **[Refuted]** by the
+  > audit (addendum A.1): it learns facts the rule does not, so it knows more. Revised
+  > here in place after the owner's review.
 
 **[Measured]** `test_an_undeclared_effect_breaks_the_closed_world` deletes, in a body,
 a path the step does not declare. Afterwards `exists` is known for that path, and it
@@ -188,10 +220,20 @@ the environment cannot produce it. The proof is what found it.
 checked, and when that knowledge is invalidated. The model answers each:
 
 - **Certified:** an event, *a check of these atoms passed for this path*, and nothing
-  about the time after it. A static type can carry this faithfully. A
-  `Checked[...]` handle produced at a step's entry certifies the preconditions. A
-  handle produced at a step's exit (say `Confirmed[...]`) would certify the
-  postconditions, with the same meaning.
+  about the time after it. The typed core (#113) carries this event, but the type
+  claims more than the check, in two ways that #113's own addendum records (addendum
+  A.1). `Checked[C, K]` carries every atom the expression declares, post atoms
+  included. And a path derived from an event (`c.parent`, `c / ".."`) is typed, and
+  built, as the same event. #113 has since closed both
+  (`2026-10-22-evidence.md`): `Checked[C, K]` and `Confirmed[Q, K]` are records of one
+  phase's check, not paths, and nothing derived from the path inherits them. So a
+  handle produced at a step's exit, `Confirmed[...]`, certifies the postconditions,
+  with the same meaning.
+
+  > *Before:* "A static type can carry this faithfully. A `Checked[...]` handle produced
+  > at a step's entry certifies the preconditions." **[Refuted]** by the audit
+  > (addendum A.1): the typed core (#113) claims more than the check, in two ways.
+  > Revised here in place after the owner's review.
 - **Checked:** at entry for preconditions, at exit for postconditions, by
   `Tracker.run`, as by `wend.Step` today.
 - **Invalidated:** by the forget rule. That depends on which mutations happen
@@ -206,9 +248,16 @@ checked, and when that knowledge is invalidated. The model answers each:
 2. A handle's *validity* is the knowledge: computed at runtime by `Tracker` (an
    epoch per fact), and in advance by `analyse`. A typed step API can expose both:
    - `s.src`, typed `Checked[...]`;
-   - `s.src.known()`, which returns whether its facts are still known;
+   - `s.src.known()`, which returns whether its facts are still known: knowledge
+     *conditional on the closed world*, not a statement about now (`Run.known`, #113;
+     addendum A.1);
    - and `analyse` before the run, for each check that will be redundant and each
      that will fail.
+
+   > *Before:* "`s.src.known()`, which returns whether its facts are still known"
+   > **[Narrowed]** by the audit (addendum A.1): `Run.known` (#113) is knowledge
+   > conditional on the closed world, not a statement about now. Revised here in place
+   > after the owner's review.
 
 **[Conjecture]** A postcondition type parameter is safe to add under that reading,
 the event and not its persistence. It would let a function demand "a path this

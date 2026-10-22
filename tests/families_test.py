@@ -16,6 +16,7 @@ from knowledge_test import ROLES, _apply, _fits, snapshot
 
 from wend import Dir, Exists, Listable, P, Param, Step, SubPath, T
 from wend._experimental.families import (
+    FamilyKnowledge,
     analyse_families,
     coincide,
     independent,
@@ -301,3 +302,103 @@ def test_different_defaults_are_different_paths():
     ]
     (entry,) = [e for e in analyse_families(steps) if e.step == "read"]
     assert entry.known == frozenset()  # tue.csv, where day is unbound
+
+
+# -- what the analysis knows, not only that it is sound ----------------------
+#
+# Every property above checks soundness: what is known is true. An analysis
+# that learns nothing passes them all (found by the journal audit). These
+# tests pin down what the analysis does know, refute and find independent,
+# and the two rules no generated property could reach.
+
+
+def _worked_pipeline():
+    from wend import Absent, Creatable, File, Readable
+
+    def reads(e):
+        return e.requires(File, Exists, Readable)
+
+    def makes(e):
+        return e.requires(Absent, Creatable).ensures(File, Exists)
+
+    raw = P(root) / "raw" / T(t"{day}.csv")
+    features = P(root) / "features" / T(t"{day}.parquet")
+    return [
+        ("survey", Step(root=P(root).requires(Dir, Exists, Listable))),
+        (
+            "ingest",
+            Step(src=reads(P(root) / "inbox" / T(t"{day}.csv")), dst=makes(raw)),
+        ),
+        ("validate", Step(src=reads(raw))),
+        ("featurise", Step(src=reads(raw), dst=makes(features))),
+        ("train", Step(all=(P(root) / "features").requires(Dir, Exists, Listable))),
+        (
+            "report",
+            Step(src=reads(features), dst=makes(P(root) / "reports" / T(t"{day}.md"))),
+        ),
+        ("cleanup", Step(raw=raw.requires(Exists).ensures(Absent))),
+        ("audit", Step(src=reads(raw))),
+    ]
+
+
+def test_the_worked_pipeline_knows_refutes_and_commutes_what_its_table_shows():
+    # docs/journal/scripts/2026-10-22-families-demo.py prints this table
+    steps = _worked_pipeline()
+    got = {
+        (e.step, e.port): (set(e.known), set(e.refuted))
+        for e in analyse_families(steps)
+    }
+    nothing: tuple[set[str], set[str]] = (set(), set())
+    assert got == {
+        ("survey", "root"): nothing,
+        ("ingest", "src"): nothing,
+        ("ingest", "dst"): nothing,
+        ("validate", "src"): ({"exists", "file"}, set()),
+        ("featurise", "src"): ({"exists", "file", "read"}, set()),
+        ("featurise", "dst"): nothing,
+        ("train", "all"): ({"dir", "exists"}, set()),
+        ("report", "src"): ({"exists", "file"}, set()),
+        ("report", "dst"): nothing,
+        ("cleanup", "raw"): ({"exists"}, set()),
+        ("audit", "src"): (set(), {"exists", "read"}),
+    }
+    ks = snapshots(steps)
+    commute = {
+        (steps[i][0], steps[i + 1][0])
+        for i in range(len(steps) - 1)
+        if independent(steps[i][1], steps[i + 1][1], ks[i])
+    }
+    assert commute == {
+        ("validate", "featurise"),
+        ("train", "report"),
+        ("report", "cleanup"),
+    }
+
+
+def test_making_a_path_forgets_creatability_below_the_parents_it_may_make():
+    beside = P(root) / "a" / T(t"{day}.txt")
+    k = FamilyKnowledge()
+    k.learn(frozenset({"create"}), beside)
+    k.forget(P(root) / "a" / "b" / T(t"{day}.csv"))  # may make {root}/a
+    assert not k.knows("create", beside)
+    k = FamilyKnowledge()
+    k.learn(frozenset({"exists", "dir"}), P(root) / "a")
+    k.learn(frozenset({"create"}), beside)
+    k.forget(P(root) / "a" / "b" / T(t"{day}.csv"))  # {root}/a exists: not made
+    assert k.knows("create", beside)
+
+
+def test_independence_sees_the_parents_a_creation_may_make():
+    from wend import Absent, Creatable, File
+
+    def makes(e):
+        return e.requires(Absent, Creatable).ensures(File, Exists)
+
+    deep = Step(dst=makes(P(root) / "a" / "b" / T(t"{day}.csv")))
+    beside = Step(dst=makes(P(root) / "a" / T(t"{day}.txt")))
+    # Making the deep file may make {root}/a, on which creating the other
+    # depends: their order can matter.
+    assert not independent(deep, beside)
+    k = FamilyKnowledge()
+    k.learn(frozenset({"exists", "dir"}), P(root) / "a")
+    assert independent(deep, beside, k)

@@ -22,6 +22,12 @@ harness are in `experiments/typed_core/`; the runtime tests are in
 Labels: **[Fact]**, **[Measured]**, **[Proven]**, **[Interpretation]**,
 **[Conjecture]**, **[Proposal]**.
 
+> **Audit, 2026-10-22.** The text below is kept as written. [The addendum](#addendum-audit-2026-10-22)
+> records two ways the types claim more than the checks (an event's type carries every
+> declared atom; a path derived from an event is still that event), a much wider ty gap
+> than §4 says, what the soundness harness could not see, and how the corrections of §3
+> were measured.
+
 ---
 
 ## 1. The change
@@ -211,3 +217,183 @@ defect, so the test asserts it.
 - **[Interpretation]** The generic core is research. Section 3 shows that the encoding's
   interaction with unknown types and internal annotations matters more than its
   runtime cost; code that relies heavily on inference elsewhere could find more cases.
+
+---
+
+## Addendum: audit (2026-10-22)
+
+The journals of the research stack were audited against the commits, the tests and the
+session record. The audit's probes ran in both checkers (Pyright 1.1.407, ty 0.0.90).
+A1 and A2 and the ty gap of A3 were re-run here. They change what this entry claims, so
+they come first.
+
+### A.1 Refuted: an event's type is the atoms checked
+
+**[Measured]** `Checked[C, K]` and `Confirmed[C, K]` carry `C`, the expression's
+*whole* declaration, both phases. The runtime event carries only the atoms its check
+examined. So the type claims checks that never happened:
+- for an output `out = e.requires(Absent, Creatable).ensures(File, Exists)`,
+  `out.check()` is typed
+  `Checked[Literal["absent", "create", "post_file", "post_exists"], IsFile]`, while its
+  runtime atoms are `{"absent", "create"}`;
+  - both checkers accept it where `Checked[Literal["post_exists"], IsFile]` is asked, at
+    entry, before the file exists;
+- for an input with no postconditions, `raw.confirm()` is typed with `read`, and both
+  checkers accept it where `Confirmed[Literal["read"], IsFile]` is asked. `confirm`
+  checked nothing.
+
+§1's "Each is an **event**: the atoms held when checked" is true of the runtime, not of
+the type. The knowledge entry's "A static type can carry this faithfully" (§6 there) is
+refuted with it.
+
+`negative.py`'s "an event widened to atoms that were not checked" assumed the
+checked-atoms reading. It rejects widening *beyond the declaration*, which is not the
+same thing.
+
+**[Interpretation]** The cause is structural. One parameter `C` holds both phases,
+distinguished only by the `post_` prefix, and Python's types cannot filter a union by
+prefix. The repair is two parameters, `PathExpr[Pre, Post, K]`, with
+`check() -> Checked[Pre, K]` and `confirm() -> Confirmed[Post, K]`. That changes every
+overload, so it is recorded here as **[Proposal]**, not made.
+
+### A.2 Refuted: a path derived from an event is not that event
+
+**[Measured]** `Checked` and `Confirmed` subclass `pathlib.Path`, and pathlib builds
+derived paths with `type(self)` (`with_segments`). So `c.parent`, `c.with_name("x")` and
+`c / "below"` are all, statically *and at runtime*, `Checked` with the original atoms:
+- at runtime they are `Checked` instances without the `atoms` and `epoch` that
+  `Run.known` reads;
+- statically, both checkers accept `was_readable(c.parent)`, a directory never checked;
+- with `serve` demanding `Checked[Literal["read"] | Under[Literal["/srv/static"]]]`, both
+  accept `serve(ok.parent.parent)` and `serve(ok / ".." / ".." / "etc" / "passwd")`.
+
+That is a containment failure in the essay's own `serve_static` example. #106's
+JoinBelowFile rule does not reach events, which are not `PathExpr`s.
+
+#106 saw the mechanism ("Path subclass ok", in its probe of a `Path` subclass) and did
+not follow it.
+
+**[Proposal]** Events should not *be* paths. Two ways to get there:
+- an event holding a plain `path` attribute. This breaks `check()`'s contract of
+  returning a `Path`;
+- `with_segments` returning a plain `Path`. This fixes the runtime, but the static
+  types still say `Checked`, and overriding the derived methods with a wider return type
+  is an incompatible override in Pyright.
+
+Neither is made. This is the largest open question of the typed core.
+
+### A.3 ty's gap is much wider than §4 says
+
+**[Refuted] §4: "With none or one further condition, ty is consistent".** ty 0.0.90
+gives `P("a").requires(Exists, Readable)` the type `PathExpr[Never, Unspecified]`, even
+with no expected type (`reveal_type`). Every atom is dropped. Re-run here:
+- `b: PathExpr[Literal["exists", "read"]] = P("a").requires(Exists, Readable)` is
+  rejected by ty and accepted by Pyright;
+- a single condition is fine;
+- an inline `Holds((P(root) / ...).requires(File, Exists, Readable))` is rejected by ty;
+- the chained `.requires(File).requires(Exists, Readable)` comes out as
+  `PathExpr[Literal["file"], IsFile]`.
+
+`common.py` avoids all of this by binding `raw` to a name first. So ty rejects ordinary
+inline declarations. That costs precision, not soundness, but it is far from the corner
+case §4 describes.
+
+**[Measured]** The audit's minimal model shows the trade-off:
+- with `Pre` invariant (#106's fix for Pyright's widening), ty rejects 2 valid
+  assignments;
+- with `Pre` covariant, ty accepts 3 of 5 widenings to unions of several atoms, which
+  is unsound, and Pyright accepts 4 of 5.
+
+#106 §4.3's "ty accepted none" holds only for single-atom demands. With this encoding,
+ty 0.0.90 cannot be both sound and precise.
+
+### A.4 What the soundness harness could not see
+
+**[Fact]** "0 unsound in 1,511 statements" covers only the transfer rules of `PathExpr`:
+- its grammar has no `check`, `confirm`, `Run`, `Held`, `Sealed` or `Makes`, so it could
+  not find A1 or A2;
+- its statement phase reveals a variable with no expected type, so it could not find
+  A3;
+- its context phase demands single atoms only, takes its must-pass demands from
+  Pyright's types for both checkers, and never demands `IsFile` of a File expression.
+
+**[Fact]** One targeted case never ran its target. Chain t3 (bind makes `Under(P(root))`
+static, then rebase) raises `NotStaticError` at its last step. At seed 1, only 3 of 79
+random rebases moved a static `Under`.
+
+**[Fact]** Of the 57 "rejected at runtime, not statically":
+- 52 are contradictions;
+- 4 are `joinpath` below a File: only `/` has the JoinBelowFile overload, and `joinpath`
+  is typed `PathExpr[Never, Unspecified]`;
+- 1 is a rebase.
+
+§4 names only contradictions and rebase.
+
+**[Fact]** The test `a_name_fact_is_not_an_object_fact` passes by plain set inclusion.
+`Held[Literal["exists"]]` would be rejected the same way, so it cannot show the
+name-versus-object distinction its comment claims.
+
+### A.5 How §2 and §3 were measured
+
+- **[Fact]** The three corrections went in together before the next measurement: the
+  bound on `K`, narrowing `P`'s overload, and `NotFile`. So "removes almost all of the
+  31" is a diagnosis, not a measurement. The 31 also included a
+  `reportOverlappingOverload` on `P`, fixed by the narrowing and not mentioned above.
+- **[Fact]** `NotFile` fixed Pyright only.
+  - ty's error count on `tests/` was 127 before and after.
+  - ty instead gives `Unknown` for a join onto a receiver of unknown kind, and warns
+    `deprecated: nothing can be joined below a path declared a File`. That is 103
+    warnings at 9bc511c: 101 in `tests/`, and 2 in `src/` (`_params.py:129`,
+    `infer.py:580`).
+  - The first version's cost in ty, `src/` 9 → 38 errors, was not reported.
+
+  "No new false positives" (df1ca7c) is true of errors, not of warnings.
+- **[Fact]** The `import wend` median of §2 is the median of the best three of five
+  runs (33.7 and 37.2 ms), not of all runs.
+- **[Measured]** The audit ran both harnesses on the same 400 programs (seed 0), and
+  "weaker" in #106 was mostly correction 3:
+  - #106: 1,273 exact, 200 weaker. 170 of the 200 lacked `Under[str]`, 156 for that
+    alone;
+  - this entry: 1,429 exact, 44 weaker (25 kind, 18 literal `Under`, 1 other atom).
+
+  #106's journal named other causes for its "weaker".
+- **[Fact] Smaller lessons of the harness.**
+  - The formatter wrapped marked statements, moving `# E:` below the line the error
+    reported, so `check.py` read the pair as one missing and one unexpected error. Each
+    marked statement now stays on one line.
+  - Pyright rejected an implicit type alias inside a function, so it is a module-level
+    `type` alias.
+  - `P` was made positional-only, then reverted before any measurement. The record
+    does not say why.
+
+### A.6 History and decisions not recorded above
+
+- **[Refuted], then rewritten in place.** The first text of §5 said string-keyed
+  knowledge was "sound against aliasing by the bridge". The owner objected that the
+  statement "needs a narrower scope", and 5672297 rewrote it to the conditional reading
+  above. The rewrite replaced the earlier text, which this addendum restores to the
+  record.
+- **[Narrowed] §5, "Confinement removes aliasing as a source of error".** It omits case
+  folding, which `openat2` does nothing about (aliasing §9, assumption 3).
+- **[Fact] `Confirmed` kept.** The owner suggested `CheckedAt` or `VerifiedAt`, "if that
+  makes the temporal semantic" clear, because a confirmation records something true at
+  one moment. `Confirmed` was kept; its docstring and this entry state the temporal
+  reading. The record has no explicit decision.
+- **[Fact] Two discrepancies from #114.**
+  - ty kept the `Verdict` literal union through a dict comprehension in
+    `Derivation.stale`, and rejected adding `"superseded"`. An annotation fixed it.
+  - The `events.pyi` stub lacked `Sealed`'s constructor, which Pyright rejected.
+- **[Narrowed] §5–§6, `Sealed`.** "It remains true" is true of the copy: it cannot
+  change. It is not a snapshot of the file. A copy made while a writer acts on a
+  multi-page file can be a state the file never had: 244 of 300 reads were torn in the
+  synthesis's measurement (`2026-10-22-synthesis.md` §4.3).
+- **[Superseded] §7, "Outputs held for writing … are not built".** #114 built `Draft`
+  and `Makes`. Its negatives are 17 of 17, not §4's 13.
+
+### A.7 Where this leads
+
+- `2026-10-22-publication-and-consistency.md` (#114) adds drafts, publication and
+  observation.
+- `2026-10-22-synthesis.md` composes the whole stack. Its `experiments/synthesis/misuse.py`
+  adds 11 type-level rejections in a pipeline's terms.
+- The research index, `2026-10-22-research-index.md`, orders the entries.

@@ -5,10 +5,18 @@ rebase, tag, derivations, joins), runs each statement at runtime, and has
 Pyright and ty reveal the type of every intermediate expression. For each
 statement it compares:
 
-- the static atoms with ``facts(e).atoms`` (soundness: static ⊆ runtime);
+- the static atoms with ``facts(e).atoms`` (soundness: static ⊆ runtime),
+  what the expression requires (``C``) and what it ensures (``Q``, written
+  ``post_*`` here) kept apart;
 - the static kind with ``facts(e).kind`` (soundness: Unknown, or equal);
 - a runtime rejection (joining below a File raises) with the static type
   ``JoinBelowFile``.
+
+Then, in context, it demands of each expression atoms it does not declare
+(must be errors), and asks the same of its *evidence*: ``e.checked()`` must
+carry what ``e`` requires and nothing it only ensures, ``e.confirmed()``
+the reverse, and neither the evidence nor anything derived from its path
+may stand in for it.
 
     uv run python experiments/typed_core/soundness.py [programs] [seed]
 
@@ -37,8 +45,9 @@ TY = "ty@0.0.90"
 PRELUDE = """\
 from typing import Final, Literal, Never, reveal_type
 from wend import (
-    Absent, AnyPath, Creatable, Dir, Exists, File, IsFile, Listable, P, Param,
-    PathExpr, Readable, SubPath, T, Under, Writable,
+    Absent, AnyPath, Checked, Confirmed, Creatable, Dir, Exists, File, IsFile,
+    Listable, P, Param, PathExpr, Readable, SubPath, T, Under, Unspecified,
+    Writable,
 )
 root, name, idx = Param("root"), Param("name"), Param("idx", type=int)
 STATIC: Final = "/srv/static"
@@ -49,11 +58,20 @@ ATOMS = [
     *(
         f"{p}{a}"
         for p in ("", "post_")
-        for a in ("read", "write", "create", "list", "exists", "absent", "file", "dir")
+        for a in (
+            "read",
+            "write",
+            "create",
+            "list",
+            "exists",
+            "absent",
+            "file",
+            "dir",
+            "Under[str]",
+            "Under['/srv/static']",
+            "Under['/tmp']",
+        )
     ),
-    "Under[str]",
-    "Under['/srv/static']",
-    "Under['/tmp']",
 ]
 
 
@@ -61,7 +79,7 @@ def demand(atom: str) -> str:
     return "demand_" + re.sub(r"\W", "_", atom)
 
 
-def demand_type(atom: str) -> str:
+def atom_type(atom: str) -> str:
     if atom == "Under[str]":
         return "Under[str]"
     if atom.startswith("Under["):
@@ -69,9 +87,24 @@ def demand_type(atom: str) -> str:
     return f'Literal["{atom}"]'
 
 
+def demand_type(atom: str) -> str:
+    """The expression type demanding ``atom``: required (C) or ensured (Q)."""
+    if atom.startswith("post_"):
+        return f"PathExpr[Never, Unspecified, {atom_type(atom[5:])}]"
+    return f"PathExpr[{atom_type(atom)}]"
+
+
+def evidence_type(atom: str) -> str:
+    """The evidence demanding ``atom``: Checked for C, Confirmed for Q."""
+    if atom.startswith("post_"):
+        return f"Confirmed[{atom_type(atom[5:])}]"
+    return f"Checked[{atom_type(atom)}]"
+
+
 DEMANDS = (
-    "".join(
-        f"def {demand(a)}(p: PathExpr[{demand_type(a)}]) -> None: ...\n" for a in ATOMS
+    "".join(f"def {demand(a)}(p: {demand_type(a)}) -> None: ...\n" for a in ATOMS)
+    + "".join(
+        f"def evidence_{demand(a)}(p: {evidence_type(a)}) -> None: ...\n" for a in ATOMS
     )
     + "def demand_IsFile(p: PathExpr[Never, IsFile]) -> None: ...\n"
 )
@@ -169,10 +202,20 @@ TARGETED = [
         '{v}.rebase(P(root), P("/moved"))',
     ],
     [
+        # A base made static by a rebase, then moved by another. (The first
+        # form of this chain bound the base, after which no rebase applies:
+        # it raised NotStaticError and never reached its target.)
         'P(root) / AnyPath("rel")',
         "{v}.requires(Under(P(root)), Readable)",
-        '{v}.bind(root="/srv")',
+        '{v}.rebase(P(root), P("/srv"))',
         '{v}.rebase(P("/srv"), P("/moved"))',
+    ],
+    [
+        # both phases declare a base, then a rebase moves both
+        'P(STATIC) / AnyPath("rel")',
+        "{v}.requires(Under(STATIC), Readable)",
+        "{v}.ensures(Under(STATIC), Exists)",
+        '{v}.rebase(P(STATIC), P("/moved"))',
     ],
     # a file required, a directory ensured
     [
@@ -260,24 +303,26 @@ def parse_type(t: str) -> tuple[frozenset[str], str] | str:
     t = t.replace('"', "'").strip()
     if t.startswith("JoinBelowFile"):
         return "JoinBelowFile"
-    m = re.fullmatch(r"PathExpr\[(.*), (\w+)\]", t)
+    m = re.fullmatch(
+        r"PathExpr\[(.*), (IsFile|Unspecified|NotFile|Unknown|Any), (.*)\]", t
+    )
     if not m:
         return t
-    caps, kind = m[1], m[2]
-    if re.search(
-        r"(^|[\s|\[])(Unknown|Any)($|[\s|\]])", re.sub(r"Under\[[^\]]*\]\]?", "", caps)
-    ):
-        return (
-            "top"  # Unknown or Any among the declarations satisfies every requirement
-        )
+    pre, kind, post = m[1], m[2], m[3]
     atoms: set[str] = set()
-    for u in re.findall(r"Under\[Literal\[([^\]]*)\]\]", caps):
-        atoms |= {f"Under[{a.strip()}]" for a in u.split(",")}
-    if "Under[str]" in caps:
-        atoms.add("Under[str]")
-    rest = re.sub(r"Under\[[^\]]*\]\]?", "", caps)
-    for lit in re.findall(r"Literal\[([^\]]*)\]", rest):
-        atoms |= {a.strip().strip("'") for a in lit.split(",")}
+    for prefix, caps in (("", pre), ("post_", post)):
+        if re.search(
+            r"(^|[\s|\[])(Unknown|Any)($|[\s|\]])",
+            re.sub(r"Under\[[^\]]*\]\]?", "", caps),
+        ):
+            return "top"  # Unknown or Any satisfies every requirement
+        for u in re.findall(r"Under\[Literal\[([^\]]*)\]\]", caps):
+            atoms |= {f"{prefix}Under[{a.strip()}]" for a in u.split(",")}
+        if "Under[str]" in caps:
+            atoms.add(prefix + "Under[str]")
+        rest = re.sub(r"Under\[[^\]]*\]\]?", "", caps)
+        for lit in re.findall(r"Literal\[([^\]]*)\]", rest):
+            atoms |= {prefix + a.strip().strip("'") for a in lit.split(",")}
     return frozenset(atoms), kind
 
 
@@ -383,6 +428,26 @@ def context_source(programs, rt, static_types, rng):
             if isinstance(st, tuple) and st[0]:
                 lines.append(f"    {demand(rng.choice(sorted(st[0])))}({expr})")
                 must_pass.add(len(lines))
+            # Evidence: an atom the expression only ensures is never checked
+            # at entry, one it only requires is never confirmed at exit, and
+            # no evidence, nor any path derived from it, stands in for it.
+            for a in sorted(f.atoms):
+                other = a[5:] if a.startswith("post_") else "post_" + a
+                if other in f.atoms:
+                    continue
+                call = "checked" if a.startswith("post_") else "confirmed"
+                lines.append(f"    evidence_{demand(other)}({var}.{call}())")
+                must_fail.add(len(lines))
+            if isinstance(st, tuple):
+                own = sorted(a for a in st[0] if not a.startswith("post_"))
+                if own:
+                    a = rng.choice(own)
+                    lines.append(f"    evidence_{demand(a)}({var}.checked())")
+                    must_pass.add(len(lines))
+                    lines.append(f"    evidence_{demand(a)}({var}.checked().path)")
+                    must_fail.add(len(lines))
+                lines.append(f"    {var}.checked().parent")
+                must_fail.add(len(lines))
     return "\n".join(lines) + "\n", must_fail, must_pass
 
 

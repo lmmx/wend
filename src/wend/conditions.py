@@ -67,7 +67,8 @@ __all__ = [
 
 class Condition(Generic[Pre, Post]):  # noqa: UP046 (variance is declared, not inferred)
     """A property of a path, checked when the path is realised. For a type
-    checker it adds the atom ``Pre`` when required, ``Post`` when ensured."""
+    checker it adds its atom ``Pre`` to what an expression requires, and
+    ``Post`` to what it ensures (the same atom, for every condition)."""
 
     __slots__ = ("name",)
 
@@ -108,50 +109,40 @@ class Condition(Generic[Pre, Post]):  # noqa: UP046 (variance is declared, not i
         return condition_schema(self, source, handler)
 
 
-class FileCondition(Condition[Literal["file"], Literal["post_file"]]):
+class FileCondition(Condition[Literal["file"], Literal["file"]]):
     """``File``: adds its atom and, for a type checker, the kind `IsFile`, below
     which nothing can be joined."""
 
     __slots__ = ()
 
 
-Exists: Final[Condition[Literal["exists"], Literal["post_exists"]]] = Condition(
-    "Exists"
-)
+Exists: Final[Condition[Literal["exists"], Literal["exists"]]] = Condition("Exists")
 """Something exists at the path (symlinks are followed)."""
 
-Absent: Final[Condition[Literal["absent"], Literal["post_absent"]]] = Condition(
-    "Absent"
-)
+Absent: Final[Condition[Literal["absent"], Literal["absent"]]] = Condition("Absent")
 """Nothing occupies the path's name, not even a broken symlink."""
 
 File: Final[FileCondition] = FileCondition("File")
 """The path names a regular file: if it exists it is one, and nothing can be
 joined below it. Add ``Exists`` to require that it exists."""
 
-Dir: Final[Condition[Literal["dir"], Literal["post_dir"]]] = Condition("Dir")
+Dir: Final[Condition[Literal["dir"], Literal["dir"]]] = Condition("Dir")
 """The path names a directory: if it exists it is one."""
 
-Readable: Final[Condition[Literal["read"], Literal["post_read"]]] = Condition(
-    "Readable"
-)
+Readable: Final[Condition[Literal["read"], Literal["read"]]] = Condition("Readable")
 """The path exists and the process may read it."""
 
-Writable: Final[Condition[Literal["write"], Literal["post_write"]]] = Condition(
-    "Writable"
-)
+Writable: Final[Condition[Literal["write"], Literal["write"]]] = Condition("Writable")
 """The process may write the path: it exists and is writable, or it is
 `Creatable`."""
 
-Creatable: Final[Condition[Literal["create"], Literal["post_create"]]] = Condition(
+Creatable: Final[Condition[Literal["create"], Literal["create"]]] = Condition(
     "Creatable"
 )
 """The path exists, or could be created now: its nearest existing ancestor is
 a directory the process may write to and search."""
 
-Listable: Final[Condition[Literal["list"], Literal["post_list"]]] = Condition(
-    "Listable"
-)
+Listable: Final[Condition[Literal["list"], Literal["list"]]] = Condition("Listable")
 """The path is an existing directory the process may list."""
 
 _SIMPLE = (Exists, Absent, File, Dir, Readable, Writable, Creatable, Listable)
@@ -187,7 +178,7 @@ class Under(Condition["Under[B] | Under[str]", "Under[B] | Under[str]"], Generic
     def __init__(self: Under[L], base: L) -> None: ...
     @overload
     def __init__(
-        self: Under[str], base: str | os.PathLike[str] | Param | PathExpr[Any, Any]
+        self: Under[str], base: str | os.PathLike[str] | Param | PathExpr[Any, Any, Any]
     ) -> None: ...
     def __init__(self, base: Any) -> None:
         from ._expr import _coerce

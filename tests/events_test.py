@@ -66,12 +66,13 @@ def test_a_step_gives_events_and_holds_its_input(tree):
     with run.enter(Convert, env(tree)) as s:
         assert isinstance(s.src, Held) and s.src.access == {"read"}
         assert isinstance(s.dst, Checked) and not isinstance(s.dst, Confirmed)
-        assert s.dst.__dict__["atoms"] == {"absent", "create"}
+        assert s.dst.atoms == {"absent", "create"}
         Path(s.dst).parent.mkdir()
         Path(s.dst).write_bytes(s.src.read().upper())
     made = run.confirmed["dst"]
     assert isinstance(made, Confirmed) and not isinstance(made, Checked)
-    assert made.__dict__["epoch"] > s.dst.__dict__["epoch"]
+    assert made.epoch is not None and s.dst.epoch is not None
+    assert made.epoch > s.dst.epoch
     assert run.known(made)
     assert Convert.src is raw  # on the class, the declaration
 

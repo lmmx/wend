@@ -205,6 +205,23 @@ and the judgement of objects (§2); it is kept as it was taken.
 
 Without the writer, the confined runs complete 1,186 steps.
 
+**[Measured]** The same measurement repeated after hard links joined the writer's moves
+and objects were judged on their descriptors. FIFOs are left out of this one, because a
+plain read would block on them for ever. The schedules differ, so the counts are not
+comparable row by row with the table above:
+
+| executor | runs that reached outside the root | steps completed |
+|---|---|---|
+| plain, every check made | 60 | 1,073 |
+| plain, every check made, `"w"` | 69 | 1,102 |
+| plain, the plan's checks elided | 60 | 1,074 |
+| plain, elided, `"w"` | 69 | 1,103 |
+| confined, elided | **0** | 985 |
+
+Over 1,000 pipelines and 2,997 steps:
+- 238 confined steps failed under the writer that complete without it;
+- the plan elided 623 of 9,634 required atoms.
+
 **[Interpretation]** Three readings:
 - **Checking everything did not prevent a single escape** here: the checked and elided
   plain runs reached outside in exactly the same runs. The writer's moves are swaps

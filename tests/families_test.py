@@ -8,9 +8,11 @@ adjacent steps the analysis calls independent give the same outcomes and
 the same tree in either order."""
 
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 from knowledge_test import ROLES, _apply, _fits, snapshot
 
@@ -61,6 +63,17 @@ ENVS = [
         "base": "raw",
     },  # day unbound: the defaults differ
 ]
+
+
+@contextmanager
+def run_root() -> Iterator[str]:
+    """A run's root, one level below the directory that is cleaned up. A
+    pipeline may delete its root and make a file in its place (ROOT_REPLACED):
+    the cleanup must not depend on what the run left there."""
+    with tempfile.TemporaryDirectory() as d:
+        root = Path(d) / "root"
+        root.mkdir()
+        yield str(root)
 
 
 def bound(env0: dict, d: str) -> dict:
@@ -192,8 +205,18 @@ SETTINGS = settings(
 )
 
 
+# Found by a full-suite run (research index, "the intermittent failure"):
+# where name is "raw" and rel is ".", "up" renders to the run's root, so the
+# pipeline deletes its root and creates a file in its place.
+ROOT_REPLACED = (
+    [[("create", "base_day"), ("delete", "up")], [("create", "up")]],
+    {"raw": False, "out": False, "files": []},
+)
+
+
 @SETTINGS
 @given(cases)
+@example(case=ROOT_REPLACED)
 def test_what_the_analysis_knows_holds_and_what_it_refutes_fails(case):
     pipeline, tree = case
     steps, bodies = build(pipeline)
@@ -202,7 +225,7 @@ def test_what_the_analysis_knows_holds_and_what_it_refutes_fails(case):
     for e in entries:
         by_step.setdefault(e.step, []).append(e)
     for env0 in ENVS:
-        with tempfile.TemporaryDirectory() as d:
+        with run_root() as d:
             env = bound(env0, d)
             make_tree(Path(d), tree)
 
@@ -232,6 +255,7 @@ def test_what_the_analysis_knows_holds_and_what_it_refutes_fails(case):
 
 @SETTINGS
 @given(cases)
+@example(case=ROOT_REPLACED)
 def test_adjacent_independent_steps_commute(case):
     pipeline, tree = case
     steps, bodies = build(pipeline)
@@ -244,7 +268,7 @@ def test_adjacent_independent_steps_commute(case):
         for env0 in ENVS:
             results = []
             for o in (None, order):
-                with tempfile.TemporaryDirectory() as d:
+                with run_root() as d:
                     env = bound(env0, d)
                     make_tree(Path(d), tree)
                     done = run(Path(d), steps, bodies, env, order=o)

@@ -603,34 +603,63 @@ those.
 
 `check` and `confirm` return the path they checked: a path, which claims
 nothing about it. `checked` and `confirmed` perform the same checks and return
-*evidence* instead:
+*evidence* instead. Precisely, `e.checked(env)`:
 
-- `e.checked(env)` is a `Checked`: the path, and the atoms of `e.requires`,
-  found true at that moment;
-- `e.confirmed(env)` is a `Confirmed`: the path, and the atoms of
-  `e.ensures`, found true at that moment.
+1. renders `e` with `env`, and fails with a containment error unless each
+   `Under` base of `e.requires` contains it lexically (§10);
+2. checks each condition of `e.requires` against the filesystem (`fs=`, or the
+   local disk), containment first, then state, then permissions, and raises
+   the first that fails, as `check` does. Locally, the state atoms (`exists`,
+   `absent`, `file`, `dir`) are read from one `stat` and one `lstat` of the
+   rendered path; each permission atom is its own `access` call, and physical
+   containment its own resolution;
+3. returns a `Checked` recording the rendered path, the atoms of `e.requires`
+   and the rendered `Under` bases it was found under (lexically, and after
+   resolving symlinks).
 
-Evidence is about one path, at one moment, for one phase:
+`e.confirmed(env)` is the same for `e.ensures`, returning a `Confirmed`. There
+is no evidence of a check that failed: either call raises instead.
 
-- **One path.** Evidence is not a path. It has none of a path's operations;
-  `.path` gives the path it is about, as an ordinary path, and anything
-  derived from that path carries no evidence. `os.fspath` gives the same
-  path, unchanged, and nothing else does.
-- **One moment.** Evidence records that a check passed. It does not say that
-  the atoms still hold; §10.1's "true at the moment of the check and no later"
-  applies to it unchanged.
-- **One phase.** What an expression requires and what it ensures are kept
-  apart. An entry check certifies none of the postconditions, and a
-  confirmation none of the preconditions.
+What the evidence states, and what it does not:
 
-The rule all three state: *evidence does not survive an operation that
-changes its subject*, whether a different path, a later moment or the other
-phase.
+- **Which conditions.** Exactly those of one phase: an entry check
+  (`checked`) certifies what the expression requires and none of what it
+  ensures; a confirmation (`confirmed`) the reverse.
+- **Which path.** The rendered path, a name. Not an object: the state atoms,
+  each permission and containment are separate lookups of the name, so they
+  may have been found true of different objects if another process changed
+  the name between them.
+- **Which moment.** Each condition held at some instant during the call, not
+  necessarily all at the same instant. Outside a step the evidence has no
+  epoch; a step (`Run`, research) stamps its own.
+- **Containment, relative to the base as it is.** Physical containment
+  compares `realpath(p)` with `realpath(b)`, both at that moment. If the base
+  itself is redirected (replaced by a symlink), what lies below it moves with
+  it and containment still holds: `Under` confines a path to its base, not
+  the base to where it was. Fixing the base needs it held (a directory
+  opened once, and every path resolved beneath it).
+- **After.** Nothing. Evidence is a record of the past: a later change to the
+  filesystem does not update it, and nothing about it says that the conditions
+  still hold. Whether they are still believed is knowledge (§10.1, and the
+  research analyses), conditional on what else may have written.
+- **One subject.** Evidence is not a path and has none of a path's
+  operations. `.path` gives the path it is about, as an ordinary path;
+  anything derived from that path carries no evidence. `os.fspath` gives the
+  same path, unchanged, and nothing else does. Evidence cannot be altered
+  once made. It can be constructed directly, as any value can be cast; such a
+  value certifies nothing.
+
+The rule these state: *evidence does not survive an operation that changes its
+subject*, whether a different path, a later moment or the other phase.
 
 For a type checker, `PathExpr` has three parameters, a Hoare triple's
 {C} e {Q}: `C` what it requires, `K` whether it is declared a File, `Q` what
 it ensures. `checked` returns `Checked[C, K]` and `confirmed` returns
-`Confirmed[Q, K]`.
+`Confirmed[Q, K]`. The operations carry them as §10 and §10.1 carry the
+declarations themselves: `requires` adds to `C` and `ensures` to `Q`; `bind`,
+`tag` and `P` keep all three; `rebase` keeps each phase's `Under` only as
+`Under[str]`, since it moves the bases; every other operation's result, a
+union included, declares nothing.
 
 ## 11. Unions and queries
 

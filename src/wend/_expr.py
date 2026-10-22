@@ -880,19 +880,38 @@ class PathExpr(_Cached, Generic[C, K, Q]):  # noqa: UP046 (variance is declared,
     def checked(
         self, mapping: Any = None, /, *, fs: Any = None, **kw: Any
     ) -> Checked[C, K]:
-        """`check`, returning the evidence instead of the path: a `Checked`
-        whose type carries what this expression requires, which is what was
-        checked, and nothing it ensures. The evidence is about this path at
-        this moment; ``.path`` gives the path, and a path derived from it
-        carries none."""
-        return Checked(self.check(mapping, fs=fs, **kw), self.declares.requires)
+        """`check`, returning the evidence instead of the path (SEMANTICS.md
+        §10.2): a `Checked` recording the path, the atoms this expression
+        requires and the bases it was found under, each found true by a
+        lookup of the path during this call. Raises as `check` does, so there
+        is no evidence of a check that failed. Its type carries what this
+        expression requires and nothing it ensures. It records the past: a
+        later change does not update it."""
+        path = self.check(mapping, fs=fs, **kw)
+        return Checked(path, self.declares.requires, bases=self._bases(mapping, kw, 0))
 
     def confirmed(
         self, mapping: Any = None, /, *, fs: Any = None, **kw: Any
     ) -> Confirmed[Q, K]:
-        """`confirm`, returning the evidence: a `Confirmed` whose type
-        carries what this expression ensures, and nothing it requires."""
-        return Confirmed(self.confirm(mapping, fs=fs, **kw), self.declares.ensures)
+        """`confirm`, returning the evidence (SEMANTICS.md §10.2): a
+        `Confirmed` recording the path and the atoms this expression ensures,
+        found true during this call. Its type carries what it ensures and
+        nothing it requires."""
+        path = self.confirm(mapping, fs=fs, **kw)
+        return Confirmed(path, self.declares.ensures, bases=self._bases(mapping, kw, 1))
+
+    def _bases(self, mapping: Any, kw: dict[str, Any], phase: int) -> tuple[Path, ...]:
+        """The rendered bases of the Under conditions of one phase."""
+        from .conditions import Under
+
+        if self.conditions is None:
+            return ()
+        env = _make_env(mapping, kw)
+        return tuple(
+            Path(c.base.render(env))
+            for c in self.conditions[phase]
+            if isinstance(c, Under)
+        )
 
     # -- introspection ------------------------------------------------------
 

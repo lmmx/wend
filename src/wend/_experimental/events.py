@@ -263,8 +263,10 @@ class Run:
         root*. Not whether it holds now; another writer is invisible here."""
         return all(self.knowledge.knows(a, str(event.path)) for a in event.atoms)
 
-    def _event(self, cls: type, path: str, atoms: frozenset[str]) -> Any:
-        return cls(Path(path), atoms, self.epoch)
+    def _event(
+        self, cls: type, path: str, atoms: frozenset[str], bases: tuple[Path, ...]
+    ) -> Any:
+        return cls(Path(path), atoms, self.epoch, bases)
 
     @contextmanager
     def enter[S: Spec](self, spec: type[S], env: Mapping[str, Any]) -> Iterator[S]:
@@ -332,7 +334,11 @@ class Run:
                         pass
                     store = Store(self.io, rels[n])
                     d = drafts[n] = store.begin(store.latest())
-                entered[n] = _Port(self._event(Checked, paths[n], req), h, d)
+                entered[n] = _Port(
+                    self._event(Checked, paths[n], req, p.expr._bases(env, {}, 0)),
+                    h,
+                    d,
+                )
             try:
                 yield cast("S", spec(entered))
                 if not all(lease.unbroken() for lease in leases):
@@ -372,7 +378,9 @@ class Run:
                 post = p.expr.declares.ensures
                 self.io.check(rels[n], post)
                 self.knowledge.learn(post, paths[n])
-                self.confirmed[rels[n]] = self._event(Confirmed, paths[n], post)
+                self.confirmed[rels[n]] = self._event(
+                    Confirmed, paths[n], post, p.expr._bases(env, {}, 1)
+                )
         finally:
             for lease in leases:
                 lease.release()

@@ -20,20 +20,24 @@ files: sound only if the observer sees every change, which none here does.
 
 `Leases` is not an observer but an exclusion: a read lease is granted only
 while no process has the file open for writing (through a descriptor or a
-shared writable mapping), and any later open for writing breaks it. With
+shared writable mapping), and any later open for writing breaks it; one
+truncation does not, and a size recorded with the leases catches it. With
 ``observer="lease"``, `collect` copies inside an interval in which no
-writer exists, which no observer can establish (see
-docs/journal/2026-10-22-synthesis.md §4).
+writer exists, which no observer can establish. The leases are taken by a
+helper process, so that the signal announcing a break is never this
+process's (docs/journal/2026-10-22-leases.md).
 """
 
 from __future__ import annotations
 
 import ctypes
+import errno
 import fcntl
 import hashlib
 import os
-import signal
 import struct
+import subprocess
+import sys
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import Literal
@@ -46,7 +50,9 @@ from .events import Sealed
 __all__ = [
     "Busy",
     "Fingerprint",
+    "LEASABLE",
     "Leases",
+    "Unleasable",
     "Verdict",
     "Watch",
     "collect",
@@ -173,40 +179,152 @@ class Busy(BlockingIOError):
     """A process has the file open for writing: no lease, so no snapshot now."""
 
 
-class Leases:
-    """Read leases on open files, all or none. While `unbroken`, no process
-    has had any of them open for writing since they were taken, so their
-    contents could not change. Needs the files' owner or ``CAP_LEASE``, and
-    a filesystem with leases (local ones; not NFS). A writer is delayed, not
-    refused: its open waits until the lease is given up (or, after
-    ``/proc/sys/fs/lease-break-time`` seconds, broken by the kernel)."""
+class Unleasable(OSError):
+    """No lease can be had: not the file's owner and without ``CAP_LEASE``
+    (``EACCES``), a file or filesystem without leases (``EINVAL``), or no
+    helper process to take them."""
 
-    def __init__(self, fds: Sequence[int]) -> None:
-        self.fds: list[int] = []
+
+# The leases are taken by a helper process, never by this one. F_SETLEASE
+# makes its caller the owner of the open file description (fs/locks.c,
+# lease_setup), and a break is announced to the owner by a signal, SIGIO
+# unless F_SETSIG says otherwise; whatever a process does with that signal,
+# taking a lease in-process makes it the library's to manage. The helper
+# ignores SIGIO, takes every lease on the descriptions it shares with this
+# process (passed, not reopened), reports, and exits. The leases stay on
+# the descriptions, held for as long as this process keeps them open, and
+# their owner is a process that no longer exists: a later break signals no
+# one. This process sees a break by asking (F_GETLEASE).
+_TAKE = """
+import fcntl, signal, sys
+signal.signal(signal.SIGIO, signal.SIG_IGN)
+taken = []
+for fd in map(int, sys.argv[1:]):
+    try:
+        fcntl.fcntl(fd, 10, 0)
+        fcntl.fcntl(fd, 1024, fcntl.F_RDLCK)
+    except OSError as e:
+        for t in taken:
+            fcntl.fcntl(t, 1024, fcntl.F_UNLCK)
+        print(fd, e.errno, flush=True)
+        sys.exit(0)
+    taken.append(fd)
+print("ok", flush=True)
+"""
+
+
+# Filesystems on which a lease is known to exclude every change: a file's
+# contents change only through its open file descriptions (and truncation),
+# and both were tested (tests/leases_test.py). The kernel grants leases on
+# others whose contents change with no writer at all: /proc and /sys files,
+# a FUSE or network filesystem's server, an overlay's lower layers.
+LEASABLE = {0xEF53: "ext2/3/4", 0x01021994: "tmpfs"}
+
+
+def filesystem(fd: int) -> int:
+    """The type of the filesystem ``fd`` is on (``statfs.f_type``)."""
+    buf = ctypes.create_string_buffer(256)  # larger than any struct statfs
+    if ctypes.CDLL(None, use_errno=True).fstatfs(fd, buf) != 0:
+        raise OSError(ctypes.get_errno(), "fstatfs")
+    return ctypes.c_long.from_buffer(buf).value & 0xFFFFFFFF
+
+
+class Leases:
+    """Read leases on open files, all or none, and whether they still hold.
+
+    A read lease is granted only while no open file description of the file
+    has write access (a descriptor, or a shared writable mapping whose
+    descriptor was closed), and any later open with write access, or
+    ``truncate(2)``, breaks it. One way to change a leased file does not
+    break the lease: an ``open`` with ``O_RDONLY | O_TRUNC``, which needs
+    only write permission, empties the file and leaves the lease as it was
+    (Linux 6.18; the open breaks leases by its access mode, the truncation
+    after it does not ask). After a lease is granted the size can therefore
+    only fall, to zero. So `unbroken` asks two things: every lease is still
+    a read lease, and every size is what it was when the leases were taken.
+    If both hold at some moment, no file changed between the leases and that
+    moment (docs/journal/2026-10-22-leases.md, proposition L).
+
+    Needs the files' owner or ``CAP_LEASE``, a filesystem in `LEASABLE`,
+    and a Python interpreter for the helper.
+    A writer is delayed, not refused: its ``open`` waits until the leases
+    are given up, or for ``/proc/sys/fs/lease-break-time`` seconds, after
+    which the kernel removes them. The leases are released by `release`,
+    or when the last descriptor of each file description is closed."""
+
+    def __init__(self, fds: Sequence[int], *, timeout: float = 10.0) -> None:
+        self.fds = list(fds)
+        self.sizes: list[int] = []
+        self.taken = False
+        for fd in self.fds:
+            if (kind := filesystem(fd)) not in LEASABLE:
+                raise Unleasable(
+                    errno.EINVAL,
+                    f"a lease on this filesystem ({kind:#x}) need not exclude "
+                    "every change",
+                    f"/proc/self/fd/{fd}",
+                )
         try:
-            for fd in fds:
-                # A break is announced to the holder by a signal, SIGIO by
-                # default, whose default action ends the process. Announce
-                # it with one whose default is to ignore, then to no one:
-                # `unbroken` reads the break from the lease itself.
-                fcntl.fcntl(fd, F_SETSIG, signal.SIGURG)
-                try:
-                    fcntl.fcntl(fd, F_SETLEASE, fcntl.F_RDLCK)
-                except BlockingIOError:
-                    raise Busy("a process has it open for writing") from None
-                self.fds.append(fd)
-                fcntl.fcntl(fd, fcntl.F_SETOWN, 0)
+            report = _take(self.fds, timeout)
+            if report != "ok":
+                fd, err = (int(x) for x in report.split())
+                if err == errno.EAGAIN:
+                    raise Busy(err, "a process has it open for writing")
+                raise Unleasable(err, os.strerror(err), f"/proc/self/fd/{fd}")
+            self.sizes = [os.fstat(fd).st_size for fd in self.fds]
+            self.taken = True
         except BaseException:
             self.release()
             raise
 
     def unbroken(self) -> bool:
-        return all(fcntl.fcntl(fd, F_GETLEASE) == fcntl.F_RDLCK for fd in self.fds)
+        """No process has had any of the files open for writing since the
+        leases were taken, and none was emptied by ``O_TRUNC``."""
+        return self.taken and all(
+            fcntl.fcntl(fd, F_GETLEASE) == fcntl.F_RDLCK
+            and os.fstat(fd).st_size == size
+            for fd, size in zip(self.fds, self.sizes, strict=True)
+        )
 
     def release(self) -> None:
+        """Give up every lease; a writer waiting for one goes on. Call it
+        before closing the descriptors: a closed number may be reused."""
         for fd in self.fds:
-            fcntl.fcntl(fd, F_SETLEASE, fcntl.F_UNLCK)
-        self.fds = []
+            try:
+                fcntl.fcntl(fd, F_SETLEASE, fcntl.F_UNLCK)
+            except OSError:  # none to give up: never taken, or broken
+                pass
+        self.fds, self.sizes, self.taken = [], [], False
+
+    def __enter__(self) -> Leases:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.release()
+
+
+def _take(fds: Sequence[int], timeout: float) -> str:
+    """The helper's report: ``ok``, or the descriptor it was refused and the
+    error. Its exit status is not read: a host that reaps every child (a
+    SIGCHLD handler calling ``waitpid(-1)``) may have taken it."""
+    if not sys.executable:
+        raise Unleasable(errno.ENOENT, "no interpreter for the lease helper")
+    try:
+        done = subprocess.run(
+            [sys.executable, "-I", "-S", "-c", _TAKE, *map(str, fds)],
+            pass_fds=fds,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            start_new_session=True,  # a terminal's signals are the host's
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Unleasable(errno.ECHILD, f"the lease helper failed: {e}") from e
+    lines = done.stdout.split("\n")
+    if not lines[0]:
+        raise Unleasable(errno.ECHILD, f"the lease helper did not report: {done}")
+    return lines[0]
 
 
 def collect(
@@ -225,8 +343,9 @@ def collect(
 
     With ``observer="lease"`` nothing is inferred from observation: every
     input is leased before the first copy (`Busy` if any has a writer), and
-    the copies are coherent if every lease is unbroken after the last check
-    and each name still means the object copied."""
+    the copies are coherent if the leases are unbroken after the last check
+    (no open for writing, no size fallen) and each name still means the
+    object copied."""
     fds = [io._open(r, os.O_RDONLY) for r in rels]
     watch = leases = None
     try:

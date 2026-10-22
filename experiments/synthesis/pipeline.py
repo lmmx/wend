@@ -349,8 +349,10 @@ def pair_updated_mid_entry_leased(base: Path) -> Outcome:
         f"{len(held_off)} of the writer's 4 opens for writing were held off; "
         "the run saw its lease broken and published nothing",
         "construction, by excluding writers rather than asking them to "
-        "cooperate: needs the inputs' owner or CAP_LEASE and a local "
-        "filesystem; a writer is delayed, at most lease-break-time",
+        "cooperate (proposition L of the leases journal): needs the inputs' "
+        "owner or CAP_LEASE and a filesystem in fresh.LEASABLE; a truncation "
+        "by O_RDONLY|O_TRUNC is not excluded but seen; a writer is delayed, "
+        "at most lease-break-time",
     )
 
 

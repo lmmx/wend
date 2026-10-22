@@ -1,5 +1,11 @@
 # 2026-10-22: Synthesis: one pipeline, and what each guarantee rests on (research)
 
+> **Revised in place, 2026-10-22,** after the owner's review. Where a claim here was
+> refuted or narrowed, the corrected statement replaces it and the earlier wording is kept
+> beside it, marked *Before*:
+> - the lease claims of §4.2, §6 and §8: see
+>   [Leases](2026-10-22-leases.md).
+
 The stack #107–#114 built its mechanisms one problem at a time:
 - declarations as obligations;
 - knowledge before and after each step;
@@ -20,7 +26,8 @@ Two details were to be examined closely:
 
 Building the pipeline produced results of its own, and so did auditing the earlier entries
 while building it. Three changed the classification:
-- read leases, which exclude a writer where no observer can see one (§4);
+- read leases, which exclude a writer where no observer can see one (§4), on conditions
+  the [leases entry](2026-10-22-leases.md) narrowed;
 - copies torn by a concurrent writer (§4.3);
 - drafts that another process can name (§5).
 
@@ -370,23 +377,36 @@ With the lease held:
 
 `fresh.Leases` and `collect(observer="lease")` build on this:
 - every input is leased before it is copied; `Busy` if any has a writer;
-- the copies are coherent only if every lease is unbroken after the last check, and each
-  name still leads to the object copied.
+- the copies are coherent only if the leases are unbroken after the last check (no break,
+  and no size fallen: leases §3.1), and each name still leads to the object copied.
 
-`Run(lease=True)` leases each held input before observing it, and refuses the step at
-exit if any lease was broken.
+`Run(lease=True)` leases every held input at once, all or none, before observing any, and
+refuses the step at exit unless the leases are unbroken.
 
-**[Proven]** Assumptions, all three documented in `fcntl(2)`:
-- **L1:** a read lease is granted only when no process has the file open for writing, and
-  any later open for writing or truncation breaks it;
-- **L2:** every write to the file goes through an open file description;
-- **L3:** the run owns the inputs or has `CAP_LEASE`, on a filesystem with leases (local;
-  not NFS).
+**[Proven]** under the assumptions L1–L5 of the leases entry's proposition L, and only
+with two additions to the mechanism, both made there:
+- the size of every input is recorded once the leases are taken, and `unbroken()` asks
+  for it unchanged as well as for every lease still `F_RDLCK`;
+- inputs on a filesystem outside `fresh.LEASABLE` (ext2/3/4 and tmpfs, the ones tested)
+  are refused.
 
-The argument: let *tᵢ* be the moment input *i* is leased and *T* the latest of them. If no
-lease is broken by the final check, no process had input *i* open for writing in
-[*tᵢ*, end], so its contents were constant there. At *T* every input held what was copied.
-The copies are the state of every input at one instant.
+With them, if every lease reads unbroken after the last read, every input's contents were
+constant from the moment the sizes were recorded, and the copies are the state of every
+input at that one instant.
+
+> *Before:* "**[Proven]** Assumptions, all three documented in `fcntl(2)`: **L1:** a read
+> lease is granted only when no process has the file open for writing, and any later open
+> for writing or truncation breaks it; **L2:** every write to the file goes through an open
+> file description; **L3:** the run owns the inputs or has `CAP_LEASE`, on a filesystem
+> with leases (local; not NFS)." The argument then concluded from unbroken leases alone.
+>
+> **[Refuted]**, twice:
+> - an `open` with `O_RDONLY | O_TRUNC` empties a leased file and leaves the lease intact
+>   (leases §3.1), so L1's "or truncation" is false for that truncation. Two files emptied
+>   that way, between their copies, gave a pair of copies that never coexisted, under
+>   unbroken leases;
+> - the kernel grants leases on `/proc` files, which change with no writer (leases §3.4),
+>   so "a filesystem with leases" was not the condition.
 
 Under L1–L3 this establishes a coherent snapshot of the *objects*, which no observer can
 establish. **[Measured]** `test_a_read_lease_excludes_the_writer_no_observer_sees` and
@@ -403,10 +423,17 @@ the directory's `ctime` is a sound version counter for names is a **[Conjecture]
 
 **[Interpretation]** This revises the classification. Before the audit, "a coherent
 snapshot of files others write in place" stood under *impossible without cooperation*. It
-is impossible for *observers*. It is possible by *exclusion*, which needs privilege
-(ownership or `CAP_LEASE`) and a local filesystem, but not the writers' cooperation. The
-writers are delayed, not asked: a writer that opens an input waits until the step ends,
-or until `/proc/sys/fs/lease-break-time` (45 s here) when the kernel breaks the lease.
+is impossible for *observers*. It is possible by *exclusion*, which needs the inputs'
+ownership or `CAP_LEASE`, and a filesystem in `LEASABLE`, but not the writers'
+cooperation. Ownership is not privilege: an ordinary user leases their own files
+(`test_only_the_owner_or_CAP_LEASE_may_lease`). The writers are delayed, not asked: a
+writer that opens an input waits until the step ends, or until
+`/proc/sys/fs/lease-break-time` (45 s here) when the kernel breaks the lease. A writer
+that truncates by `O_RDONLY | O_TRUNC` is not delayed at all; it is seen afterwards.
+
+> *Before:* "possible by *exclusion*, which needs privilege (ownership or `CAP_LEASE`) and a
+> local filesystem". **[Narrowed]**: ownership is no privilege, and "local" was not enough
+> (leases §3.4).
 
 The impossibility proof of #114 §3 is not wrong. It quantifies over observers, and a lease
 is not one: it changes what other processes can do.
@@ -416,11 +443,16 @@ is not one: it changes what other processes can do.
   the process.
 - The first leased test therefore killed pytest silently: the output stopped, which read
   as a hang.
-- `Leases` now:
-  - sends the announcement to a signal whose default is to ignore (`F_SETSIG`, `SIGURG`);
-  - then sends it to no one (`F_SETOWN`, 0);
-  - reads the break from the lease itself.
 - A library must not leave a process exposed to a signal it did not ask for.
+- `Leases` now takes every lease in a helper process that exits at once (leases §3.3).
+  The leases stay on the descriptions the host holds, owned by a process that no longer
+  exists, so a break signals no one. The host reads the break from the lease itself.
+
+> *Before:* "`Leases` now: sends the announcement to a signal whose default is to ignore
+> (`F_SETSIG`, `SIGURG`); then sends it to no one (`F_SETOWN`, 0); reads the break from the
+> lease itself." **[Refuted]** as encapsulation (leases §3.2): `F_SETLEASE` makes the
+> caller's process the owner, so between it and `F_SETOWN` 0 a break ran the host's own
+> `SIGURG` handler. No order of calls in one process closes that window.
 
 ### 4.3 A copy can be torn
 
@@ -513,7 +545,7 @@ writers.
 | a claimed version has one winner; a loser is never visible; beliefs match the state | `RENAME_NOREPLACE` (sticky register) | every writer follows the store protocol | `concurrent_producers`; `test_a_claimed_version_has_one_winner_and_no_visible_loser` |
 | a pinned reader returns only bytes the version committed | manifest digest | SHA-256 collision resistance; the digest from the run's record | `member_tampered` |
 | an unpublished draft cannot be named by another process | `O_TMPFILE` | the other process is another uid, or the run is non-dumpable; not root | §5 |
-| an input is a coherent snapshot of several files others write in place | read leases | L1–L3 (§4.2): ownership or `CAP_LEASE`, a local filesystem | `pair_updated_mid_entry_leased` |
+| an input is a coherent snapshot of several files others write in place | read leases, taken by a helper, with sizes | L1–L5 of proposition L (leases §4): ownership or `CAP_LEASE`; a filesystem in `LEASABLE`; contents change only through the filesystem's files (L3, L4) | `pair_updated_mid_entry_leased`; `tests/leases_test.py` |
 | members of a committed version cannot change at all | `FS_IMMUTABLE_FL` | `CAP_LINUX_IMMUTABLE` to set it; nobody with it acting against the run | `test_immutable_members_refuse_every_writer_tried` |
 | a version is not removed under a reader | `flock` lease | readers pin rather than go by path | `test_a_version_is_reclaimed_only_once_no_reader_holds_it` |
 | `known()` | knowledge of this run's effects | nobody else writes below the root (closed world) | `input_rewritten_after` |
@@ -570,9 +602,14 @@ The typed-core addendum records two places where the types claim more than the r
   keeps losing claim on another's behalf. No pipeline here needs it.
 - **Exchange between shared names.** Can a correct conditional replace be built from it
   without fresh names (§2.2)?
-- **Leases on other filesystems.** Leases on overlayfs, tmpfs and FUSE are untested.
-  Should `Run(lease=True)` fall back or refuse where they are unsupported? It refuses:
-  `fcntl` raises.
+- **Leases on other filesystems.** *Answered* (leases §3.4). tmpfs is tested and
+  allowed. `/proc` is granted leases by the kernel while its contents change, so `Leases`
+  refuses every filesystem it has not tested (`Unleasable`). xfs and btrfs await their
+  tests; overlayfs and network or FUSE filesystems are refused on principle.
+
+  > *Before:* "Leases on overlayfs, tmpfs and FUSE are untested. Should `Run(lease=True)`
+  > fall back or refuse where they are unsupported? It refuses: `fcntl` raises." The
+  > kernel does not raise for `/proc`; it grants.
 - **Large members.** Verifying a member reads it whole before returning it. Streaming
   verification needs a per-chunk manifest, or fs-verity.
 

@@ -9,9 +9,16 @@ For each entry it says:
 - where the evidence is.
 
 **Two kinds of document, kept apart.** The journals keep the development: the
-hypotheses, the counterexamples that refuted them, and the corrections. They are never
-rewritten. A later correction is an *addendum*, dated, at the end of the entry it
-corrects, and a note under the entry's title points to it.
+hypotheses, the counterexamples that refuted them, and the corrections. Corrections are
+recorded in two ways:
+- **Addenda.** The audit of #106–#114 added a dated addendum at the end of each entry it
+  corrected, with a note under the entry's title.
+- **Revisions in place.** Since the owner's review, a refuted or narrowed claim is
+  revised where it stands. The corrected statement replaces it, and the earlier wording
+  is kept beside it, marked *Before*, with the counterexample and a pointer to the entry
+  that found it. The synthesis's lease claims are the first so revised.
+
+Nothing is deleted. The earlier wording stays in the text, and in the history.
 
 `docs/SEMANTICS.md` keeps the current theory, stated cleanly. So far one result has
 moved from the journals into it, §10.1's corrections (#107). The rest of the theory
@@ -48,7 +55,8 @@ addendum, and its tests. All branches are unmerged.
 | 7 | [Confinement is not consistency](2026-10-22-confinement-is-not-consistency.md) | #112 | d73b5fb, addendum 4aa656a | `tests/held_test.py` |
 | 8 | [The typed core](2026-10-22-typed-core.md) | #113 | df1ca7c, 5672297, addendum 95ab9ee | `experiments/typed_core/`, `tests/events_test.py` |
 | 9 | [Freshness, publication and consistency](2026-10-22-publication-and-consistency.md) | #114 | 9bc511c, addendum 51cc4a0 | `tests/{fresh,publish,consistency,lifecycle,durability}_test.py` |
-| 10 | [Synthesis](2026-10-22-synthesis.md) | stacked on #114 | 164eac2 and this commit | `experiments/synthesis/`, `tests/synthesis_test.py` |
+| 10 | [Synthesis](2026-10-22-synthesis.md) | #115 | 164eac2, 4f1bf41, and the leases commit (revisions in place) | `experiments/synthesis/`, `tests/synthesis_test.py` |
+| 11 | [Leases](2026-10-22-leases.md) | #115 | this commit | `tests/leases_test.py`, `experiments/mutation/mutants.py` |
 
 ## How the discoveries build on one another
 
@@ -106,7 +114,14 @@ addendum, and its tests. All branches are unmerged.
    - Pinned reads verified against a manifest read only committed bytes.
    - Immutable members refuse every writer tried.
    - Read leases *exclude* the writer no observer can see, so a coherent snapshot of
-     several inputs needs either cooperation or privilege, not cooperation alone.
+     several inputs needs either cooperation or exclusion, not cooperation alone.
+10. **What a lease excludes (leases entry).**
+    - A truncation by `O_RDONLY | O_TRUNC` does not break a read lease. Under an unbroken
+      lease the size can only fall, so a recorded size detects it.
+    - `/proc` files are leased and change anyway. Only tested filesystems are allowed.
+    - A lease taken in-process makes the host the owner of its break signal. A helper
+      that takes the leases and exits leaves them owned by no living process.
+    - Proposition L: a leased copy is one version, under five named assumptions.
    - Every guarantee is classed: by construction, under named assumptions, or
      impossible without cooperation or exclusion (synthesis §6).
 
@@ -116,7 +131,11 @@ addendum, and its tests. All branches are unmerged.
 |---|---|---|
 | A writer through an already dirty page of a shared mapping changes a file with no change of time, size or event; change-and-change-back leaves no trace at all | observed; bounded by writeback (the first write after it moves `ctime`) | #114 §1, addendum A.1; synthesis §4 |
 | No observer can establish a snapshot of files others write in place | proven, for observers (indistinguishability) | #114 §3 |
-| A read lease is refused while any writer exists, the dirty-mapping writer included; leases give the snapshot by exclusion | observed; proven under L1–L3 | synthesis §4.2; `test_a_read_lease_excludes_the_writer_no_observer_sees` |
+| A read lease is refused while any writer exists, the dirty-mapping writer included; leases give the snapshot by exclusion | observed; proven under L1–L5 with a size check (proposition L) | synthesis §4.2; leases §4; `test_a_read_lease_excludes_the_writer_no_observer_sees`, `tests/leases_test.py` |
+| `open(O_RDONLY \| O_TRUNC)` empties a leased file without breaking the lease | observed on ext4 and tmpfs; explained by the source (`handle_truncate`) | leases §3.1 |
+| `F_SETLEASE` makes the caller's process the owner of its break signal; no in-process order of calls avoids it | proven from the source; observed | leases §3.2 |
+| Leases taken by a helper that exits survive it, and their breaks signal no one | observed | leases §3.3 |
+| The kernel leases `/proc` files, which change under the lease | observed | leases §3.4 |
 | Path confinement (`openat2`) is not object confinement: hard links and FIFOs pass every path check | observed | confined runs §2; aliasing addendum A.1 |
 | `RESOLVE_NO_XDEV` guards the boundary as well as identity | observed (mutant escapes) | confined-runs addendum A.1 |
 | String-keyed knowledge is sound exactly on alias-free runs | proven, tested | aliasing §5 |
@@ -146,7 +165,11 @@ addendum, and its tests. All branches are unmerged.
 | exchange with `expect` prevents lost updates | three writers | `Store` (claims) | synthesis §2 |
 | holding a generation's directory reads one generation | in-place rewrite through the held directory | manifests, immutability, leases on reclaim | synthesis §3 |
 | `Sealed` is a snapshot of the input | torn copies | leased copies; committed digests | synthesis §4.3 |
-| a coherent multi-file snapshot needs the writers' cooperation | read leases | cooperation *or* exclusion with privilege | synthesis §4.2 |
+| a coherent multi-file snapshot needs the writers' cooperation | read leases | cooperation *or* exclusion with ownership or `CAP_LEASE` | synthesis §4.2 |
+| any truncation breaks a read lease (synthesis L1) | `O_RDONLY \| O_TRUNC` | a size recorded with the leases | leases §3.1 |
+| a filesystem that grants leases excludes every change | `/proc/uptime` | `LEASABLE`: tested filesystems only | leases §3.4 |
+| `F_SETSIG` to `SIGURG`, then `F_SETOWN` 0, keeps break signals from the host | a writer between `F_SETLEASE` and `F_SETOWN` | a helper process takes the leases | leases §3.2–§3.3 |
+| leases need privilege | `nobody` leases its own file | ownership or `CAP_LEASE` | leases §5 |
 | a draft is unnameable until published | `linkat` through `/proc/<pid>/fd` | other uids only, or a non-dumpable run | synthesis §5 |
 | a derivation records what the step used | a read after the entry observation | reads recorded and checked at exit | synthesis §5 |
 | the families tests show the analysis knows what it should | a "learn nothing" mutant passed | an oracle of the worked pipeline | families addendum A.1 |
@@ -159,6 +182,9 @@ These are the gaps that remain after the audit.
   - The kill tables of #108–#114 come from scripts in the session's scratch space.
   - The tests that kill each mutant are committed; the harnesses that made the mutants
     are not.
+  - Begun: `experiments/mutation/mutants.py` is committed, with the leases entry's ten
+    mutants. It guards against the defects the audit found in the earlier harnesses. The
+    earlier entries' mutants are to be moved into it.
   - The precision measurements of #108 and #109 can be rerun only through the tests'
     generators.
 - **Privileged evidence is not run in CI.** These skip without root, loop devices,
@@ -178,6 +204,8 @@ These are the gaps that remain after the audit.
   - reflinks (ext4).
 - **Open questions, gathered:**
   - names under leases (synthesis §8);
+  - a persistent lease helper; xfs and btrfs; whether L3 is complete; reporting the
+    `O_TRUNC` gap (leases §8);
   - exchange between shared names (§2.2);
   - the unbounded made-parents case (families addendum A.1);
   - must/may/disjoint as distinct rules (families addendum A.4);
@@ -192,6 +220,7 @@ These are the gaps that remain after the audit.
 uv run pytest                                      # everything; privileged tests skip without root
 uv run python experiments/typed_core/check.py      # both checkers against the E markers
 uv run python experiments/synthesis/pipeline.py    # the pipeline and its scenarios
+uv run python experiments/mutation/mutants.py      # each mutant against its named tests
 uv run python docs/journal/scripts/2026-10-22-families-demo.py
 uv run python docs/journal/scripts/2026-10-22-confined-demo.py
 ```

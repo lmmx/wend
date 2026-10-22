@@ -245,9 +245,11 @@ class Run:
 
     def __init__(self, root: str, *, lease: bool = False) -> None:
         self.io = Confined(root)
-        # Lease each held input (`fresh.Leases`): while a step runs, no
-        # process can have it open for writing. Needs the inputs' owner or
-        # CAP_LEASE; a step whose input has a writer fails at entry (`Busy`).
+        # Lease the held inputs, all together (`fresh.Leases`): while a step
+        # runs, no process can open one for writing unseen. Needs the
+        # inputs' owner or CAP_LEASE; a step whose input has a writer fails
+        # at entry (`Busy`), and one whose input was asked for, for writing,
+        # or emptied, during the step fails at exit (`Inconsistent`).
         self.lease = lease
         self.knowledge = Knowledge()
         self.epoch = 0
@@ -293,7 +295,7 @@ class Run:
         self.epoch += 1
         ports = spec.ports()
         held: dict[str, Held[Any, Any]] = {}
-        leases: list[Leases] = []
+        leases: Leases | None = None
         drafts: dict[str, Draft | VersionDraft] = {}
         observed = {}
         paths = {n: p.expr.render(env) for n, p in ports.items()}
@@ -304,15 +306,18 @@ class Run:
                 req = p.expr.declares.requires
                 self.io.check(rels[n], req)
             for n, p in ports.items():
+                if isinstance(p, Holds):
+                    fd = self.io._open(rels[n], os.O_RDONLY)
+                    held[n] = Held(paths[n], fd, frozenset({"read"}))
+            if self.lease and held:  # before observing: frozen from here on
+                leases = Leases([h.fd for h in held.values()])
+            for n, p in ports.items():
                 req = p.expr.declares.requires
                 self.knowledge.learn(req, paths[n])
                 h = d = None
                 if isinstance(p, Holds):
-                    fd = self.io._open(rels[n], os.O_RDONLY)
-                    h = held[n] = Held(paths[n], fd, frozenset({"read"}))
-                    if self.lease:  # before observing: frozen from here on
-                        leases.append(Leases([fd]))
-                    fp = observed[rels[n]] = fingerprint(fd, content=True)
+                    h = held[n]
+                    fp = observed[rels[n]] = fingerprint(h.fd, content=True)
                     mine = self.published.get(rels[n])
                     if isinstance(mine, Published) and (
                         (mine.fingerprint.ident, mine.fingerprint.digest)
@@ -341,9 +346,10 @@ class Run:
                 )
             try:
                 yield cast("S", spec(entered))
-                if not all(lease.unbroken() for lease in leases):
+                if leases is not None and not leases.unbroken():
                     raise Inconsistent(
-                        "an input was asked for, for writing, during the step"
+                        "an input was asked for, for writing, or emptied, "
+                        "during the step"
                     )
                 for n, h in held.items():
                     if any(u != observed[rels[n]].digest for u in h.used):
@@ -382,7 +388,7 @@ class Run:
                     Confirmed, paths[n], post, p.expr._bases(env, {}, 1)
                 )
         finally:
-            for lease in leases:
-                lease.release()
+            if leases is not None:
+                leases.release()
             for h in held.values():
                 h.close()

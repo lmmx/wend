@@ -330,3 +330,82 @@ def test_file_and_dir_exclude_each_other_only_for_an_existing_path(tmp_path, mis
     ):
         pass
     assert bool(t.knowledge.refutes("file", str(p))) is (not missing)
+
+
+# -- an oracle: what the analysis knows, worked out by hand ----------------------
+#
+# The properties above check that what is known is true, and that `analyse`
+# agrees with `Tracker`; neither says what *should* be known, so a model that
+# learns nothing passes them (the audit addendum). This pipeline's knowledge
+# is worked out by hand from the rules: learn every precondition once all of
+# a step's checks pass, forget around each declared mutation, then learn the
+# postconditions.
+
+
+def worked(root: str) -> tuple[str, str, list[tuple[str, Step]]]:
+    raw, out = f"{root}/raw/a.csv", f"{root}/out/a.csv"
+    return (
+        raw,
+        out,
+        [
+            (
+                "fetch",
+                Step(
+                    raw=P(raw)
+                    .requires(Absent, Creatable)
+                    .ensures(File, Exists, Readable)
+                ),
+            ),
+            (
+                "clean",
+                Step(
+                    raw=P(raw).requires(File, Exists, Readable),
+                    out=P(out).requires(Absent, Creatable).ensures(File, Exists),
+                ),
+            ),
+            (
+                "report",
+                Step(
+                    out=P(out).requires(File, Exists, Readable),
+                    raw=P(raw).requires(Absent),
+                ),
+            ),
+        ],
+    )
+
+
+# (step, port): (the required atoms known at entry, those a known fact refutes)
+ORACLE = {
+    ("fetch", "raw"): (set(), set()),
+    ("clean", "raw"): ({"file", "exists", "read"}, set()),  # fetch ensured them
+    ("clean", "out"): (set(), set()),
+    ("report", "out"): ({"file", "exists"}, set()),  # read was never ensured
+    ("report", "raw"): (set(), {"absent"}),  # it is known to exist
+}
+
+
+def test_the_analysis_knows_exactly_what_the_worked_pipeline_establishes():
+    _, _, steps = worked("/w")
+    got = {(e.step, e.port): (set(e.known), set(e.refuted)) for e in analyse(steps)}
+    assert got == ORACLE
+
+
+def test_the_tracker_knows_the_same_and_learns_nothing_from_a_failed_entry(tmp_path):
+    raw, out, steps = worked(str(tmp_path))
+    t = Tracker()
+    with t.run(*steps[0], {}) as p:
+        _create(p["raw"])
+    with t.run(*steps[1], {}) as p:
+        _read(p["raw"])
+        _create(p["out"])
+    got = {(e.step, e.port): set(e.known) for e in t.entries}
+    assert got == {
+        key: known for key, (known, _) in ORACLE.items() if key[0] != "report"
+    }
+    # report's check of out passes, then raw's Absent fails, as predicted
+    with pytest.raises(ConditionError), t.run(*steps[2], {}):
+        pass
+    # a step that fails at entry teaches nothing, even what its passing
+    # checks found: out was readable, and that is not now known
+    assert not t.knowledge.knows("read", out)
+    assert t.knowledge.knows("exists", raw) and t.knowledge.knows("file", out)

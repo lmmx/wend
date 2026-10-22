@@ -200,14 +200,19 @@ These are the gaps that remain after the audit.
     every later import (drafts §5). The earlier entries' mutants are to be moved into it.
   - The precision measurements of #108 and #109 can be rerun only through the tests'
     generators.
-- **Privileged evidence is not run in CI.** These skip without root, loop devices,
-  mounts or `CAP_LINUX_IMMUTABLE`:
+- **Privileged evidence was not run in CI.** *Addressed on #115.* These skipped
+  without root, loop devices, mounts or `CAP_LINUX_IMMUTABLE`:
   - the crash model;
   - mount aliasing;
   - the confined mount moves;
-  - the immutable tests.
+  - the immutable tests;
+  - now also the drafts and leases tests that act as other users.
 
-  Several mutant kills depend on them. They need a marker and one privileged job.
+  Several mutant kills depend on them. Each is now marked `privileged`
+  (`tests/conftest.py`), 29 in all. An unprivileged run lists every one that did not
+  run, under "privileged evidence", instead of a bare count of skips. A `privileged` job
+  in `.github/workflows/test.yml` runs them as root with `WEND_REQUIRE_PRIVILEGED=1`,
+  under which a privileged test that skips fails.
 - **No specification of the run model.** Events, holds, seals, drafts, versions, leases
   and derivations are defined only in the journals and docstrings. SEMANTICS.md has
   none of them.
@@ -230,6 +235,23 @@ These are the gaps that remain after the audit.
   - an unprivileged writer's hard-link attack (confined-runs addendum A.4).
 
 ## Reproducing the evidence
+
+The evidence is of four kinds, and each runs in a different place:
+
+| kind | marked | where it runs |
+|---|---|---|
+| portable tests | none | every CI job, any platform |
+| Linux tests | `linux` | the CI test jobs (Linux); skipped elsewhere |
+| privileged tests | `privileged` | the CI `privileged` job, as root; listed as not run elsewhere |
+| measurements by script | none (not tests) | by hand, with the commands below; their figures are dated in the entries that cite them |
+
+The scripts are:
+- the benchmarks and probes of each entry;
+- `experiments/typed_core/check.py` (both checkers against the markers);
+- the mutation harness.
+
+None of them runs in CI. A figure from one is **[Measured]** on the machine and date its
+entry names, not continuously checked.
 
 ```sh
 uv run pytest                                      # everything; privileged tests skip without root

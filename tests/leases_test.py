@@ -30,9 +30,7 @@ from wend._experimental.fresh import Busy, Leases, Unleasable
 from wend._experimental.publish import Inconsistent
 
 
-pytestmark = pytest.mark.skipif(
-    sys.platform != "linux", reason="read leases are Linux's F_SETLEASE"
-)
+pytestmark = pytest.mark.linux  # read leases are Linux's F_SETLEASE
 
 F_SETSIG, F_SETLEASE, F_GETLEASE = 10, 1024, 1025
 PAGE, PAGES = 4096, 64
@@ -158,11 +156,13 @@ def test_a_filesystem_whose_files_change_without_writers_is_refused(tmp_path):
 KERNEL_LEASES_PROC = """
     import fcntl, json, os, signal, time
     signal.signal(signal.SIGIO, signal.SIG_IGN)
-    fd = os.open("/proc/uptime", os.O_RDONLY)
+    # the process's own status: its own, so leasable without privilege; it
+    # counts the context switches a sleep makes
+    fd = os.open("/proc/self/status", os.O_RDONLY)
     fcntl.fcntl(fd, 1024, fcntl.F_RDLCK)
-    a = os.pread(fd, 64, 0)
+    a = os.pread(fd, 4096, 0)
     time.sleep(0.05)
-    b = os.pread(fd, 64, 0)
+    b = os.pread(fd, 4096, 0)
     print(json.dumps({"leased": fcntl.fcntl(fd, 1025) == fcntl.F_RDLCK,
                       "size": os.fstat(fd).st_size, "changed": a != b}))
 """
@@ -356,7 +356,7 @@ def test_every_other_way_to_change_the_bytes_needs_write_access(files):
         for name, attempt in attempts.items():
             with pytest.raises(OSError) as e:
                 attempt()
-            refused[name] = errno.errorcode[e.value.errno]
+            refused[name] = errno.errorcode.get(e.value.errno or 0, "?")
     finally:
         for x in (src, r, w):
             os.close(x)
@@ -651,12 +651,15 @@ def as_nobody(monkeypatch):
     monkeypatch.setattr(fresh.subprocess, "run", run)
 
 
-needs_root = pytest.mark.skipif(
-    os.geteuid() != 0
-    or not shutil.which("setpriv")
-    or not Path("/usr/bin/python3").exists(),
-    reason="needs root, setpriv and /usr/bin/python3 to act as another user",
-)
+def needs_root(test):
+    return pytest.mark.privileged(
+        pytest.mark.skipif(
+            os.geteuid() != 0
+            or not shutil.which("setpriv")
+            or not Path("/usr/bin/python3").exists(),
+            reason="needs root, setpriv and /usr/bin/python3 to act as another user",
+        )(test)
+    )
 
 
 @needs_root

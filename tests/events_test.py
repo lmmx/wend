@@ -29,6 +29,9 @@ from wend._experimental.publish import Inconsistent
 from wend.errors import ConditionError
 
 
+pytestmark = pytest.mark.linux
+
+
 root, name = Param("root"), Param("name")
 raw = (P(root) / "raw" / T(t"{name}.csv")).requires(File, Exists, Readable)
 out = (

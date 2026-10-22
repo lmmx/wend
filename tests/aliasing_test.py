@@ -25,6 +25,9 @@ from wend.conditions import check_conditions
 from wend.errors import ConditionError
 
 
+pytestmark = pytest.mark.linux
+
+
 def reads(p):
     return Step(x=P(str(p)).requires(File, Exists, Readable))
 
@@ -119,6 +122,7 @@ def _bind(src: Path, dst: Path, *opts: str) -> bool:
     )
 
 
+@pytest.mark.privileged
 def test_a_bind_mount_is_one_directory():
     with tempfile.TemporaryDirectory() as d:
         r = Path(d)
@@ -145,6 +149,7 @@ def test_a_bind_mount_is_one_directory():
         assert by_string and not by_entry
 
 
+@pytest.mark.privileged
 def test_deleting_a_directory_reached_through_a_bind_mount():
     # m/x is below d, through another entry: only d's identity connects them.
     with tempfile.TemporaryDirectory() as d:
@@ -443,6 +448,7 @@ def test_below_a_file_is_not_the_file():
         assert not t.knowledge.knows("exists", resolve(str(r / "f" / "x")))
 
 
+@pytest.mark.privileged
 def test_a_missing_paths_creation_is_judged_where_the_check_looks():
     # With a dangling symlink on the way, the nearest existing ancestor that
     # Creatable consults is not the parent of the first missing entry: lnk/x
@@ -572,6 +578,7 @@ def test_beneath_creation_does_not_write_through_a_dangling_symlink(tmp_path):
     assert (tmp_path / "pwned").exists()
 
 
+@pytest.mark.privileged
 def test_beneath_refuses_a_mount_crossing_and_dotdot(tmp_path):
     (tmp_path / "d").mkdir()
     (tmp_path / "d" / "x").write_text("x")

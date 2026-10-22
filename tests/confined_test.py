@@ -29,6 +29,9 @@ from wend._experimental.families import analyse_families
 from wend.errors import ConditionError
 
 
+pytestmark = pytest.mark.linux
+
+
 SECRET = b"SECRET"
 
 
@@ -369,6 +372,7 @@ PLAIN = {"checked", "checked-w", "plain", "plain-w"}
         (("step", 4, "out/mon.csv", "dangle"), {"plain-w"}),
     ],
 )
+@pytest.mark.privileged
 def test_each_move_escapes_a_plain_run_and_is_refused_by_a_confined_one(
     move, escaped_by
 ):
@@ -491,6 +495,7 @@ def test_an_alias_inside_the_root_is_refused_not_only_escapes(kind):
         )
 
 
+@pytest.mark.privileged
 @pytest.mark.parametrize("kind", ["checked", "confined"])
 def test_deleting_a_tree_does_not_descend_into_a_mount_below_it(kind):
     with tempfile.TemporaryDirectory() as d:

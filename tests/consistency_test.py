@@ -23,6 +23,9 @@ from wend._experimental.fresh import Busy, collect, observe
 from wend._experimental.publish import Derivation, Draft, Generation, hold_dir, read_in
 
 
+pytestmark = pytest.mark.linux
+
+
 SIZE = 4096
 A0, A1 = b"a" * SIZE, b"A" * SIZE
 B0, B1 = b"b" * SIZE, b"B" * SIZE

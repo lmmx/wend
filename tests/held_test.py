@@ -15,6 +15,9 @@ import pytest
 from wend._experimental.identity import Held
 
 
+pytestmark = pytest.mark.linux
+
+
 def _ident(fd: int) -> tuple[int, int]:
     s = os.fstat(fd)
     return (s.st_dev, s.st_ino)
@@ -62,6 +65,7 @@ def test_a_held_file_does_not_keep_its_contents(tmp_path, held, move):
 FS_IOC_GETFLAGS, FS_IOC_SETFLAGS, FS_IMMUTABLE_FL = 0x80086601, 0x40086602, 0x10
 
 
+@pytest.mark.privileged
 def test_an_immutable_file_refuses_writes_and_unlinks_even_for_root(tmp_path):
     x = tmp_path / "x"
     x.write_bytes(b"mine")

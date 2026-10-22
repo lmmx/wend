@@ -19,6 +19,9 @@ from wend._experimental.confined import Confined
 from wend._experimental.publish import Conflict, Draft
 
 
+pytestmark = pytest.mark.linux
+
+
 CHUNKS, CHUNK = 40, b"x" * 1024
 WHOLE = CHUNK * CHUNKS
 

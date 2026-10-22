@@ -15,6 +15,9 @@ from wend import Absent, Creatable, Exists, File, P, Param, Readable, T
 from wend._experimental.events import Holds, Makes, Run, Spec, Uses, seal
 
 
+pytestmark = pytest.mark.linux
+
+
 root, day = Param("root"), Param("day")
 raw = (P(root) / "raw" / T(t"{day}.csv")).requires(File, Exists, Readable)
 clean = (

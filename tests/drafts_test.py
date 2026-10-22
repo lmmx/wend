@@ -30,9 +30,18 @@ from wend._experimental.confined import Confined
 from wend._experimental.publish import Inconsistent, Store
 
 
+pytestmark = pytest.mark.linux
+
+
 ROOT = os.geteuid() == 0
 WRITER, OTHER = (65534, 65533) if ROOT else (os.geteuid(), None)
-needs_root = pytest.mark.skipif(not ROOT, reason="needs root to act as other users")
+
+
+def needs_root(test):
+    return pytest.mark.privileged(
+        pytest.mark.skipif(not ROOT, reason="needs root to act as other users")(test)
+    )
+
 
 ACTORS = r"""
 import ctypes, errno, json, os, re, sys
@@ -218,12 +227,27 @@ def draft(base: Path, dumpable: bool, *others: tuple[int | None, str]) -> list:
     return out
 
 
+def yama() -> int:
+    """Yama's ``ptrace_scope``, 0 where Yama is absent. From 1 it refuses
+    ``ptrace`` *attach* to a process that is not a descendant, unless the
+    caller has ``CAP_SYS_PTRACE``; it does not govern *read* access, which
+    is all ``/proc/<pid>/fd`` needs. ``pidfd_getfd`` needs attach."""
+    try:
+        return int(Path("/proc/sys/kernel/yama/ptrace_scope").read_text())
+    except FileNotFoundError:
+        return 0
+
+
 ALL = {"read": "done", "write": "done", "name": "done", "take": "done"}
 NONE = {"read": "EACCES", "write": "EACCES", "name": "EACCES", "take": "EPERM"}
+# what a process of the writer's own uid, not its ancestor, can do
+SAME = ALL | ({"take": "EPERM"} if yama() >= 1 else {})
+# and root, which has CAP_SYS_PTRACE (Yama's scope 3 refuses even that)
+ROOTS = ALL | ({"take": "EPERM"} if yama() >= 3 else {})
 
 
 def test_a_draft_is_open_to_processes_of_its_own_uid(shared):
-    assert draft(shared, True, (WRITER, "same")) == [ALL]
+    assert draft(shared, True, (WRITER, "same")) == [SAME]
     # named, partial, and changed by the other process before publication;
     # it outlives the writer, which abandoned its draft
     assert (shared / "out" / "taken-same").read_bytes() == b"Partial"
@@ -237,12 +261,12 @@ def test_a_non_dumpable_writer_s_draft_is_closed_to_its_own_uid(shared):
 @needs_root
 def test_a_draft_is_closed_to_other_users(shared):
     # with the control: the same draft, open to its own uid
-    assert draft(shared, True, (OTHER, "other"), (WRITER, "same")) == [NONE, ALL]
+    assert draft(shared, True, (OTHER, "other"), (WRITER, "same")) == [NONE, SAME]
 
 
 @needs_root
 def test_root_reaches_every_draft(shared):
-    assert draft(shared, False, (None, "root")) == [ALL]
+    assert draft(shared, False, (None, "root")) == [ROOTS]
     assert (shared / "out" / "taken-root").read_bytes() == b"Partial"
 
 

@@ -40,6 +40,9 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "experiments" / "synthesis"))
 import pipeline  # type: ignore[import-not-found]  # noqa: E402
 
 
+pytestmark = pytest.mark.linux
+
+
 # -- the pipeline -------------------------------------------------------------
 
 
@@ -314,6 +317,7 @@ def immutable_supported(tmp_path: Path) -> bool:
         p.unlink()
 
 
+@pytest.mark.privileged
 def test_immutable_members_refuse_every_writer_tried(store, tmp_path):
     if not immutable_supported(tmp_path):
         pytest.skip("needs CAP_LINUX_IMMUTABLE on a filesystem with FS_IMMUTABLE_FL")
@@ -367,6 +371,7 @@ def test_immutable_members_refuse_every_writer_tried(store, tmp_path):
     assert s.versions() == [2]
 
 
+@pytest.mark.privileged
 def test_a_claim_that_fails_after_flagging_its_members_leaves_nothing(
     store, tmp_path, monkeypatch
 ):

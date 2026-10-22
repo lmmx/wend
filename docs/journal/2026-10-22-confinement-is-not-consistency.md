@@ -13,6 +13,12 @@ entries; this one keeps the argument.
 Labels: **[Fact]**, **[Measured]**, **[Proven]**, **[Interpretation]**,
 **[Conjecture]**, **[Proposal]**.
 
+> **Audit, 2026-10-22.** The text below is kept as written. [The addendum](#addendum-audit-2026-10-22)
+> corrects §2 (what `RESOLVE_NO_XDEV` buys; the FIFO did not pass every check), marks
+> §7's narrowed claim as an extension of the owner's sentence, and points to the later
+> entries that answered §3–§4's open questions. One of those answers changes this
+> entry's table of kernel mechanisms: read leases.
+
 ---
 
 ## The central insight
@@ -258,3 +264,67 @@ use.
 - [openat2(2)](https://man7.org/linux/man-pages/man2/openat2.2.html);
   [fcntl(2)](https://man7.org/linux/man-pages/man2/fcntl.2.html), for leases and seals;
   [cap-std](https://github.com/bytecodealliance/cap-std), the same discipline in Rust.
+
+---
+
+## Addendum: audit (2026-10-22)
+
+### A.1 Corrections
+
+- **[Refuted] §2, "`RESOLVE_BENEATH` alone stops every *escape* tried".** Without
+  `RESOLVE_NO_XDEV`, a bind mount below the root leads outside, and the mutant escapes.
+  `BENEATH` stops links that leave the root, and `NO_XDEV` stops mounts that do. Only
+  `NO_SYMLINKS` guards identity alone. The details are in
+  `2026-10-22-confined-runs.md`, addendum A.1.
+- **[Refuted] §2, the FIFO row "passed every check".** The FIFO probe checked only
+  `exists` and `read`. The pipelines' read role declares `File`, which refuses a FIFO in
+  both executors. The FIFO is a hazard when the plan elides `File`, or when a FIFO is
+  swapped in after the check. The hard link did pass every check.
+- **[Narrowed] §7, the narrowed claim.** The owner's sentence was: "Confined execution
+  prevented the tested path-resolution attacks from escaping the workspace while
+  preserving the behaviour of honest runs." The version above adds "and the tested
+  object attacks too once objects were judged on their descriptors". That is an
+  extension, and it should have been marked as one.
+
+  "Honest runs" also needs a precondition since objects are judged. An honest tree with
+  a multiply linked file or a special file below the root is refused confined and read
+  plain (`2026-10-22-confined-runs.md`, addendum A.2).
+- **[Narrowed] §3, two meanings of "durable".** In "durable guarantees of held objects"
+  it means *persisting across changes of names*. In #114 it means *surviving a crash*.
+  The two are unrelated.
+
+### A.2 What later work answered
+
+Each item below was open when this entry was written. The text above is kept as the
+state of knowledge at the time.
+
+- **§4's conjectured fingerprint** was "(device, inode, size, `mtime`, a content hash)".
+  #114 measured that it needs `ctime` as well: a rewrite with `mtime` restored is seen
+  only by `ctime`. Even then, a writer through dirty pages of a shared mapping escapes
+  every observer, but only while the page stays dirty: the first write after writeback
+  moves `ctime` again (`2026-10-22-synthesis.md` §4).
+- **"None of this is built yet" (§4) and "Consistency … open" (§3).**
+  - #114 built observation, drafts, publication and generations.
+  - The synthesis built versioned stores, pinned and verified reads, and leased
+    snapshots.
+- **"It remains true … by kernel-backed immutability, which nothing here uses yet" (§7).**
+  `Store.commit(immutable=True)` uses it. With the flag set, every write tried is
+  refused, including through a shared mapping made before the flag (`SIGBUS`).
+- **§3's read-lease row.** It said "notice, not prevention". That is right about a
+  writer who arrives later: its open is delayed, and the holder is notified. It missed
+  the other half: a read lease is *refused* while any process has the file open for
+  writing, including the dirty-mapping writer no observer sees. Together the two halves
+  give an interval in which no writer exists, and with it a coherent snapshot of several
+  files by exclusion (`2026-10-22-synthesis.md` §4.2).
+
+  This entry, and #114 after it, filed multi-file consistency under "needs
+  cooperation". It needs either cooperation or privilege, ownership or `CAP_LEASE`.
+- **Typed-core §5's "Confinement removes aliasing as a source of error"** omits case
+  folding, which `openat2` does nothing about (aliasing §9, assumption 3). The
+  typed-core addendum records it.
+
+### A.3 Where this leads
+
+The research index, `2026-10-22-research-index.md` on the latest research branch,
+orders the entries. `2026-10-22-synthesis.md` §6 holds the current classification of
+every guarantee.

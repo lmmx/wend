@@ -13,9 +13,13 @@ docs/journal/2026-10-22-typed-core.md).
   sealed memfd: no holder can change it, the kernel refuses (``EPERM``).
 
 `Run` executes steps declared as classes (`Spec`, with `Uses` and `Holds`
-attributes), confined to a root, so that facts keyed by rendered strings are
-sound against aliasing (the bridge of docs/journal/2026-10-22-aliasing.md §5),
-and knowledge is the string-keyed `knowledge.Knowledge`.
+attributes), confined to a root, and keeps knowledge keyed by rendered
+strings (`knowledge.Knowledge`). Confinement removes one source of error,
+aliasing (docs/journal/2026-10-22-aliasing.md §5), and nothing else: another
+writer can still change, create or delete an ordinary file inside the root.
+So `known` is knowledge *conditional on a closed world*, that no one but the
+run's own steps writes below the root; it is never a fact about the
+filesystem now.
 """
 
 from __future__ import annotations
@@ -170,8 +174,9 @@ class Run:
         self.confirmed: dict[str, Confirmed[Any, Any]] = {}
 
     def known(self, event: Checked[Any, Any] | Confirmed[Any, Any]) -> bool:
-        """Whether every atom of ``event`` is still known to this run. Not
-        whether it holds: another writer is invisible here."""
+        """Whether no step of this run has invalidated ``event`` since: every
+        atom it checked would still hold *if no one else wrote below the
+        root*. Not whether it holds now; another writer is invisible here."""
         atoms: frozenset[str] = event.__dict__["atoms"]
         return all(self.knowledge.knows(a, str(event)) for a in atoms)
 

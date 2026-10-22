@@ -80,7 +80,8 @@ class Run:
     epoch: int
     confirmed: dict[str, Confirmed[Any, Any]]
     def __init__(self, root: str) -> None: ...
-    def known(self, event: Checked[Any, Any] | Confirmed[Any, Any]) -> bool: ...
+    def known(self, event: Checked[Any, Any] | Confirmed[Any, Any]) -> bool:
+        """Not invalidated by this run's steps: conditional on no other writer."""
     def enter[S: Spec](
         self, spec: type[S], env: Mapping[str, Any]
     ) -> AbstractContextManager[S]: ...

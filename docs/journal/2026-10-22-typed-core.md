@@ -144,15 +144,19 @@ not unsound.
 
 | guarantee | type | given by | durable? |
 |---|---|---|---|
-| it was true | `Checked[C, K]` at entry, `Confirmed[C, K]` at exit | `Run.enter`, stamped with an epoch | no: `Run.known(event)` says whether *this run* has invalidated it |
+| it was true | `Checked[C, K]` at entry, `Confirmed[C, K]` at exit | `Run.enter`, stamped with an epoch | no: `Run.known(event)` says whether *this run* has invalidated it, assuming no other writer |
 | which object | `Held[Literal["read"], IsFile]` | a `Holds` port, opened beneath the root and judged on its descriptor | its object, kind and access, while open |
 | it remains true | `Sealed` | `seal(held)`: a memfd with write, shrink and grow sealed | its contents, for every holder |
 
 - `Holds` accepts only an expression declaring `File`, `Exists` and `Readable`, at type
   level and at runtime.
-- `Run` executes confined (`confined.Confined`), so its knowledge is the string-keyed
-  `Knowledge`, sound against aliasing by the bridge of
-  [the aliasing entry](2026-10-22-aliasing.md#5-the-bridge-alias-free-runs).
+- `Run` executes confined (`confined.Confined`) and keys its knowledge by rendered
+  strings (`Knowledge`). Confinement removes aliasing as a source of error, by the
+  bridge of [the aliasing entry](2026-10-22-aliasing.md#5-the-bridge-alias-free-runs),
+  and nothing more. Another writer can still change, create or delete an ordinary file
+  inside the root. So `Run.known(event)` is knowledge **conditional on the closed
+  world** (no writer below the root but the run's own steps), not a fact about the
+  filesystem now.
 
 **[Interpretation]** No API converts one guarantee into another:
 - `seal` takes a `Held`, not a `Checked`;

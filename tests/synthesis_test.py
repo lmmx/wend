@@ -14,6 +14,7 @@ counterexamples that decided its design.
 import os
 import shutil
 import signal
+import subprocess
 import sys
 import threading
 from pathlib import Path
@@ -352,17 +353,12 @@ def test_immutable_members_refuse_every_writer_tried(store, tmp_path):
                 act()
             assert move
         # through a shared mapping made with the early descriptor: SIGBUS
-        pid = os.fork()
-        if pid == 0:
-            import faulthandler
-            import mmap
-
-            faulthandler.disable()  # the signal is the expected outcome
-            m = mmap.mmap(fd, 4096)
-            m[0:1] = b"X"
-            os._exit(0)
-        _, status = os.waitpid(pid, 0)
-        assert os.WIFSIGNALED(status) and os.WTERMSIG(status) == signal.SIGBUS
+        child = subprocess.run(
+            [sys.executable, "-c", f"import mmap; mmap.mmap({fd}, 4096)[0:1] = b'X'"],
+            pass_fds=(fd,),
+            capture_output=True,
+        )
+        assert child.returncode == -signal.SIGBUS
         assert v.current(io)  # every member reads as committed
     finally:
         os.close(fd)

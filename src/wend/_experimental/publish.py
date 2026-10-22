@@ -24,12 +24,16 @@ Publication spends the capability: the draft's descriptor is closed, so the
 writer cannot change what it published (anyone else with write access to
 the file still can). With ``durable=True`` the file is synced before it is
 published and the directory after: the protocol for surviving a crash,
-which is argued, not tested here.
+tested in one crash model (``tests/durability_test.py``, ext4 on a loop
+device), not proven for any filesystem.
 
 `Generation` publishes several outputs together: written into a new
 directory no reader knows of, then published as one name. A reader that
-holds that directory sees one generation of every output; a reader that
-opens them one name at a time may see two.
+holds that directory sees one generation of every output, so long as
+nothing writes into a published generation, which nothing enforces: a
+held directory pins names, not contents. `Store` is the versioned form
+that enforces it (a manifest checked on every read, optionally immutable
+members).
 """
 
 from __future__ import annotations

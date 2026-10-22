@@ -43,7 +43,8 @@ Labels, as in the other entries:
 - **[Interpretation]**;
 - **[Proposal]**.
 
-[The research index](2026-10-22-research-index.md) places this entry among the others.
+[The research index](2026-10-22-research-index.md) places this entry among the others. The audit of
+the earlier entries, made alongside this one, is in an addendum at the end of each.
 
 ---
 
@@ -64,13 +65,14 @@ that mixed two versions would see the two disagree.
 
 ```python
 class Validate(Spec):
-    orders = Holds(orders)          # File, Exists, Readable
+    orders = Holds(orders)  # File, Exists, Readable
     prices = Holds(prices)
-    staged = Makes(staged_new)      # Absent, Creatable -> File, Exists
+    staged = Makes(staged_new)  # Absent, Creatable -> File, Exists
+
 
 class Report(Spec):
     staged = Holds(staged)
-    report = Commits(reports)       # Dir -> Dir, Exists
+    report = Commits(reports)  # Dir -> Dir, Exists
 ```
 
 Each mechanism appears once, in the order a value meets it.
@@ -429,7 +431,7 @@ alternating `a` and `b` versions:
 
 ```python
 data = os.pread(fd, 64 * 4096, 0)
-torn = len({data[i:i + 1] for i in range(0, len(data), 4096)}) > 1
+torn = len({data[i : i + 1] for i in range(0, len(data), 4096)}) > 1
 ```
 
 **[Refuted]** "`Sealed`: it remains true" was read in #113 and #114 as "a snapshot of the

@@ -97,10 +97,11 @@ leases and drafts entries, must hold after step 6 as before step 1.
 
 The tests and records that pin the current behaviour, and so must pass, or meet their
 expectation, after every commit:
-- the 1,183 tests at #115's head (with the documentation's examples), as root, and
-  those the unprivileged job runs, with the privileged ones listed as not run;
+- the 1,184 tests at #115's head, as root: 1,165 in `tests/` and the documentation's 19
+  examples. Also those the unprivileged job runs, with the privileged ones listed as
+  not run;
 - the 31 privileged tests, in the CI job that requires them;
-- the mutation harness: every mutant meets its expectation;
+- the mutation harness: each of its 65 mutants meets its expectation;
 - `experiments/typed_core/check.py`: every file matches its markers in Pyright and ty;
 - the soundness experiment of #113: 0 unsound in 400 programs, every target reached;
 - the example pipeline's ten scenarios, each with the outcome synthesis §6 classes it

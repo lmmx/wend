@@ -16,7 +16,10 @@ recorded in two ways:
 - **Revisions in place.** Since the owner's review, a refuted or narrowed claim is
   revised where it stands. The corrected statement replaces it, and the earlier wording
   is kept beside it, marked *Before*, with the counterexample and a pointer to the entry
-  that found it. The synthesis's lease claims are the first so revised.
+  that found it. The synthesis's lease claims were the first so revised. Every claim
+  the audit's addenda refute or narrow, in every entry from #108 to #114, is now revised
+  in place too, and each entry's note under its title says so. The addenda stay, as the
+  record of how each correction was found.
 
 Nothing is deleted. The earlier wording stays in the text, and in the history.
 
@@ -61,10 +64,10 @@ addendum, and its tests. All branches are unmerged.
 | 8 | [The typed core](2026-10-22-typed-core.md) | #113 | df1ca7c, 5672297, addendum 95ab9ee; §6 revised in place, 653f457 | `experiments/typed_core/`, `tests/events_test.py` |
 | 8′ | [Evidence is not a path](2026-10-22-evidence.md): the addendum's two holes closed | #113 | 01c8c27, 03f1852 | `tests/evidence_test.py`, `experiments/typed_core/soundness.py`, `check.py` |
 | 9 | [Freshness, publication and consistency](2026-10-22-publication-and-consistency.md) | #114 | 9bc511c, addendum 51cc4a0 | `tests/{fresh,publish,consistency,lifecycle,durability}_test.py` |
-| 10 | [Synthesis](2026-10-22-synthesis.md) | #115 | 164eac2, 4f1bf41, and the leases commit (revisions in place) | `experiments/synthesis/`, `tests/synthesis_test.py` |
-| 11 | [Leases](2026-10-22-leases.md) | #115 | 8b2caa0 | `tests/leases_test.py`, `experiments/mutation/mutants.py` |
-| 12 | [Drafts](2026-10-22-drafts.md) | #115 | aa38be1 | `tests/drafts_test.py`, `experiments/mutation/mutants.py` |
-| 13 | [Consolidation: a plan](2026-10-22-consolidation.md) (a proposal) | #115 | this commit | none: nothing in it is done |
+| 10 | [Synthesis](2026-10-22-synthesis.md) | #115 | 164eac2, 4f1bf41, and the leases commit (revisions in place); §3's immutability revised, 1a230d1 | `experiments/synthesis/`, `tests/synthesis_test.py` |
+| 11 | [Leases](2026-10-22-leases.md) | #115 | 8b2caa0; §3.4 revised for Linux 7.0, 43c675d | `tests/leases_test.py`, `experiments/mutation/mutants.py` |
+| 12 | [Drafts](2026-10-22-drafts.md) | #115 | aa38be1; Yama answered, a60bb7e | `tests/drafts_test.py`, `experiments/mutation/mutants.py` |
+| 13 | [Consolidation: a plan](2026-10-22-consolidation.md) (a proposal) | #115 | a60bb7e | none: nothing in it is done |
 
 ## How the discoveries build on one another
 
@@ -177,6 +180,7 @@ addendum, and its tests. All branches are unmerged.
 
 | An absent sync permits loss and does not promise it: a crash test may require only the guaranteed outcome, the permitted set, or that a loss is possible | argued; measured stable under writeback load on this machine, which is no guarantee | publication §2 (revised); `durability_test` |
 | A test's cleanup must not share state with the run it checks: a plain run may delete its own root | observed (a rare generated case) | families A.1′; this index, "An intermittent failure, isolated" |
+| Runs of a mutation harness must not share a property-testing database, and a kill by a property under one seed can be luck | observed (three kills held under 1–2 of 5 seeds) | this index, "The harness checked against itself" |
 | Checking the specification against the code, claim by claim, finds what the tests do not: a judgement the text claims and nothing makes, a cited test that does not exist, a measured row that rests on a probe | observed | this index, "The specification checked against the code" |
 
 ## Hypotheses that were refuted, and what replaced them
@@ -192,6 +196,7 @@ addendum, and its tests. All branches are unmerged.
 | a checked event's type is the atoms checked | `out.check()` typed with post atoms | `Checked[C, K]` and `Confirmed[Q, K]`, one phase each, records not paths | typed-core addendum A.1; evidence §1–§2 |
 | a `Held` typed `IsFile` is a regular file while it is open | a directory swapped in between the check and the hold | the kind judged on the descriptor | typed-core §6 |
 | writes through a mapping made before the immutable flag are tested | the test mapped only after the flag | the test maps before it too, clean and dirty | synthesis §3 |
+| a mutant killed by a property in one run is killed by it | three kills that held under 1–2 of 5 seeds | killers that held under every seed; one seed and an empty database per run | this index, "The harness checked against itself" |
 | ty agrees with Pyright except one corner | `requires(Exists, Readable)` is `Never` in ty | recorded; precision gap | typed-core addendum A.3 |
 | exchange with `expect` prevents lost updates | three writers | `Store` (claims) | synthesis §2 |
 | holding a generation's directory reads one generation | in-place rewrite through the held directory | manifests, immutability, leases on reclaim | synthesis §3 |
@@ -218,21 +223,26 @@ These are the gaps that remain after the audit.
   - The kill tables of #108–#114 come from scripts in the session's scratch space.
   - The tests that kill each mutant are committed; the harnesses that made the mutants
     are not.
-  - *Largely addressed:* `experiments/mutation/mutants.py` is committed, with 38
-    mutants:
+  - *Addressed:* `experiments/mutation/mutants.py` is committed, with 65 mutants, every
+    one an entry recorded:
     - the leases and drafts entries';
-    - the run's kind judgement (typed-core §6);
+    - the run's kind judgement (typed-core §6), and the typed core's three event
+      mutants;
     - the confined runs' ten;
     - the knowledge model's four;
-    - the aliasing entry's creation key;
-    - five of the publication entry's.
+    - the families entry's eleven, one expected to survive (the bounded made-parents
+      reading, families addendum A.1);
+    - the aliasing entry's ten rows, as eleven mutants (one row names two);
+    - the publication entry's seven, and the `collect` defect's.
 
     It guards against the defects the audit found in the earlier harnesses, and
-    against a third it found itself: a mutant's stale bytecode, run by every later
-    import (drafts §5). It runs in a worktree of its own, since it edits sources in
-    place. Still outside it: the families entry's mutants, the rest of the aliasing
-    entry's, and two of the publication entry's (a draft named from the start; a
-    derivation ignoring its output).
+    against two more it found itself:
+    - a mutant's stale bytecode, run by every later import (drafts §5);
+    - a Hypothesis example database shared across runs, and a fresh seed each run
+      (below, "The harness checked against itself").
+
+    It runs in a worktree of its own, since it edits sources in place. At 86e6141 all
+    65 met their expectation, in 32 minutes.
   - The precision measurements of #108 and #109 can be rerun only through the tests'
     generators.
 - **Privileged evidence was not run in CI.** *Addressed on #115.* These skipped
@@ -356,6 +366,45 @@ cites. The tests had passed throughout. What this found, they could not.
    - two cited test names were stale. Every test name the journals cite now exists, on
      every branch of the stack, checked by a search.
 
+## The harness checked against itself
+
+The first full run of the 65 mutants, at 267d496, met 62 expectations. The three
+misses were killed, but not by the tests their entries recorded:
+
+| mutant | recorded killer | it rejected the mutant under | a test that rejected it under every seed tried |
+|---|---|---|---|
+| families: prefixes cancelled under different heads | the soundness property | 1 of 5 seeds | the commutation property (5 of 5) |
+| families: relation is coincidence only | the soundness property | 2 of 5 | the commutation property (5 of 5), and two unit tests |
+| aliasing: a final symlink not followed | the known-atoms property | 2 of 5 | kernel agreement (5 of 5) |
+
+Each seed was run alone, with an empty example database. The mutants are the harness's
+own versions; the entries' scripts were not kept, so their mutants may have differed.
+
+1. **A kill by a property in one run can be luck.** The entries recorded each kill from
+   one run. The families and aliasing tables are revised in place.
+2. **The runs shared state.** Hypothesis keeps the failing examples it finds in
+   `.hypothesis/` in the worktree, and replays them in later runs. So a failure found
+   under one mutant was replayed under the next. A verdict could depend on the order
+   of the mutants, and the first run's 62 kills may have had that help. The first seed
+   experiment had the same defect (a failure in 0.5 s was a replay); it was redone with
+   a database of its own per run.
+3. **The fix.** Each run of the tests now uses a `mutation` Hypothesis profile
+   (`tests/conftest.py`): no example database, and no shrinking or explaining of a
+   failure, which only a person reads. With seed 0, verdicts are reproducible and
+   independent. The three mutants name the tests that rejected them under every seed.
+4. **A hang the shared database had hidden.** The first rerun stopped at "creation not
+   exclusive": its run of `confined_test.py` passed the harness's 900-second timeout,
+   with shrinking and explaining off too. The test process was in the kernel's
+   `wait_for_partner`. The writer's `fifo` move plants a FIFO at a name a step will
+   create, and without `O_EXCL` the open waits for ever for a reader. Under the shared
+   database another property's failure had been replayed first, and this schedule was
+   never drawn. The never-outside property now runs each pipeline under a deadline, on
+   #112 (confined-runs A.5), and a run that hangs is reported as that mutant's failure
+   instead of ending the harness.
+
+The final run, at 86e6141: all 65 mutants met their expectation, in 32 minutes. Two
+survive, as expected, and one ends the test run by `SIGIO`, as expected.
+
 ## Reproducing the evidence
 
 The evidence is of four kinds, and each runs in a different place:
@@ -388,7 +437,8 @@ kernel's answer, but no other (leases §3.4).
 uv run pytest                                      # everything; privileged tests skip without root
 uv run python experiments/typed_core/check.py      # both checkers against the E markers
 uv run python experiments/synthesis/pipeline.py    # the pipeline and its scenarios
-uv run python experiments/mutation/mutants.py      # each mutant against its named tests:
+uv run python experiments/mutation/mutants.py      # each mutant against its named tests,
+                                                   # seed 0, a fresh example database each:
                                                    # run it in a worktree nothing else uses
 uv run python docs/journal/scripts/2026-10-22-families-demo.py
 uv run python docs/journal/scripts/2026-10-22-confined-demo.py

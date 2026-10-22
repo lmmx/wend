@@ -1,7 +1,8 @@
 # The static half of wend._experimental.events: which of three guarantees
-# each value carries. Checked and Confirmed are events (it was true), Held is
-# an open object (which object), Sealed is a copy no one can change (it
-# remains true). None is assignable to another.
+# each value carries. Checked and Confirmed are evidence (it was true, of one
+# path, for what it requires or ensures), Held is an open object (which
+# object), Sealed is a copy no one can change (it remains so). None is
+# assignable to another, and none is a path.
 
 from collections.abc import Mapping
 from contextlib import AbstractContextManager
@@ -86,12 +87,12 @@ class Makes:
 
     def __init__(
         self,
-        expr: PathExpr[Literal["absent", "create", "post_file", "post_exists"], IsFile],
+        expr: PathExpr[Literal["absent", "create"], IsFile, Literal["file", "exists"]],
     ) -> None: ...
     @overload
     def __get__(
         self, obj: None, owner: type[Any] | None = None
-    ) -> PathExpr[Literal["absent", "create", "post_file", "post_exists"], IsFile]: ...
+    ) -> PathExpr[Literal["absent", "create"], IsFile, Literal["file", "exists"]]: ...
     @overload
     def __get__(self, obj: Spec, owner: type[Any] | None = None) -> Draft: ...
 
@@ -102,14 +103,14 @@ class Commits:
     immutable: bool
     def __init__(
         self,
-        expr: PathExpr[Literal["dir", "post_dir", "post_exists"], Unspecified],
+        expr: PathExpr[Literal["dir"], Unspecified, Literal["dir", "exists"]],
         *,
         immutable: bool = False,
     ) -> None: ...
     @overload
     def __get__(
         self, obj: None, owner: type[Any] | None = None
-    ) -> PathExpr[Literal["dir", "post_dir", "post_exists"], Unspecified]: ...
+    ) -> PathExpr[Literal["dir"], Unspecified, Literal["dir", "exists"]]: ...
     @overload
     def __get__(self, obj: Spec, owner: type[Any] | None = None) -> VersionDraft: ...
 

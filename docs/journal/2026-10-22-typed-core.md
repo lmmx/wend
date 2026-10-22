@@ -27,6 +27,8 @@ Labels: **[Fact]**, **[Measured]**, **[Proven]**, **[Interpretation]**,
 > declared atom; a path derived from an event is still that event), a much wider ty gap
 > than §4 says, what the soundness harness could not see, and how the corrections of §3
 > were measured.
+> Both ways, and the ty gap's diagnosis, are fixed or settled in
+> [Evidence is not a path](2026-10-22-evidence.md).
 
 ---
 

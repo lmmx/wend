@@ -19,12 +19,14 @@ def facts(e: PathExpr) -> Facts:
     conds = e.conditions
     atoms: set[str] = set()
     if conds is not None:
+        # What it requires (the type's C) as plain atoms, what it ensures
+        # (the type's Q) with a post_ prefix: one vocabulary for both.
         for prefix, cs in (("", conds.requires), ("post_", conds.ensures)):
             for c in cs:
                 if isinstance(c, _c.Under):
-                    atoms.add("Under[str]")
+                    atoms.add(prefix + "Under[str]")
                     if c.base.is_static:
-                        atoms.add(f"Under[{c.base.pattern!r}]")
+                        atoms.add(prefix + f"Under[{c.base.pattern!r}]")
                 elif c in _ATOM:
                     atoms.add(prefix + _ATOM[c])
     return Facts(frozenset(atoms), IsFile if _c.declares_file(e) else Unspecified)

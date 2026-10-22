@@ -11,12 +11,14 @@ from common import (
     out,
     raw,
     reads_object,
+    stayed_readable,
     trusts,
     was_made,
+    was_present,
     was_readable,
 )
 
-from wend import Checked, Confirmed, Exists, IsFile, P, PathExpr, Readable
+from wend import Checked, Confirmed, Exists, File, IsFile, P, PathExpr, Readable
 from wend._experimental.events import Held, Holds, Makes, Run, seal
 
 
@@ -32,14 +34,38 @@ def an_object_is_not_sealed(run: Run) -> None:
 
 
 def an_entry_is_not_an_exit() -> None:
-    entry, exit_ = out.check(root="/d", name="a"), raw.confirm(root="/d", name="a")
+    entry, exit_ = out.checked(root="/d", name="a"), raw.confirmed(root="/d", name="a")
     was_made(entry)  # E: checked at entry, not confirmed at exit
     was_readable(exit_)  # E: confirmed, not checked
 
 
 def an_output_is_not_readable() -> None:
-    made = out.check(root="/data", name="a")
+    made = out.checked(root="/data", name="a")
     was_readable(made)  # E: an output is not declared readable
+
+
+def an_entry_check_certifies_no_postcondition() -> None:
+    was_present(out.checked(root="/d", name="a"))  # E: it was found absent
+
+
+def an_exit_check_certifies_no_precondition() -> None:
+    stayed_readable(raw.confirmed(root="/d", name="a"))  # E: nothing confirmed
+
+
+def evidence_is_not_a_path() -> None:
+    raw.checked(root="/d", name="a").parent  # E: no derived path inherits it
+
+
+def a_path_is_not_evidence() -> None:
+    was_readable(raw.checked(root="/d", name="a").path)  # E: evidence was dropped
+
+
+def a_plain_check_gives_no_evidence() -> None:
+    was_readable(raw.check(root="/d", name="a"))  # E: check gives a path
+
+
+def ensuring_is_not_requiring() -> None:
+    Holds(P("a").ensures(File, Exists, Readable))  # E: ensured, not required
 
 
 def held_for_reading_is_not_held_for_writing(h: Held[Literal["read"], IsFile]) -> None:
@@ -67,8 +93,8 @@ def an_event_does_not_widen(p: Checked[Literal["exists"], IsFile]) -> None:
     del more
 
 
-def confirmed_is_not_checked(p: Confirmed[Literal["post_exists"], IsFile]) -> None:
-    c: Checked[Literal["post_exists"], IsFile] = p  # E: two kinds of event
+def confirmed_is_not_checked(p: Confirmed[Literal["exists"], IsFile]) -> None:
+    c: Checked[Literal["exists"], IsFile] = p  # E: two kinds of evidence
     del c
 
 

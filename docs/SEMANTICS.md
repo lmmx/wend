@@ -599,6 +599,39 @@ matters to any representation that orders declarations by inclusion. Such an
 ordering can certify every property that persists when atoms are added, and only
 those.
 
+### 10.2 Evidence
+
+`check` and `confirm` return the path they checked: a path, which claims
+nothing about it. `checked` and `confirmed` perform the same checks and return
+*evidence* instead:
+
+- `e.checked(env)` is a `Checked`: the path, and the atoms of `e.requires`,
+  found true at that moment;
+- `e.confirmed(env)` is a `Confirmed`: the path, and the atoms of
+  `e.ensures`, found true at that moment.
+
+Evidence is about one path, at one moment, for one phase:
+
+- **One path.** Evidence is not a path. It has none of a path's operations;
+  `.path` gives the path it is about, as an ordinary path, and anything
+  derived from that path carries no evidence. `os.fspath` gives the same
+  path, unchanged, and nothing else does.
+- **One moment.** Evidence records that a check passed. It does not say that
+  the atoms still hold; §10.1's "true at the moment of the check and no later"
+  applies to it unchanged.
+- **One phase.** What an expression requires and what it ensures are kept
+  apart. An entry check certifies none of the postconditions, and a
+  confirmation none of the preconditions.
+
+The rule all three state: *evidence does not survive an operation that
+changes its subject*, whether a different path, a later moment or the other
+phase.
+
+For a type checker, `PathExpr` has three parameters, a Hoare triple's
+{C} e {Q}: `C` what it requires, `K` whether it is declared a File, `Q` what
+it ensures. `checked` returns `Checked[C, K]` and `confirmed` returns
+`Confirmed[Q, K]`.
+
 ## 11. Unions and queries
 
 A **union** `u = a₁ | … | aₙ` is an ordered, non-empty sequence of

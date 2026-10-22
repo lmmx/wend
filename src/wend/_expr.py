@@ -36,9 +36,35 @@ from functools import cached_property
 from pathlib import Path, PurePosixPath
 from string.templatelib import Interpolation, Template
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, overload
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Generic,
+    Literal,
+    NamedTuple,
+    cast,
+    overload,
+)
+from warnings import deprecated
 
 from . import _spec
+from ._kinds import (
+    X1,
+    X2,
+    X3,
+    X4,
+    X5,
+    X6,
+    C,
+    Checked,
+    Confirmed,
+    IsFile,
+    JoinBelowFile,
+    K,
+    NotFile,
+    Unspecified,
+)
 from ._params import MARKER_RE, NO_DEFAULT, Kind, Param, has_marker, lookup_marker
 from .errors import (
     InvalidBindingError,
@@ -52,7 +78,7 @@ from .errors import (
 
 if TYPE_CHECKING:
     from ._union import PathUnion
-    from .conditions import Conditions, Declarations
+    from .conditions import Condition, Conditions, Declarations, FileCondition, Under
     from .query import Query
 
 
@@ -445,8 +471,11 @@ _NAME_OPS = frozenset({"with_name", "with_suffix", "with_stem"})
 
 
 @dataclass(frozen=True, repr=False)
-class PathExpr(_Cached):
-    """A symbolic path. Build with `P`, `T`, or ``Param / ...``."""
+class PathExpr(_Cached, Generic[C, K]):  # noqa: UP046 (variance is declared, not inferred)
+    """A symbolic path. Build with `P`, `T`, or ``Param / ...``.
+
+    For a type checker, ``C`` is what it declares and ``K`` whether it is
+    declared a File (`wend._kinds`)."""
 
     head: Head
     parts: tuple[Part, ...] = ()
@@ -476,6 +505,19 @@ class PathExpr(_Cached):
 
     # -- construction -------------------------------------------------------
 
+    # A receiver of unknown kind must take the first overload, or a join
+    # onto an untyped expression would read as one below a File: NotFile is
+    # disjoint from IsFile, and an unknown K matches it first.
+    @overload
+    def __truediv__(self: PathExpr[Any, NotFile], other: PathUnion) -> PathUnion: ...
+    @overload
+    def __truediv__(
+        self: PathExpr[Any, NotFile],
+        other: str | os.PathLike[str] | Param | PathExpr[Any, Any] | Text | Template,
+    ) -> PathExpr: ...
+    @overload
+    @deprecated("nothing can be joined below a path declared a File")
+    def __truediv__(self: PathExpr[Any, IsFile], other: Any) -> JoinBelowFile: ...
     @overload
     def __truediv__(self, other: PathUnion) -> PathUnion: ...
     @overload
@@ -597,7 +639,93 @@ class PathExpr(_Cached):
 
     # -- conditions (§10) -----------------------------------------------------
 
-    def requires(self, *conditions: Any) -> PathExpr:
+    @overload
+    def requires(self) -> PathExpr[C, K]: ...
+    @overload
+    def requires(
+        self, file: FileCondition, /
+    ) -> PathExpr[C | Literal["file"], IsFile]: ...
+    @overload
+    def requires(
+        self, file: FileCondition, c1: Condition[X1, Any], /
+    ) -> PathExpr[C | Literal["file"] | X1, IsFile]: ...
+    @overload
+    def requires(
+        self, file: FileCondition, c1: Condition[X1, Any], c2: Condition[X2, Any], /
+    ) -> PathExpr[C | Literal["file"] | X1 | X2, IsFile]: ...
+    @overload
+    def requires(
+        self,
+        file: FileCondition,
+        c1: Condition[X1, Any],
+        c2: Condition[X2, Any],
+        c3: Condition[X3, Any],
+        /,
+    ) -> PathExpr[C | Literal["file"] | X1 | X2 | X3, IsFile]: ...
+    @overload
+    def requires(
+        self,
+        file: FileCondition,
+        c1: Condition[X1, Any],
+        c2: Condition[X2, Any],
+        c3: Condition[X3, Any],
+        c4: Condition[X4, Any],
+        /,
+    ) -> PathExpr[C | Literal["file"] | X1 | X2 | X3 | X4, IsFile]: ...
+    @overload
+    def requires(
+        self,
+        file: FileCondition,
+        c1: Condition[X1, Any],
+        c2: Condition[X2, Any],
+        c3: Condition[X3, Any],
+        c4: Condition[X4, Any],
+        c5: Condition[X5, Any],
+        /,
+    ) -> PathExpr[C | Literal["file"] | X1 | X2 | X3 | X4 | X5, IsFile]: ...
+    @overload
+    def requires(self, c1: Condition[X1, Any], /) -> PathExpr[C | X1, K]: ...
+    @overload
+    def requires(
+        self, c1: Condition[X1, Any], c2: Condition[X2, Any], /
+    ) -> PathExpr[C | X1 | X2, K]: ...
+    @overload
+    def requires(
+        self, c1: Condition[X1, Any], c2: Condition[X2, Any], c3: Condition[X3, Any], /
+    ) -> PathExpr[C | X1 | X2 | X3, K]: ...
+    @overload
+    def requires(
+        self,
+        c1: Condition[X1, Any],
+        c2: Condition[X2, Any],
+        c3: Condition[X3, Any],
+        c4: Condition[X4, Any],
+        /,
+    ) -> PathExpr[C | X1 | X2 | X3 | X4, K]: ...
+    @overload
+    def requires(
+        self,
+        c1: Condition[X1, Any],
+        c2: Condition[X2, Any],
+        c3: Condition[X3, Any],
+        c4: Condition[X4, Any],
+        c5: Condition[X5, Any],
+        /,
+    ) -> PathExpr[C | X1 | X2 | X3 | X4 | X5, K]: ...
+    @overload
+    def requires(
+        self,
+        c1: Condition[X1, Any],
+        c2: Condition[X2, Any],
+        c3: Condition[X3, Any],
+        c4: Condition[X4, Any],
+        c5: Condition[X5, Any],
+        c6: Condition[X6, Any],
+        /,
+    ) -> PathExpr[C | X1 | X2 | X3 | X4 | X5 | X6, K]: ...
+    @overload
+    def requires(self, *conditions: Condition[Any, Any]) -> PathExpr[C, K]: ...
+    def requires(self, *conditions: Any) -> PathExpr[Any, Any]:
         """This path, declaring conditions that must hold before it is used
         (checked by `check`): ``e.requires(File, Exists, Readable)``. See
         `wend.conditions`. The path, its equality and its derivation are
@@ -606,7 +734,93 @@ class PathExpr(_Cached):
 
         return declare(self, conditions, ())
 
-    def ensures(self, *conditions: Any) -> PathExpr:
+    @overload
+    def ensures(self) -> PathExpr[C, K]: ...
+    @overload
+    def ensures(
+        self, file: FileCondition, /
+    ) -> PathExpr[C | Literal["post_file"], IsFile]: ...
+    @overload
+    def ensures(
+        self, file: FileCondition, c1: Condition[Any, X1], /
+    ) -> PathExpr[C | Literal["post_file"] | X1, IsFile]: ...
+    @overload
+    def ensures(
+        self, file: FileCondition, c1: Condition[Any, X1], c2: Condition[Any, X2], /
+    ) -> PathExpr[C | Literal["post_file"] | X1 | X2, IsFile]: ...
+    @overload
+    def ensures(
+        self,
+        file: FileCondition,
+        c1: Condition[Any, X1],
+        c2: Condition[Any, X2],
+        c3: Condition[Any, X3],
+        /,
+    ) -> PathExpr[C | Literal["post_file"] | X1 | X2 | X3, IsFile]: ...
+    @overload
+    def ensures(
+        self,
+        file: FileCondition,
+        c1: Condition[Any, X1],
+        c2: Condition[Any, X2],
+        c3: Condition[Any, X3],
+        c4: Condition[Any, X4],
+        /,
+    ) -> PathExpr[C | Literal["post_file"] | X1 | X2 | X3 | X4, IsFile]: ...
+    @overload
+    def ensures(
+        self,
+        file: FileCondition,
+        c1: Condition[Any, X1],
+        c2: Condition[Any, X2],
+        c3: Condition[Any, X3],
+        c4: Condition[Any, X4],
+        c5: Condition[Any, X5],
+        /,
+    ) -> PathExpr[C | Literal["post_file"] | X1 | X2 | X3 | X4 | X5, IsFile]: ...
+    @overload
+    def ensures(self, c1: Condition[Any, X1], /) -> PathExpr[C | X1, K]: ...
+    @overload
+    def ensures(
+        self, c1: Condition[Any, X1], c2: Condition[Any, X2], /
+    ) -> PathExpr[C | X1 | X2, K]: ...
+    @overload
+    def ensures(
+        self, c1: Condition[Any, X1], c2: Condition[Any, X2], c3: Condition[Any, X3], /
+    ) -> PathExpr[C | X1 | X2 | X3, K]: ...
+    @overload
+    def ensures(
+        self,
+        c1: Condition[Any, X1],
+        c2: Condition[Any, X2],
+        c3: Condition[Any, X3],
+        c4: Condition[Any, X4],
+        /,
+    ) -> PathExpr[C | X1 | X2 | X3 | X4, K]: ...
+    @overload
+    def ensures(
+        self,
+        c1: Condition[Any, X1],
+        c2: Condition[Any, X2],
+        c3: Condition[Any, X3],
+        c4: Condition[Any, X4],
+        c5: Condition[Any, X5],
+        /,
+    ) -> PathExpr[C | X1 | X2 | X3 | X4 | X5, K]: ...
+    @overload
+    def ensures(
+        self,
+        c1: Condition[Any, X1],
+        c2: Condition[Any, X2],
+        c3: Condition[Any, X3],
+        c4: Condition[Any, X4],
+        c5: Condition[Any, X5],
+        c6: Condition[Any, X6],
+        /,
+    ) -> PathExpr[C | X1 | X2 | X3 | X4 | X5 | X6, K]: ...
+    @overload
+    def ensures(self, *conditions: Condition[Any, Any]) -> PathExpr[C, K]: ...
+    def ensures(self, *conditions: Any) -> PathExpr[Any, Any]:
         """This path, declaring conditions that must hold after it has been
         produced (checked by `confirm`): ``e.ensures(File, Exists)``."""
         from .conditions import declare
@@ -622,16 +836,18 @@ class PathExpr(_Cached):
 
         return declarations(self.conditions)
 
-    def tag(self, **tags: Any) -> PathExpr:
+    def tag(self, **tags: Any) -> PathExpr[C, K]:
         """This path, tagged with metadata (``source="upload"``): what it is
         for or where it came from. Tags take no part in equality; `bind` and
         `rebase` keep them, other operations do not, and `wend.lineage`
         collects them through a path's derivation (§13)."""
         out = _carry(self, self)
         out.__dict__["tags"] = MappingProxyType({**self.tags, **tags})
-        return out
+        return cast("PathExpr[C, K]", out)  # _carry keeps the declarations
 
-    def check(self, mapping: Any = None, /, *, fs: Any = None, **kw: Any) -> Path:
+    def check(
+        self, mapping: Any = None, /, *, fs: Any = None, **kw: Any
+    ) -> Checked[C, K]:
         """Render, check every precondition against the filesystem now, and
         return the path. Raises a `ConditionError` for the first that fails:
         `IndeterminateError` when the filesystem cannot say. ``fs`` is a
@@ -640,9 +856,11 @@ class PathExpr(_Cached):
 
         env = _make_env(mapping, kw)
         _check_fs_option("check", self, env, fs)
-        return realise(self, env, after=False, fs=fs)
+        return Checked(realise(self, env, after=False, fs=fs))
 
-    def confirm(self, mapping: Any = None, /, *, fs: Any = None, **kw: Any) -> Path:
+    def confirm(
+        self, mapping: Any = None, /, *, fs: Any = None, **kw: Any
+    ) -> Confirmed[C, K]:
         """Render, check every postcondition against the filesystem now, and
         return the path. Raises a `ConditionError` for the first that fails,
         as `check` does."""
@@ -650,7 +868,7 @@ class PathExpr(_Cached):
 
         env = _make_env(mapping, kw)
         _check_fs_option("confirm", self, env, fs)
-        return realise(self, env, after=True, fs=fs)
+        return Confirmed(realise(self, env, after=True, fs=fs))
 
     # -- introspection ------------------------------------------------------
 
@@ -973,7 +1191,7 @@ class PathExpr(_Cached):
 
     # -- binding and resolution ---------------------------------------------
 
-    def bind(self, mapping: Any = None, /, **kw: Any) -> PathExpr:
+    def bind(self, mapping: Any = None, /, **kw: Any) -> PathExpr[C, K]:
         """Substitute some parameters, folding whatever becomes static.
 
         Values may be concrete (str, PathLike, ints for fields...) or symbolic:
@@ -992,9 +1210,17 @@ class PathExpr(_Cached):
             out = attach(out, moved(self.conditions, lambda b: b.bind(env)))
         if self.tags:
             out.__dict__["tags"] = self.tags
-        return out
+        return cast("PathExpr[C, K]", out)  # the declarations, moved
 
-    def rebase(self, *args: Any) -> PathExpr:
+    # rebase moves a declared Under base that lies under the old base, so a
+    # literal base's identity does not survive it; only "under some base" does.
+    @overload
+    def rebase(
+        self: PathExpr[Under[Any], Any], *args: Any
+    ) -> PathExpr[Under[str], K]: ...
+    @overload
+    def rebase(self, *args: Any) -> PathExpr[C, K]: ...
+    def rebase(self, *args: Any) -> PathExpr[Any, Any]:
         """Move this path to a new base (§9).
 
         ``rebase(new)`` replaces the `base` this path was joined onto.
@@ -1489,7 +1715,11 @@ def _build_template(t: Template) -> PathExpr:
     return expr
 
 
-def P(x: Any = ".") -> PathExpr:
+@overload
+def P[CA, KA: Unspecified](x: PathExpr[CA, KA]) -> PathExpr[CA, KA]: ...
+@overload
+def P(x: str | os.PathLike[str] | Param | Template | Text = ".") -> PathExpr: ...
+def P(x: Any = ".") -> PathExpr[Any, Any]:
     """Make a path expression from a str, PathLike, Param, t-string, Text or PathExpr."""
     return _coerce(x, at_head=True)
 

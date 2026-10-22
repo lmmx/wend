@@ -17,7 +17,8 @@ from wend import (
     Readable,
     T,
 )
-from wend._experimental.events import Held, Holds, Sealed, Spec, Uses
+from wend._experimental.events import Held, Holds, Makes, Sealed, Spec, Uses
+from wend._experimental.publish import Draft
 
 
 root, name = Param("root"), Param("name")
@@ -34,6 +35,11 @@ class Convert(Spec):
     dst = Uses(out)
 
 
+class Produce(Spec):
+    src = Holds(raw)
+    dst = Makes(out)
+
+
 # It was true: an event at a step's entry, or at its exit.
 def was_readable(p: Checked[Literal["read"], IsFile]) -> None: ...
 def was_made(p: Confirmed[Literal["post_exists"], IsFile]) -> None: ...
@@ -47,3 +53,8 @@ def reads_object(h: Held[Literal["read"], IsFile]) -> bytes:
 # It remains true: contents no holder can change.
 def trusts(s: Sealed) -> bytes:
     return s.read()
+
+
+# A write capability for an output no one can see yet.
+def drafts(d: Draft) -> None:
+    d.write(b"")

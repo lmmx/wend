@@ -15,6 +15,11 @@ The prototype is `wend._experimental.families`, with tests in
 Labels: **[Fact]**, **[Measured]**, **[Proven]**, **[Interpretation]**,
 **[Conjecture]**.
 
+> **Audit, 2026-10-22.** The text below is kept as written. [The addendum](#addendum-audit-2026-10-22)
+> records that three rules had no test that could fail and that no test asserted
+> what the analysis knows (both now fixed), corrects §4's measurements, narrows
+> §1.1's evidence, and records the development this entry left out.
+
 ---
 
 ## 1. Facts about families
@@ -212,3 +217,158 @@ derived rules are proven. Commutation is argued and tested.
 **[Fact]** A MAYBE from overlap (deferred operations, conversions, untyped formatted
 fields) forgets. So a pipeline built from such expressions knows little, but what it
 knows remains sound.
+
+---
+
+## Addendum: audit (2026-10-22)
+
+The journals of the research stack were audited against the commits, the tests and the
+session record, and the strongest findings were re-run. This entry was the least
+complete about its own development. The owner had asked (2026-10-18) that the journal
+tell what was attempted and what failed, and the corrections below do that.
+
+### A.1 Tests that could not fail, and what replaced them
+
+- **[Measured] Three rules could be removed without any test failing.** The audit broke
+  each in turn:
+  - `forget` ignoring the region of parents a mutation may make;
+  - `made_parents` returning its list where it should return `None` (unbounded);
+  - `independent` dropping its made-parents clause.
+
+  Each passed all of `tests/families_test.py`. The last two also passed #112's
+  `confined_test.py`; the third was re-run here, 24 passed. The reasons:
+  - the tests run as root, so `access()` grants every permission and permission atoms
+    fail only by kind;
+  - the bodies make parents with `exist_ok`;
+  - the commutation property compares only the shape of the tree (path and kind), and
+    every body writes constant text, so the order of writes is invisible to it.
+
+  The commit message (6ac4d38) said "Each rule's mutant is rejected, two only by
+  targeted tests". For these three rules that was false, and §4's table omits them.
+- **[Measured] No test asserted what the analysis knows.** The properties check
+  soundness only: every known atom holds, every refuted atom fails.
+  - An analysis that *learns nothing* passed all six tests. That was re-run here: the
+    mutant `learn` that adds no fact, 6 passed.
+  - So, per the audit, did one that forgets everything on any mutation, and one that
+    finds no pair independent.
+  - #112's `confined_test` was the first suite to notice "never learn", and only
+    incidentally.
+- **[Fact] Added now:**
+  - `test_the_worked_pipeline_knows_refutes_and_commutes_what_its_table_shows` fixes the
+    worked pipeline's table exactly: what each entry knows and refutes, and which
+    adjacent pairs commute;
+  - `test_making_a_path_forgets_creatability_below_the_parents_it_may_make` tests the
+    rule against its own statement, as #108's sibling test does;
+  - `test_independence_sees_the_parents_a_creation_may_make` tests the clause in both
+    directions.
+
+  The "learn nothing", "forget ignores made parents" and "independence ignores made
+  parents" mutants each fail at least one of these.
+- **[Fact] One mutant still survives:** `made_parents` bounded where it should be
+  unbounded. No construction was found in which the two readings differ. Overlap
+  answers coarsely for head parameters, which masks it. The first draft of the rule
+  bounded the region at the head, and was replaced because it "missed the unbounded
+  case". That was an argument, never a counterexample on disk. **[Conjecture]** The
+  unbounded reading is needed only when a head can name a directory that the mutation
+  makes. Not demonstrated.
+
+### A.2 §4's measurements, corrected
+
+- **[Refuted] The refutation count.** The final measurement script counted refuted
+  predictions from `Tracker.entries`. `Tracker.run` records an entry only once all
+  entry checks have passed, so it reported "0 refuted symbolically" by construction. An
+  earlier script, which counted correctly, gave 164. §4's table therefore has no
+  refutation row. The audit re-measured on the final code, 1,000 pipelines × 4
+  bindings, with **[Measured]** results:
+
+  | | refutation reached | step failed | possible refutation reached | of which failed |
+  |---|---|---|---|---|
+  | modelled | 122 | 122 | 2,130 | 929 |
+  | random | 283 | 283 | 1,046 | 761 |
+
+  Every refutation was followed by a failure, as the analysis claims. A *possible*
+  refutation was followed by one less than half the time in modelled pipelines, as a
+  MAYBE should be.
+- **[Refuted] "The family analysis knows 57% of what the concrete tracker knows."** That
+  is a ratio of counts (867 / 1,534), not a subset. In the audit's run of 1,000 modelled
+  pipelines:
+  - the family analysis knew 903 atoms and the tracker 1,395;
+  - 720 were known by both: 52% of what the tracker knew;
+  - 183, 20% of what the family analysis knew, were known *only* by it: `exists` 113,
+    `dir` 51, `absent` 19. All came from the derived parent rules, which the concrete
+    tracker lacks.
+
+  So two effects pull in opposite directions:
+  - quantifying over bindings makes the analysis forget more;
+  - the parent rules make it know facts the tracker never learns.
+
+  The interpretation above attributes the whole difference to the first. The earlier
+  "809 against 726" was the second effect, as the entry guessed; the audit measured it.
+- **[Fact]** Every precision number in §4 was made by scripts in the session's scratch
+  space, not committed. The new table test above is the committed oracle.
+- **[Fact] Development the table hides.**
+  - The families `base_day`, `via_suffix`, `up`, `raw_dmon` and `raw_dtue` were added
+    *because* mutants survived the first generator.
+  - "Split ignores the heads" was at first not detected.
+  - All five MAYBE pairs the first generated families produced were harmless.
+  - The first measurement completed 1,368 of 6,552 step runs and knew only 229 atoms.
+    That was too thin to trust, and it led to the modelled generator.
+
+### A.3 §1.1's evidence, narrowed
+
+**[Fact]** The must-equal probe was weaker than §1.1 says, in five ways:
+- it ran in #106's worktree, because it needs `patterns.parse`, which this stack does
+  not have;
+- its `"int"` re-declaration was a no-op;
+- Hypothesis found two failures in the probe itself, and the fix fell back to the
+  original declaration, which lowered the real re-declaration rate;
+- about 2,100 of the 6,000 terms never built;
+- it compares `e` with `parse(e.pattern)` only. Two independently built expressions
+  with equal patterns, which is how the analysis uses must-equal, are tested once
+  (`raw_day` against `raw_day2`).
+
+The premise is supported by the audit's check: `type=int` refuses `"01"` rather than
+coerce it, and a segment refuses `"."`, `""` and `".."`. The status stays
+**[Conjecture]**.
+
+### A.4 What the entry did not discuss
+
+- **The owner's challenge.** The owner wrote (2026-10-22): "I'd challenge the proposed
+  rule of knowing facts only when expressions are equal. Different expressions can be
+  proven to denote the same paths, disjoint paths, or overlapping sets under particular
+  bindings. […] The analysis should distinguish must overlap, may overlap, and provably
+  disjoint, with conservative behaviour where it cannot decide."
+  - What was built: must-equal, plus prefix cancellation and parent rules.
+  - What was dropped without a record: the knowledge entry's option "aligned by a lens".
+  - Every rule tests `relation != "no"`. None distinguishes a YES from a MAYBE, so a
+    must-overlap is treated as a may-overlap. That is sound, and it is precision the
+    analysis does not use. **[Open]**
+- **One binding per run.** A run fixes one value per parameter. Two things are not
+  modelled:
+  - runs of several days over one tree, sequential or concurrent. Under assumption 1 a
+    concurrent run is "another writer";
+  - steps that read across all days, like `train`'s listing.
+- **A family can render to the root.** `up` renders `{root}` itself under one of the
+  bindings, so a deletion in the harness could remove its own temporary root.
+  `2026-10-22-confined-runs.md` §1 found the same and made both executors refuse to
+  delete the root.
+- **The soundness of `"no"` is inherited.** Prefix cancellation is proven relative to
+  overlap's NO being sound under wend's rendering rules, and to deterministic rendering
+  (`2026-10-20-overlap-research-89.md`). The limits above should have named that
+  dependency.
+- **Mixed spellings.** A relative and an absolute spelling of one file are judged
+  unrelated: `relation(P("data") / "x.csv", P("/work/data") / "x.csv") == "no"`. This is
+  the lexical identity assumption, which `2026-10-22-aliasing.md` breaks on disk and
+  confined runs enforce.
+- **Links that break in this stack.** Two links point to
+  `2026-10-21-typed-path-families.md`, which exists only on #106's branch. They resolve
+  once #106 is merged.
+
+### A.5 Where this leads
+
+- `2026-10-22-aliasing.md` (#110) tests the lexical identity this analysis assumes, on
+  disk.
+- `2026-10-22-confined-runs.md` (#112) runs the plan of families beneath a root and
+  measures it under another writer.
+- The research index, `2026-10-22-research-index.md` on the latest research branch,
+  orders all of them.

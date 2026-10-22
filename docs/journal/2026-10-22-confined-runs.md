@@ -24,6 +24,11 @@ the moment of use) from what it does not (freshness, consistency, contents).
 Labels: **[Fact]**, **[Measured]**, **[Proven]**, **[Interpretation]**,
 **[Conjecture]**, **[Proposal]**.
 
+> **Audit, 2026-10-22.** The text below is kept as written. [The addendum](#addendum-audit-2026-10-22)
+> corrects §3 (`RESOLVE_NO_XDEV` guards the boundary too), §2 (claim A's precondition
+> after objects were judged, and its status) and §5 (stale numbers, an unsupported
+> sentence), and records what the escape oracle cannot see.
+
 ---
 
 ## 1. The executor
@@ -303,3 +308,112 @@ analysis's weaker assumption and turns violations of the other into errors:
   are out of scope.
 - **[Fact]** Claims A and B are argued from the analysis's tested soundness and the
   kernel's documented guarantee, then tested; neither proof is checked by a machine.
+
+---
+
+## Addendum: audit (2026-10-22)
+
+The journals of the research stack were audited against the commits, the tests and the
+session record. The corrections below are to this entry. Those to
+`2026-10-22-confinement-is-not-consistency.md` are in that entry's own addendum.
+
+### A.1 Corrected: what each flag buys (§3)
+
+**[Refuted]** "The two flags protect the two assumptions separately: `BENEATH` the
+boundary, `NO_SYMLINKS` and `NO_XDEV` the identity." This entry's own mutant table says
+otherwise. With `RESOLVE_NO_XDEV` removed, a run *escapes*: the mutant fails the
+generated never-outside property and the moves table. A bind mount below the root leads
+outside, and `BENEATH` alone does not stop it. The corrected reading:
+
+| flag | guards |
+|---|---|
+| `RESOLVE_BENEATH` | the boundary, against links that leave it (absolute or climbing) |
+| `RESOLVE_NO_XDEV` | the boundary, against mounts that leave it; and identity, against mounts within it |
+| `RESOLVE_NO_SYMLINKS` | identity only: an alias inside the root |
+
+A cost that §8 omits: `NO_XDEV` also refuses legitimate mounts nested below the root.
+
+### A.2 Claim A, after objects were judged (§2)
+
+- **[Refuted] Its precondition is no longer sufficient.** A was stated for "a tree with
+  no symlink or mount point below the root". Since bc845dc, a confined run also refuses
+  multiply linked regular files and anything that is neither a regular file nor a
+  directory, while a plain run reads them. On a tree with a hard-link farm or a FIFO,
+  confinement changes the outcome even without another writer. The agreement property
+  does not generate such trees, so it could not notice. A holds for trees with no
+  symlink, no mount, no multiply linked file and no special file below the root.
+- **[Narrowed] Its status.** A is labelled [Proven], but it rests on:
+  - the families analysis's soundness, which is [Measured] (families §4);
+  - must-equal, a [Conjecture] (families §1.1).
+
+  It is a proof from tested premises, and should be read as such.
+- **[Fact] The counterexample that made `Plain` create exclusively.** The first run of
+  the agreement property failed on a single step with two create ports, `base_day` and
+  `raw_day`.
+  - Under the binding `base=raw` both rendered to `raw/mon.csv`.
+  - Both entry checks of `Absent` passed, because all checks precede the bodies.
+  - `Plain`'s `open(p, "w")` then overwrote the file, where the confined `O_EXCL`
+    refused it.
+
+  So collisions *within one step* escape entry checks. That is why `Plain` creates
+  exclusively by default, with the `"w"` executors kept for comparison. §2 gives only
+  the premise "both executors create exclusively", not why it became one.
+
+### A.3 §5's numbers and one sentence
+
+- **[Fact] Stale numbers.** The interpretation under the second table still gives the
+  first run's figures:
+  - "258 steps" should be **238**, as the bullet above it says;
+  - "623 of 9,769" should be **623 of 9,634**.
+
+  The re-measurement also found 1,196 steps completed without the writer; that figure
+  is not recorded above.
+- **[Refuted] "The checked and elided plain runs reached outside in exactly the same
+  runs."** The measurement script compared totals only (60 against 60, 69 against 69),
+  not which runs. The sentence may be true, but nothing here shows it.
+- **[Fact]** §4's moves table omits the hard-link row that `tests/confined_test.py`
+  has.
+
+### A.4 What the escape oracle cannot see
+
+**[Fact]** `escapes()` counts an escape only in two cases:
+- SECRET appears in what a body read;
+- the outside tree (names, kinds, contents) changed.
+
+It cannot see:
+- a change of outside metadata (link counts, modes, times);
+- a listing of an outside directory, since `list` bodies are not recorded;
+- a `stat` or `access` of an outside object during a check.
+
+So the plain runs' counts are lower bounds, and B′ is supported relative to this oracle
+only.
+
+**[Fact] The adversary.** The writer always acts as root. The hard-link probe found
+`/proc/sys/fs/protected_hardlinks` = 1, under which an unprivileged writer cannot link
+a file it does not own. Whether an unprivileged writer could mount the hard-link attack
+here is untested.
+
+**[Fact]** The `_near_mount` fix bars the writer from acting at, or above, its own bind
+mounts (`p in m.parents`). It does more than the text's "planted a link inside a bind
+mount".
+
+### A.5 Evidence that depends on privilege, or on a timeout
+
+- **[Fact]** The mount tests skip silently without privilege, and the writer's `mount`
+  move does nothing when `mount` fails. Two of §3's mutant kills (mounts crossed, and
+  deletion entering mounts) come only from such tests. Unprivileged CI would run none of
+  them. There is no Linux skip marker.
+- **[Fact]** "Blocking opens" is rejected only by the mutant harness's 240-second
+  timeout: the suite simply hangs, since there is no `pytest-timeout`. So "Every mutant
+  is rejected by a test" overstates it for that mutant.
+- **[Fact]** In #114's harness a mutant that does not compile read as a survivor. The
+  same flaw existed in this entry's harness. The audit compiled every mutant against the
+  current sources: all compile, so no result here was affected.
+
+### A.6 Where this leads
+
+- `2026-10-22-confinement-is-not-consistency.md` draws the conclusions, with its own
+  addendum.
+- `2026-10-22-typed-core.md` (#113) and `2026-10-22-publication-and-consistency.md`
+  (#114) build on the executor.
+- `2026-10-22-synthesis.md` composes all of it into one pipeline.

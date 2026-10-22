@@ -14,6 +14,11 @@ SEMANTICS.md §10.1).
 Labels: **[Fact]**, **[Measured]**, **[Proven]**, **[Interpretation]**,
 **[Conjecture]**, **[Proposal]**.
 
+> **Audit, 2026-10-22.** The text below is kept as written. [The addendum](#addendum-audit-2026-10-22)
+> corrects §2 (containment is forgotten in its physical half), §3 (assumption 2's
+> scope), §4 (what the properties can detect) and §6 (what a type certifies, and what
+> `known()` means), and records how the model was developed.
+
 ---
 
 ## 1. Three things to keep apart
@@ -234,3 +239,102 @@ graph and the runtime checks no longer read as three adjacent APIs:
 - effects end them;
 - types certify the events;
 - the analysis certifies, in advance, which facts survive to where they are needed.
+
+---
+
+## Addendum: audit (2026-10-22)
+
+The journals of the research stack were audited against the commits, the tests and the
+session record. Each later finding that bears on this entry is recorded here, with its
+status, so that the text above still shows what was believed when it was written.
+
+### A.1 Statements later shown wrong or narrowed
+
+- **[Refuted] §2, "Containment is never forgotten: it is a property of the rendered
+  string."**
+  - Only the lexical half is. §10's `Under` also requires the realpath to stay below
+    the base, and a symlink made later ends that.
+  - Found in `2026-10-22-confined-runs.md` §4. SEMANTICS.md §10.1 now splits the two
+    halves (`2026-10-22-declarations.md` §3).
+- **[Refuted] §3, assumption 2, "the caveat `EffectGraph.lexical_caveats` already
+  reports".**
+  - That method reports relative paths and `..` only. Its own docstring says it cannot
+    see case or symlinks, and neither analysis calls it.
+  - Mixing a relative and an absolute spelling of one file is also outside both
+    analyses: the audit measured
+    `relation(P("data") / "x.csv", P("/work/data") / "x.csv") == "no"`.
+- **[Interpretation] Assumption 2 is too strong about hard links.** Atoms are properties
+  of names and of the objects they reach, so two names of one object do not make a
+  string-keyed fact false. `2026-10-22-aliasing.md` §1 and §5 show which aliases break
+  atoms: symlinks, `..`, mounts and case folding, not hard links. Hard links matter for
+  *confinement*, not for knowledge (`2026-10-22-confined-runs.md` §2).
+- **[Refuted] §4, "the undetected mutant is equivalent, and sound".** It is sound but not
+  equivalent: it learns facts the rule does not, so it knows more. No property here can
+  tell a sound refinement from the rule, for two reasons:
+  - **soundness** checks that what is known is true, not that what is true is known;
+  - **agreement** compares `analyse` with `Tracker`, which share `Knowledge`. That is
+    self-consistency, not an oracle.
+
+  No test asserts what the analysis *knows*. A model that knows nothing passes. The
+  #109 addendum records the same gap there, measured.
+- **[Refuted] §6, "A static type can carry this faithfully" and "A `Checked[...]` handle
+  produced at a step's entry certifies the preconditions".** The typed core (#113)
+  carries an event, but its addendum records two ways the type claims more than the
+  check:
+  - `Checked[C, K]` carries every atom the expression declares, post atoms included;
+  - a path derived from an event (`c.parent`, `c / ".."`) is typed, and built, as the
+    same event.
+- **[Narrowed] §6, "`s.src.known()`, which returns whether its facts are still known".**
+  `Run.known` (#113) is knowledge *conditional on the closed world*, not a statement
+  about now (5672297, and the `2026-10-22-confinement-is-not-consistency.md` §3 table).
+- **[Superseded] §7, "That extension, and its soundness, are untested".** #109 built it
+  (`2026-10-22-symbolic-families.md`). Its answer to "know only where equal" is
+  must-equal with prefix cancellation and parent rules.
+
+### A.2 How the model was developed
+
+These steps are missing above.
+
+- **`file` and `dir` mutually exclusive.** The first draft made them exclusive outright.
+  It was corrected from §10 ("p is missing, or is a regular file") before any test ran.
+  §4 shows the case only as a mutant.
+- **The docstring's first rationale.** The first draft justified forgetting above a
+  mutated path with "making or removing a path can make or remove its parents". §3
+  then argues that a deletion never removes its parents. Only the first half holds:
+  making a path can make its parents, so a fact such as a parent's `absent` can end.
+- **Creation facts outlive a step only as postconditions.** A port that requires
+  `Creatable` declares `create`, a mutating verb, so the forget rule removes its own
+  creation fact at exit. Only an ensured `Exists` carries forward. This was found by a
+  surviving mutant in #110: the "creation keyed by the first missing entry" mutant died
+  only once a test spanned two steps (`2026-10-22-aliasing.md` §8). It is a property of
+  this model, not of #110.
+- **The generator.** Random pipelines completed too few steps to say much: 1,639 of
+  9,232 above. The *modelled* half of the generator, pipelines that mostly fit the tree
+  as earlier steps leave it, was added for that reason.
+
+### A.3 What the evidence covers
+
+- **[Fact]** The counts in §4's table were made by a measurement script in the session's
+  scratch space, not committed. The tests run the same generators and assert the
+  properties, but they do not print the table.
+- **[Fact]** The tests run as root, so `access()` grants every permission, and permission
+  atoms fail only by kind or absence.
+  - §5's rule therefore has no on-disk test.
+  - `2026-10-22-aliasing.md` §3 later found the first way to make `access()` refuse as
+    root: a read-only bind mount (`EROFS`). It has not been used to test §5's sibling
+    case.
+- **[Fact]** `test_an_undeclared_effect_breaks_the_closed_world` has a concrete
+  counterpart from #110. A "write" role that does not declare `Writable` declares no
+  mutation, so its write is invisible to the forget rule. That is assumption 1, made by a
+  declaration rather than by another process.
+
+### A.4 Where this leads
+
+- `2026-10-22-symbolic-families.md` (#109) does the same for unbound families.
+- `2026-10-22-aliasing.md` (#110) breaks assumption 2 on disk. String-keyed knowledge
+  held a false fact in 189 of the 1,663 pipelines that had an alias, and in none of the
+  337 alias-free ones. Identity keys restore it.
+- `2026-10-22-confinement-is-not-consistency.md` separates the closed world into the
+  five properties a run can and cannot establish.
+- The research index, `2026-10-22-research-index.md` on the latest research branch,
+  orders all of them.

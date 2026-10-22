@@ -443,12 +443,31 @@ def test_below_a_file_is_not_the_file():
         assert not t.knowledge.knows("exists", resolve(str(r / "f" / "x")))
 
 
+def _creatable_below_a_dangling_link(path: Path) -> bool:
+    """Whether `Creatable` passes for ``path``, below a dangling link, by
+    judging the link's parent (master), or refuses it, as #111 makes it do."""
+    try:
+        P(str(path)).requires(Creatable).check()
+    except ConditionError as e:
+        if "broken symlink" not in str(e):
+            raise
+        return False
+    return True
+
+
 def test_a_missing_paths_creation_is_judged_where_the_check_looks():
     # With a dangling symlink on the way, the nearest existing ancestor that
     # Creatable consults is not the parent of the first missing entry: lnk/x
     # and far/missing/y end at one missing entry, but are checked in r and in
     # far. With far read-only (a bind mount: root ignores permission bits),
     # the first check passes and the second fails.
+    #
+    # #111 makes Creatable refuse a path below a dangling link (aliasing
+    # addendum A.2). The check then always looks in the physical parent of
+    # the first missing entry, and the mutant this test kills, "creation
+    # keyed by the first missing entry", is equivalent. So the test asks
+    # which Creatable it has, and holds whichever of #110 and #111 is merged
+    # first.
     with tempfile.TemporaryDirectory() as d:
         r = Path(d)
         (r / "src").mkdir()
@@ -464,10 +483,16 @@ def test_a_missing_paths_creation_is_judged_where_the_check_looks():
             # Creation facts outlive a step only as postconditions: a port that
             # requires one declares a mutation, which forgets it at exit.
             t = IdentityTracker(elide=True)
-            drive(
-                t, [("ready", Step(x=P(str(r / "lnk" / "x")).ensures(Creatable)), None)]
-            )
-            assert t.knowledge.knows("create", a)
+            ready = [
+                ("ready", Step(x=P(str(r / "lnk" / "x")).ensures(Creatable)), None)
+            ]
+            if _creatable_below_a_dangling_link(r / "lnk" / "x"):
+                drive(t, ready)
+                assert t.knowledge.knows("create", a)
+            else:  # with #111: refused at the dangling name, and nothing learned
+                with pytest.raises(ConditionError, match="broken symlink"):
+                    drive(t, ready)
+                assert not t.knowledge.knows("create", a)
             with pytest.raises(ConditionError):
                 drive(t, [("make", Step(x=P(str(b.path)).requires(Creatable)), None)])
         finally:

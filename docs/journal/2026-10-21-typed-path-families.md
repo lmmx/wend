@@ -117,9 +117,14 @@ SEMANTICS.md, src/wend/_expr.py:1118-1155, src/wend/conditions.py:195-260):
 | `\|` | each alternative keeps its own | `PathUnion`, untyped |
 | `resolve`, `check` | renders; checks preconditions | `Resolved[C, K]`, `Checked[C, K]` |
 
-### 2.3 What the types can express
+### 2.3 What this encoding can express
 
-**[Proven] The expressiveness boundary.**
+The result in this section is about *this* encoding: one contravariant union of
+positive atoms, plus a covariant kind marker, and no other type-level state. It
+says nothing about type systems in general. An encoding with explicit state
+indices, negative atoms or typestate transitions is not ruled out by it.
+
+**[Proven] The boundary of the capability-set encoding.**
 - A requirement written `PathExpr[U]` accepts exactly the declarations `d` with
   `d ⊇ U`. A union of such requirements accepts a union of these filters.
 - So the requirements these types can express are exactly the *upward-closed*
@@ -128,7 +133,7 @@ SEMANTICS.md, src/wend/_expr.py:1118-1155, src/wend/conditions.py:195-260):
   depends on an atom's absence.
 
 **[Proven] Consequences.** Three properties are not upward closed, so no annotation
-in this encoding can certify them:
+in this encoding can certify them (a richer encoding might):
 
 - **`create`**, defined as `post_exists` without `exists` (src/wend/conditions.py:614-623).
   Adding `exists` removes the verb.
@@ -141,13 +146,16 @@ to reason about them across steps. `experiments/typed/positive.py` records the
 boundary as a case both checkers accept: a path that requires `exists` and ensures
 `exists` meets a demand for `post_exists`, and it creates nothing.
 
-**[Interpretation]** That boundary is the division of labour the thesis needs:
+**[Interpretation]** With this encoding, the boundary gives a division of labour:
 
 - types certify the upward-closed part of a declaration;
 - the runtime checks each declaration when it is made, and each state at its moment;
 - the effects graph composes what one step ensures with what the next requires.
 
-None of the three can do another's job.
+The split belongs to this encoding, not to the problem. A model of what a program
+*knows* about a path before and after each operation, with explicit states and
+transitions, could move some of the runtime's and the graph's work into types.
+That model is the next question (see Decisions).
 
 ### 2.4 Effects as a function of the same atoms
 
@@ -403,7 +411,8 @@ The full suite also passes: 944 tests, docs included.
 
 **[Proven]**
 - The subtyping reading of contravariant literal unions (§2.2).
-- The expressiveness boundary and its consequences (§2.3).
+- The boundary of the capability-set encoding, and its consequences (§2.3). Both
+  are stated for that encoding only.
 
 **[Measured], not proven:**
 - The stub mirrors the runtime on the generated grammar of operations, in both
@@ -478,3 +487,32 @@ PRs 4 and 5 branch from PR 1.
 changes what users write, and it is a change in kind: a misuse such as reading an
 output, or serving a path from the wrong root, would be reported by the user's own
 type checker before anything runs.
+
+## Decisions (owner, 2026-10-22)
+
+**[Decision]**
+1. **Literal roots.** Containment identity comes from literal roots in the first sound
+   implementation. Symbolic, parameter-dependent root identity stays a research goal,
+   given rigorous semantics that claim no more than the checkers establish.
+2. **Postconditions as types.** The state-transition semantics comes first. Before
+   any type parameter is added, it must say what is certified, when it is checked,
+   and when that knowledge is invalidated by later effects.
+3. **Patterns.** The printed form becomes injective with respect to every distinction
+   that affects rendering or matching: `./{w}` for a relative leading segment, and an
+   explicit syntax for a segment-role field in a mixed segment. It will be tested on
+   canonicalisation, declaration preservation, safety-relevant validation and
+   semantic round-tripping, not on string equality.
+4. **StepSpec and Tree.** Explore a common declarative foundation, and establish what
+   the two share and what differs, without forcing one public class API.
+5. **Next work.** Step 1 (the declarations contract and a public `e.declares`) first,
+   then the typed core. Pattern-language design continues without a new
+   implementation stack.
+
+**[Decision]** The monotonicity result is stated for the capability-set encoding,
+not for every static representation of effects or negative information (§2.3).
+
+**[Decision]** The question for the next phase: can wend describe what a program
+*knows* about a path before and after each operation? The candidate distinction is
+between three things: a *declared* condition (an obligation), a *checked* condition
+(true when it was checked), and *knowledge* (a checked fact that later effects have
+not invalidated).

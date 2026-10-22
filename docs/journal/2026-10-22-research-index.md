@@ -157,7 +157,7 @@ addendum, and its tests. All branches are unmerged.
 | `open(O_RDONLY \| O_TRUNC)` empties a leased file without breaking the lease | observed on ext4 and tmpfs; explained by the source (`handle_truncate`) | leases §3.1 |
 | `F_SETLEASE` makes the caller's process the owner of its break signal; no in-process order of calls avoids it | proven from the source; observed | leases §3.2 |
 | Leases taken by a helper that exits survive it, and their breaks signal no one | observed | leases §3.3 |
-| The kernel leases `/proc` files, which change under the lease | observed | leases §3.4 |
+| The kernel leases `/proc` files, which change under the lease | observed on 6.17 and 6.18; from 7.0 the kernel refuses them (leases are opt-in per filesystem), read in the source | leases §3.4 |
 | Path confinement (`openat2`) is not object confinement: hard links and FIFOs pass every path check | observed | confined runs §2; aliasing addendum A.1 |
 | `RESOLVE_NO_XDEV` guards the boundary as well as identity | observed (mutant escapes) | confined-runs addendum A.1 |
 | String-keyed knowledge is sound exactly on alias-free runs | proven, tested | aliasing §5 |
@@ -374,6 +374,15 @@ The scripts are:
 
 None of them runs in CI. A figure from one is **[Measured]** on the machine and date its
 entry names, not continuously checked.
+
+**Kernels.** The tests have run on three: Linux 6.18 here, 6.17 on CI, and 7.0 on CI's
+newer runner image. Mechanisms were read in the 6.18, 6.19 and 7.0 sources. GitHub moves
+its image without notice, so two jobs of one run can meet different kernels. That
+happened at 92800a2: `test (3.15)` ran on 6.17 and passed; `test (3.14)` ran on 7.0,
+where a test that had asserted the kernel leases `/proc` files failed, because 7.0 does
+not. The outcome is fixed by the kernel, so it is not a flake. Each run's summary names
+its kernel and Yama scope ("privileged evidence"), and the test now accepts either
+kernel's answer, but no other (leases §3.4).
 
 ```sh
 uv run pytest                                      # everything; privileged tests skip without root

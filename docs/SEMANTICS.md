@@ -978,18 +978,26 @@ implies). Other unprivileged uids can do none of these.
 - A helper process takes them and exits. The leases stay on the descriptions the host
   holds, owned by no living process, so no break signals the host
   (`leases_test::test_no_signal_of_a_break_reaches_the_host`).
-- It refuses filesystems not in `LEASABLE` (ext2/3/4, tmpfs).
+- It refuses filesystems not in `LEASABLE` (ext2/3/4, tmpfs), the ones tested. From
+  Linux 7.0 the kernel itself refuses leases on a filesystem that does not opt in;
+  procfs does not, ext4 and tmpfs do. Before 7.0 the kernel leases `/proc` files,
+  whose contents change with no writer
+  (`leases_test::test_a_proc_file_is_refused_a_lease_or_changes_under_it`).
 - It records each file's size.
 - `unbroken()` holds when every lease is still a read lease and every size is unchanged.
 
-**Proposition L, under assumptions.** Suppose read leases on read-only descriptions of
-files in `LEASABLE` are unbroken at `t₂`, and the sizes were recorded at `t₁`. Then every
-file's contents were constant on `[t₁, t₂]`. The assumptions:
+**Proposition L, under assumptions** (leases §4). Suppose read leases on read-only
+descriptions of files in `LEASABLE` were all granted by `t₀`, and each size was recorded
+at `t₁ ≥ t₀`. Suppose that at `t₂ ≥ t₁` every lease still reads as a read lease and every
+size is the one recorded: `unbroken()` holds. Then every file's contents were constant
+on `[t₁, t₂]`, and the copies are the state of all the files at the one instant `t₁`.
+The assumptions:
 - **L1, grant:** a read lease is granted only with no writer.
 - **L2, break:** an open for writing, and `truncate(2)`, break it.
 - **L3, the ways contents change:** contents change only through a writable
   description, by `truncate(2)`, or by an `open` with `O_TRUNC`. An `O_RDONLY` open with
   `O_TRUNC` empties a file without breaking its lease, and the recorded size detects it.
+  Each call listed is tested; that the list is complete is a conjecture (leases §4).
 - **L4:** nothing changes the storage beneath the filesystem.
 - **L5:** the holder takes no lease again in between.
 

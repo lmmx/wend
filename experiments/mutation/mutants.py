@@ -747,32 +747,38 @@ MUTANTS = [
 ]
 
 
+HUNG = -1  # the tests did not finish in time: a hang, not a result
+
+
 def failed_tests(tests: tuple[str, ...]) -> tuple[set[str], int]:
     with tempfile.TemporaryDirectory() as d:
         xml = Path(d) / "r.xml"
-        r = subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "pytest",
-                "-q",
-                "-p",
-                "no:cacheprovider",
-                f"--junitxml={xml}",
-                "--hypothesis-profile=mutation",
-                "--hypothesis-seed=0",
-                *tests,
-            ],
-            cwd=ROOT,
-            capture_output=True,
-            text=True,
-            timeout=900,
-            env={
-                **os.environ,
-                "PYTHONDONTWRITEBYTECODE": "1",
-                "HYPOTHESIS_STORAGE_DIRECTORY": f"{d}/hypothesis",
-            },
-        )
+        try:
+            r = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "-p",
+                    "no:cacheprovider",
+                    f"--junitxml={xml}",
+                    "--hypothesis-profile=mutation",
+                    "--hypothesis-seed=0",
+                    *tests,
+                ],
+                cwd=ROOT,
+                capture_output=True,
+                text=True,
+                timeout=900,
+                env={
+                    **os.environ,
+                    "PYTHONDONTWRITEBYTECODE": "1",
+                    "HYPOTHESIS_STORAGE_DIRECTORY": f"{d}/hypothesis",
+                },
+            )
+        except subprocess.TimeoutExpired:
+            return set(), HUNG
         failed = set()
         if xml.exists():
             for case in ET.parse(xml).iter("testcase"):
@@ -804,6 +810,11 @@ def run(m: Mutant) -> tuple[bool, str]:
         return (
             True,
             f"killed: the test run itself ended by {signal.Signals(-code).name}",
+        )
+    if code == HUNG:
+        return False, (
+            "HARNESS: the tests did not finish in 900 s; a test that can hang "
+            "under a mutant needs a deadline of its own"
         )
     if code not in (0, 1):
         return False, f"HARNESS: pytest exited {code} (not a test result)"

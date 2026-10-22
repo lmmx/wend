@@ -17,6 +17,7 @@ lists them with the commands that rerun them.
 """
 
 import os
+import platform
 import sys
 
 import pytest
@@ -25,6 +26,15 @@ import pytest
 REQUIRE = "WEND_REQUIRE_PRIVILEGED"
 _skipped: dict[str, str] = {}
 _ran: set[str] = set()
+
+
+def _yama() -> str:
+    """Yama's ptrace_scope, which decides what the drafts tests expect."""
+    try:
+        with open("/proc/sys/kernel/yama/ptrace_scope") as f:
+            return f", Yama ptrace_scope {f.read().strip()}"
+    except OSError:
+        return ", no Yama"
 
 
 def pytest_configure(config: pytest.Config) -> None:
@@ -69,6 +79,9 @@ def pytest_terminal_summary(terminalreporter) -> None:
     if not (_skipped or _ran):
         return
     tr.section("privileged evidence")
+    tr.write_line(
+        f"as uid {os.geteuid()}, on {platform.system()} {platform.release()}{_yama()}"
+    )
     for nodeid, reason in sorted(_skipped.items()):
         tr.write_line(f"NOT RUN  {nodeid}: {reason}")
     tr.write_line(

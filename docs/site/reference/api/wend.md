@@ -123,6 +123,45 @@ description: "The wend package: building, resolving, matching and discovering pa
       heading_level: 3
 
 
+## Kinds and evidence
+
+The type parameters that track what an expression declares (see
+[`PathExpr`][wend.PathExpr]), and the evidence that
+[`checked`][wend.PathExpr.checked] and [`confirmed`][wend.PathExpr.confirmed] return:
+a record of what one check found of one rendered path, at the moment it ran, which is
+not a path and carries nothing to paths derived from it.
+
+::: wend.IsFile
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: wend.NotFile
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: wend.Unspecified
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: wend.JoinBelowFile
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: wend.Checked
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: wend.Confirmed
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+
 ## Also exported from `wend`
 
 [`Query`][wend.query.Query] (from [wend.query](query.md)), [`counter`][wend.templates.counter]

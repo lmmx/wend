@@ -1,7 +1,8 @@
 # The static half of wend._experimental.events: which of three guarantees
-# each value carries. Checked and Confirmed are events (it was true), Held is
-# an open object (which object), Sealed is a copy no one can change (it
-# remains true). None is assignable to another.
+# each value carries. Checked and Confirmed are evidence (it was true, of one
+# path, for what it requires or ensures), Held is an open object (which
+# object), Sealed is a copy no one can change (it remains so). None is
+# assignable to another, and none is a path.
 
 from collections.abc import Mapping
 from contextlib import AbstractContextManager
@@ -38,6 +39,8 @@ class Sealed:
     """A copy of a held file's contents that no holder can change."""
 
     source: tuple[int, int]
+    fd: int
+    def __init__(self, data: bytes, source: tuple[int, int]) -> None: ...
     def read(self) -> bytes: ...
     def close(self) -> None: ...
 

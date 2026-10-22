@@ -1,10 +1,12 @@
 """Three guarantees, as three types (research prototype; see
 docs/journal/2026-10-22-typed-core.md).
 
-- **It was true.** `Checked` and `Confirmed` (`wend._kinds`) are events: the
-  atoms a check found true of a path, at a step's entry or exit. A run
-  stamps each with its epoch, and `known` says whether no effect *of this
-  run* has invalidated it since. Another writer is invisible to it.
+- **It was true.** `Checked` and `Confirmed` (`wend._kinds`) are evidence:
+  the atoms a check found true of one path, at a step's entry (what the
+  path requires) or exit (what it ensures). They are not paths: a path
+  derived from one carries no evidence. A run stamps each with its epoch,
+  and `known` says whether no effect *of this run* has invalidated it
+  since. Another writer is invisible to it.
 - **Which object.** `Held` is an open regular file, opened beneath the
   run's root and judged on its descriptor (`confined.Confined`). Its type
   claims only what the descriptor keeps: its kind, and the access it was
@@ -28,6 +30,7 @@ import fcntl
 import os
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Any, Generic, Literal, cast
 
 from .._kinds import C, Checked, Confirmed, IsFile, K
@@ -177,13 +180,10 @@ class Run:
         """Whether no step of this run has invalidated ``event`` since: every
         atom it checked would still hold *if no one else wrote below the
         root*. Not whether it holds now; another writer is invisible here."""
-        atoms: frozenset[str] = event.__dict__["atoms"]
-        return all(self.knowledge.knows(a, str(event)) for a in atoms)
+        return all(self.knowledge.knows(a, str(event.path)) for a in event.atoms)
 
     def _event(self, cls: type, path: str, atoms: frozenset[str]) -> Any:
-        e = cls(path)
-        e.__dict__.update(atoms=atoms, epoch=self.epoch)
-        return e
+        return cls(Path(path), atoms, self.epoch)
 
     @contextmanager
     def enter[S: Spec](self, spec: type[S], env: Mapping[str, Any]) -> Iterator[S]:

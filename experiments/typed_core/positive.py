@@ -1,5 +1,6 @@
 """Uses of the typed core that both checkers accept."""
 
+from pathlib import Path
 from typing import Literal
 
 from common import Convert, out, raw, reads_object, trusts, was_made, was_readable
@@ -19,15 +20,25 @@ def deriving_drops_declarations() -> None:
     del plain
 
 
-def check_gives_an_event() -> None:
-    p = raw.check(root="/data", name="a")
-    was_readable(p)  # an entry event of an expression declaring Readable
+def check_gives_a_path_and_checked_gives_evidence() -> None:
+    plain: Path = raw.check(root="/data", name="a")  # a path, claiming nothing
+    p = raw.checked(root="/data", name="a")
+    was_readable(p)  # entry evidence for an expression requiring Readable
     c: Checked[Literal["exists"], IsFile] = p  # fewer atoms: still assignable
-    del c
+    where: Path = p.path  # the path it is about, ordinary: no evidence
+    above = where.parent  # derived explicitly, as a path
+    with open(p) as f:  # used as the path it is about
+        del f
+    del plain, c, above
 
 
-def confirm_gives_an_exit_event() -> None:
-    was_made(out.confirm(root="/data", name="a"))
+def confirmed_gives_exit_evidence() -> None:
+    was_made(out.confirmed(root="/data", name="a"))
+
+
+def an_output_requires_and_ensures_apart() -> None:
+    e: PathExpr[Literal["absent", "create"], IsFile, Literal["file", "exists"]] = out
+    del e
 
 
 def a_step_holds_its_input_and_checks_its_output(run: Run) -> None:

@@ -76,16 +76,12 @@ class Makes:
 
     def __init__(
         self,
-        expr: PathExpr[
-            Literal["absent", "create"], IsFile, Literal["file", "exists"]
-        ],
+        expr: PathExpr[Literal["absent", "create"], IsFile, Literal["file", "exists"]],
     ) -> None: ...
     @overload
     def __get__(
         self, obj: None, owner: type[Any] | None = None
-    ) -> PathExpr[
-        Literal["absent", "create"], IsFile, Literal["file", "exists"]
-    ]: ...
+    ) -> PathExpr[Literal["absent", "create"], IsFile, Literal["file", "exists"]]: ...
     @overload
     def __get__(self, obj: Spec, owner: type[Any] | None = None) -> Draft: ...
 

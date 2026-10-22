@@ -20,10 +20,15 @@ recorded in two ways:
 
 Nothing is deleted. The earlier wording stays in the text, and in the history.
 
-`docs/SEMANTICS.md` keeps the current theory, stated cleanly. So far one result has
-moved from the journals into it, §10.1's corrections (#107). The rest of the theory
-(events, holds, seals, drafts, versions, leases) is still research. It would need its
-own specification before any of it leaves `wend._experimental`.
+`docs/SEMANTICS.md` keeps the current theory, stated cleanly:
+- §10.1's corrections (#107);
+- §10.2, evidence (#113);
+- §14, the run model (#115): events, holds, seals, drafts, versions and leases.
+
+Each guarantee in §14 is classed as holding by construction, holding under named
+assumptions, or only detected, with the test that pins it. §14 is not part of the
+contract; it is what `wend._experimental` would have to keep before any of it leaves
+there.
 
 ## Status vocabulary
 
@@ -53,11 +58,13 @@ addendum, and its tests. All branches are unmerged.
 | 5′ | `Creatable` through a dangling link (no entry; aliasing addendum A.2) | #111 | 355ea00 | `tests/conditions_test.py` on its branch |
 | 6 | [Running the plan confined](2026-10-22-confined-runs.md) | #112 | 5619102, bc845dc, d73b5fb, addendum 4aa656a | `tests/confined_test.py`, `scripts/2026-10-22-confined-demo.py` |
 | 7 | [Confinement is not consistency](2026-10-22-confinement-is-not-consistency.md) | #112 | d73b5fb, addendum 4aa656a | `tests/held_test.py` |
-| 8 | [The typed core](2026-10-22-typed-core.md) | #113 | df1ca7c, 5672297, addendum 95ab9ee | `experiments/typed_core/`, `tests/events_test.py` |
+| 8 | [The typed core](2026-10-22-typed-core.md) | #113 | df1ca7c, 5672297, addendum 95ab9ee; §6 revised in place, 653f457 | `experiments/typed_core/`, `tests/events_test.py` |
+| 8′ | [Evidence is not a path](2026-10-22-evidence.md): the addendum's two holes closed | #113 | 01c8c27, 03f1852 | `tests/evidence_test.py`, `experiments/typed_core/soundness.py`, `check.py` |
 | 9 | [Freshness, publication and consistency](2026-10-22-publication-and-consistency.md) | #114 | 9bc511c, addendum 51cc4a0 | `tests/{fresh,publish,consistency,lifecycle,durability}_test.py` |
 | 10 | [Synthesis](2026-10-22-synthesis.md) | #115 | 164eac2, 4f1bf41, and the leases commit (revisions in place) | `experiments/synthesis/`, `tests/synthesis_test.py` |
 | 11 | [Leases](2026-10-22-leases.md) | #115 | 8b2caa0 | `tests/leases_test.py`, `experiments/mutation/mutants.py` |
-| 12 | [Drafts](2026-10-22-drafts.md) | #115 | this commit | `tests/drafts_test.py`, `experiments/mutation/mutants.py` |
+| 12 | [Drafts](2026-10-22-drafts.md) | #115 | aa38be1 | `tests/drafts_test.py`, `experiments/mutation/mutants.py` |
+| 13 | [Consolidation: a plan](2026-10-22-consolidation.md) (a proposal) | #115 | this commit | none: nothing in it is done |
 
 ## How the discoveries build on one another
 
@@ -103,6 +110,12 @@ addendum, and its tests. All branches are unmerged.
    - The audit found the types claim more than the checks in two ways: events carry
      declared atoms, and derived paths stay events. ty 0.0.90 loses multi-condition
      declarations.
+   - Both holes were closed on the same PR (evidence entry). `Checked[C, K]` and
+     `Confirmed[Q, K]` are records of one phase's check, not paths, and nothing derived
+     from the path inherits them. ty's loss is scoped to inline declarations.
+   - A third hole was found when SEMANTICS.md §14 was checked against the code: a
+     `Held` typed as a file could be a directory swapped in between the check and the
+     hold. The hold now judges the kind on its descriptor (typed-core §6).
 8. **Freshness is detection, publication is a capability, consistency needs help
    (#114).**
    - No observer sees a writer through dirty mapped pages, until writeback.
@@ -116,6 +129,8 @@ addendum, and its tests. All branches are unmerged.
    - Immutable members refuse every writer tried.
    - Read leases *exclude* the writer no observer can see, so a coherent snapshot of
      several inputs needs either cooperation or exclusion, not cooperation alone.
+   - Every guarantee is classed: by construction, under named assumptions, or
+     impossible without cooperation or exclusion (synthesis §6).
 10. **What a lease excludes (leases entry).**
     - A truncation by `O_RDONLY | O_TRUNC` does not break a read lease. Under an unbroken
       lease the size can only fall, so a recorded size detects it.
@@ -125,13 +140,12 @@ addendum, and its tests. All branches are unmerged.
     - Proposition L: a leased copy is one version, under five named assumptions.
 11. **Who can reach an unpublished output (drafts entry).**
     - A draft is nameless, not private. The processes that may inspect the writer can
-      read, write, name and take it: its uid while it is dumpable, and root.
+      read, write and name it: its uid while it is dumpable, and root. Taking its
+      descriptor needs attach as well, which Yama narrows to ancestors (and root).
     - A store's hidden version has a name, so dumpability does not guard it. The kernel
       makes each version name hold one directory; that it is the writer's is detected
       at the claim, never prevented.
     - What ordinary users have, and what needs privilege, in one table (drafts §4).
-   - Every guarantee is classed: by construction, under named assumptions, or
-     impossible without cooperation or exclusion (synthesis §6).
 
 ## Discoveries not to lose
 
@@ -150,15 +164,20 @@ addendum, and its tests. All branches are unmerged.
 | Exchange-and-validate is not compare-and-swap: two writers end right but show the loser; three lose updates in 126 of 420 schedules | proven by exhaustive enumeration; observed on the kernel | synthesis §2 |
 | A claim by `RENAME_NOREPLACE` is a sticky register; a store of versions is a universal construction, lock-free | proven (cited theory), observed | synthesis §2.2–§3 |
 | A pinned directory pins names, not contents | observed | synthesis §3 |
-| `FS_IMMUTABLE_FL` refuses every write tried, including through a mapping made before the flag (`SIGBUS`) | observed; mechanism conjectured | synthesis §3 |
+| `FS_IMMUTABLE_FL` refuses every write tried, including through a mapping made before the flag (`SIGBUS`) | observed and tested; the mechanism read in ext4's source | synthesis §3 |
 | A `Sealed` copy cannot change, but can be torn: a state the file never had | observed (244 of 300) | synthesis §4.3 |
-| An unpublished `O_TMPFILE` draft can be read, written, named and taken by another process through `/proc/<pid>/fd` | observed (same uid unless non-dumpable; root always; never another unprivileged uid) | synthesis §5; drafts §2 |
+| An unpublished `O_TMPFILE` draft can be read, written, named and taken by another process through `/proc/<pid>/fd` | observed (same uid unless non-dumpable; root always; never another unprivileged uid; under Yama scope 1, the same uid takes it only as an ancestor) | synthesis §5; drafts §2, §7 |
 | A process that changed its uid is non-dumpable by default | observed (`fs.suid_dumpable` 0) | drafts §2 |
 | A store's hidden version can be claimed, or replaced, by any process that may rename in the store's directory, even at mode 0700; a sticky directory stops other uids | observed | drafts §3 |
-| Event types carry every declared atom, and paths derived from events stay events | observed in both checkers and at runtime | typed-core addendum A.1–A.2 |
+| Event types carried every declared atom, and paths derived from events stayed events | observed in both checkers and at runtime; both closed | typed-core addendum A.1–A.2; evidence §1–§2 |
+| A held object's kind must be judged on its descriptor: a directory is confined, so judging confinement there does not judge the kind | observed; closed | typed-core §6 (revised) |
 | A union's verbs are not those of its alternatives | observed | SEMANTICS.md §10.1; declarations §3 |
 | Containment holds for every rendered path only lexically | refutes the earlier statement | declarations §3; SEMANTICS.md §10.1 |
 | Durability needs the file's sync *and* the directory's | observed, in one crash model (ext4, loop device) | #114 §2 and addendum A.3 |
+
+| An absent sync permits loss and does not promise it: a crash test may require only the guaranteed outcome, the permitted set, or that a loss is possible | argued; measured stable under writeback load on this machine, which is no guarantee | publication §2 (revised); `durability_test` |
+| A test's cleanup must not share state with the run it checks: a plain run may delete its own root | observed (a rare generated case) | families A.1′; this index, "An intermittent failure, isolated" |
+| Checking the specification against the code, claim by claim, finds what the tests do not: a judgement the text claims and nothing makes, a cited test that does not exist, a measured row that rests on a probe | observed | this index, "The specification checked against the code" |
 
 ## Hypotheses that were refuted, and what replaced them
 
@@ -170,7 +189,9 @@ addendum, and its tests. All branches are unmerged.
 | a confined run reads and writes nothing outside | a hard link, a FIFO | object judgement on the descriptor | confined runs §2 |
 | "the failure is closed" under confinement | the same two | the same | aliasing addendum A.1 |
 | `known()` is a fact about now | the owner's review | knowledge conditional on the closed world | typed-core §5 and addendum A.6 |
-| a checked event's type is the atoms checked | `out.check()` typed with post atoms | none yet; proposal: split `Pre` and `Post` | typed-core addendum A.1 |
+| a checked event's type is the atoms checked | `out.check()` typed with post atoms | `Checked[C, K]` and `Confirmed[Q, K]`, one phase each, records not paths | typed-core addendum A.1; evidence §1–§2 |
+| a `Held` typed `IsFile` is a regular file while it is open | a directory swapped in between the check and the hold | the kind judged on the descriptor | typed-core §6 |
+| writes through a mapping made before the immutable flag are tested | the test mapped only after the flag | the test maps before it too, clean and dirty | synthesis §3 |
 | ty agrees with Pyright except one corner | `requires(Exists, Readable)` is `Never` in ty | recorded; precision gap | typed-core addendum A.3 |
 | exchange with `expect` prevents lost updates | three writers | `Store` (claims) | synthesis §2 |
 | holding a generation's directory reads one generation | in-place rewrite through the held directory | manifests, immutability, leases on reclaim | synthesis §3 |
@@ -186,6 +207,9 @@ addendum, and its tests. All branches are unmerged.
 | a derivation records what the step used | a read after the entry observation | reads recorded and checked at exit | synthesis §5 |
 | the families tests show the analysis knows what it should | a "learn nothing" mutant passed | an oracle of the worked pipeline | families addendum A.1 |
 
+| each crash row's observed outcome can be asserted | an absent sync permits loss, never promises it | guaranteed, permitted and demonstrated outcomes | publication §2 |
+| a failure that passes on rerun is no defect | a rare generated case, found again in a third full run | the harness fixed and the case pinned | families A.1′ |
+
 ## Gaps in the record
 
 These are the gaps that remain after the audit.
@@ -194,10 +218,21 @@ These are the gaps that remain after the audit.
   - The kill tables of #108–#114 come from scripts in the session's scratch space.
   - The tests that kill each mutant are committed; the harnesses that made the mutants
     are not.
-  - Begun: `experiments/mutation/mutants.py` is committed, with 17 mutants of the leases
-    and drafts entries. It guards against the defects the audit found in the earlier
-    harnesses, and against a third it found itself: a mutant's stale bytecode, run by
-    every later import (drafts §5). The earlier entries' mutants are to be moved into it.
+  - *Largely addressed:* `experiments/mutation/mutants.py` is committed, with 38
+    mutants:
+    - the leases and drafts entries';
+    - the run's kind judgement (typed-core §6);
+    - the confined runs' ten;
+    - the knowledge model's four;
+    - the aliasing entry's creation key;
+    - five of the publication entry's.
+
+    It guards against the defects the audit found in the earlier harnesses, and
+    against a third it found itself: a mutant's stale bytecode, run by every later
+    import (drafts §5). It runs in a worktree of its own, since it edits sources in
+    place. Still outside it: the families entry's mutants, the rest of the aliasing
+    entry's, and two of the publication entry's (a draft named from the start; a
+    derivation ignoring its output).
   - The precision measurements of #108 and #109 can be rerun only through the tests'
     generators.
 - **Privileged evidence was not run in CI.** *Addressed on #115.* These skipped
@@ -209,13 +244,13 @@ These are the gaps that remain after the audit.
   - now also the drafts and leases tests that act as other users.
 
   Several mutant kills depend on them. Each is now marked `privileged`
-  (`tests/conftest.py`), 29 in all. An unprivileged run lists every one that did not
+  (`tests/conftest.py`): 29 when the marker was added, 31 now that the crash model has
+  two demonstrations. An unprivileged run lists every one that did not
   run, under "privileged evidence", instead of a bare count of skips. A `privileged` job
   in `.github/workflows/test.yml` runs them as root with `WEND_REQUIRE_PRIVILEGED=1`,
   under which a privileged test that skips fails.
-- **No specification of the run model.** Events, holds, seals, drafts, versions, leases
-  and derivations are defined only in the journals and docstrings. SEMANTICS.md has
-  none of them.
+- **The run model's specification.** *Addressed:* SEMANTICS.md §14. Derivations and
+  `invalidated()` are described only in the publication entry and docstrings.
 - **Untested here, for want of kernel support:**
   - case folding (no `CONFIG_UNICODE`);
   - fs-verity (no `CONFIG_FS_VERITY`);
@@ -224,15 +259,102 @@ These are the gaps that remain after the audit.
   - names under leases (synthesis §8);
   - a persistent lease helper; xfs and btrfs; whether L3 is complete; reporting the
     `O_TRUNC` gap (leases §8);
-  - a warning for shared stores; a draft written by a helper; Yama; same-uid manifest
+  - a warning for shared stores; a draft written by a helper; same-uid manifest
     integrity (drafts §7);
   - exchange between shared names (§2.2);
   - the unbounded made-parents case (families addendum A.1);
   - must/may/disjoint as distinct rules (families addendum A.4);
-  - events that are not paths (typed-core addendum A.2);
-  - `Pre`/`Post` split (A.1);
+  - whether some operation on evidence could keep it (evidence §9);
   - runs across bindings over one tree (families addendum A.4);
   - an unprivileged writer's hard-link attack (confined-runs addendum A.4).
+
+## An intermittent failure, isolated
+
+A full-suite run at #115's head reported "1 failed, 1181 passed". A rerun passed. The
+owner asked for it to be isolated, not dismissed: a rerun shows a failure is not always
+reproducible, not that nothing is wrong. That matters most in a programme about
+concurrency.
+
+1. **The first failure's record was lost.** The background script kept only the summary
+   line, so the test name, traceback and Hypothesis example were never saved. Every run
+   since then keeps its full log and pytest's `-rf` report.
+2. **Isolation.** Each worktree's environment imports its own sources (checked for all
+   seven), so no run executes another worktree's code. Two hazards were found, and runs
+   were sequenced so they cannot meet:
+   - the mutation harness edits sources in place, so it runs only in a worktree of its
+     own;
+   - kernel-global state is shared by any concurrent runs: writeback, CPU, loop devices,
+     the mount table.
+3. **Hypotheses, each tested.**
+   - **The crash model's exact assertions.** They were semantically wrong (an absent
+     sync permits loss, and does not promise it) and are redesigned (publication
+     entry §2). Measured under a writer pushing writeback throughout, every outcome was
+     unchanged: they were not the cause.
+   - **Hypothesis's default 200 ms deadline.** It remains on 8 property tests of
+     `frame_gaps_test.py`, from master: a latent risk under load. Not observed failing.
+4. **Found in the third of three further full runs:**
+   `families_test::test_what_the_analysis_knows_holds_and_what_it_refutes_fails`.
+   - Once drawn, the case replayed from Hypothesis's database and failed every time.
+   - Root cause: the family `up` can render to the run's root. A plain run then deletes
+     the root and creates a file in its place, and the test's own temporary-directory
+     cleanup failed on that file.
+   - The property's assertions held. Not timing, and not the system under test: a rare
+     generated case, and a harness that shared its cleanup with the run.
+   - Fixed on #109, where the test lives. The case is pinned with `@example`; it fails on
+     the earlier harness and passes now. Families entry, A.1′.
+
+## The specification checked against the code
+
+SEMANTICS.md §14 names a mechanism and a test for each guarantee. Before it was
+committed, each statement was checked against the code it describes and the test it
+cites. The tests had passed throughout. What this found, they could not.
+
+1. **A soundness hole (#113).**
+   - **The claim.** §14.1 said a held input is judged on its descriptor: a regular file
+     with one name.
+   - **The code.** The hold judged confinement there, and a directory is confined. So
+     the kind rested on the earlier check of `File`, made through another open.
+   - **The counterexample.** A directory swapped in between the check and the hold was
+     held, and handed to the body typed as a file. On #114 and #115 the step failed
+     anyway, by accident: reading the directory at entry raised `EISDIR`, or, with a
+     lease, the lease was refused as `Unleasable`.
+   - **The fix,** on #113: the hold judges the kind on its descriptor. The test is
+     deterministic: the swap is made inside the check, so the interleaving that matters
+     runs every time. It fails on the earlier code. A mutant that removes the judgement
+     is killed by it alone. Typed-core §6 is revised in place.
+2. **A cited test that did not exist.** §14.2 cited `input_rewritten_after`. The test is
+   `events_test::test_known_is_blind_to_another_writer`.
+3. **A measured row that rested on a probe.**
+   - Synthesis §3's table gave a write through a mapping made before the immutable flag
+     as `SIGBUS`, under "[Measured]" and the name of a test. The test mapped only after
+     the flag; the row came from a probe in the session.
+   - The test now maps before the flag too, with the page clean and dirty.
+   - The mechanism, a conjecture, was read in Linux 6.18's ext4 source, and is now a fact
+     about ext4.
+4. **An overstatement, measured elsewhere.** The draft matrix's "takes" was measured
+   without Yama. CI's kernel (Yama scope 1) refuses the same uid's `pidfd_getfd` unless
+   it comes from an ancestor. The drafts entry recorded it; §14.4, the synthesis and
+   this index did not. All three now do.
+5. **The draft of §14 was itself wrong once.** It said `Run` does not refuse a `..` in a
+   spelling. Lexical containment refuses it; what remains is case folding. Running it
+   found this.
+6. **Imprecisions, now stated in §14:**
+   - a `Makes` output's directories are made at entry, and stay if the step fails;
+   - outputs are published one after another, not together, and a failed
+     postcondition leaves them published;
+   - `Held.used` records reads through `read()`, not through the descriptor;
+   - `replace` and `exchange` first link the draft under a hidden name, which a listing
+     shows;
+   - confinement's cited test runs #112's executor, which shares `Confined` with `Run`;
+     the pipeline test runs `Run` itself.
+7. **Found on the way, in #114's entry** (publication §2):
+   - its in-place revision had been inserted inside the crash table, stranding the full
+     protocol's row after it;
+   - the interpretation under the table said publication was "old or new, never torn",
+     while two of its rows show a name leading to the new object with 0 bytes. The
+     atomicity is of the name, not the contents, and the statement is narrowed so;
+   - two cited test names were stale. Every test name the journals cite now exists, on
+     every branch of the stack, checked by a search.
 
 ## Reproducing the evidence
 
@@ -257,7 +379,8 @@ entry names, not continuously checked.
 uv run pytest                                      # everything; privileged tests skip without root
 uv run python experiments/typed_core/check.py      # both checkers against the E markers
 uv run python experiments/synthesis/pipeline.py    # the pipeline and its scenarios
-uv run python experiments/mutation/mutants.py      # each mutant against its named tests
+uv run python experiments/mutation/mutants.py      # each mutant against its named tests:
+                                                   # run it in a worktree nothing else uses
 uv run python docs/journal/scripts/2026-10-22-families-demo.py
 uv run python docs/journal/scripts/2026-10-22-confined-demo.py
 ```

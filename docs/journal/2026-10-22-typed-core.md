@@ -22,11 +22,12 @@ harness are in `experiments/typed_core/`; the runtime tests are in
 Labels: **[Fact]**, **[Measured]**, **[Proven]**, **[Interpretation]**,
 **[Conjecture]**, **[Proposal]**.
 
-> **Audit, 2026-10-22.** The text below is kept as written. [The addendum](#addendum-audit-2026-10-22)
-> records two ways the types claim more than the checks (an event's type carries every
-> declared atom; a path derived from an event is still that event), a much wider ty gap
-> than §4 says, what the soundness harness could not see, and how the corrections of §3
-> were measured.
+> **Audit, 2026-10-22.** The corrected claims are now revised in place, with their
+> earlier wording kept beside each, marked *Before*.
+> [The addendum](#addendum-audit-2026-10-22) records two ways the types claim more than
+> the checks (an event's type carries every declared atom; a path derived from an event
+> is still that event), a much wider ty gap than §4 says, what the soundness harness
+> could not see, and how the corrections of §3 were measured.
 > Both ways, and the ty gap's diagnosis, are fixed or settled in
 > [Evidence is not a path](2026-10-22-evidence.md).
 
@@ -47,7 +48,18 @@ nothing.
 
 **[Fact]** `check()` returns `Checked[C, K]` and `confirm()` returns
 `Confirmed[C, K]`. Both are `Path` subclasses, and neither is a subclass of the other.
-Each is an **event**: the atoms held when checked, at a step's entry or at its exit.
+At runtime each is an **event**: the atoms held when checked, at a step's entry or at
+its exit. Its type is not: it carries `C`, the expression's whole declaration, in both
+phases. This was the first design: the addendum found that its types claim more than
+its checks (A.1, A.2), and [Evidence is not a path](2026-10-22-evidence.md) replaced it
+with objects that hold evidence and are not paths (`checked()` gives `Checked[C, K]`,
+over what is required, and `confirmed()` gives `Confirmed[Q, K]`, over what is
+ensured), while `check()` and `confirm()` return a plain `Path`.
+
+> *Before:* "Each is an **event**: the atoms held when checked, at a step's entry or at
+> its exit." **[Refuted]** by the audit (addendum A.1): it is true of the runtime, not
+> of the type, which carries the whole declaration in both phases. Revised here in place
+> after the owner's review.
 
 ## 2. What it costs
 
@@ -60,8 +72,13 @@ Each is an **event**: the atoms held when checked, at a step's entry or at its e
 | `requires(...).ensures(...)` | 5.3–6.2 µs | 5.2–5.7 µs |
 | `render` | 3.0–3.2 µs | 3.0–3.4 µs |
 
-`import wend` takes about 3–4 ms more (median 33.7 → 37.2 ms), which goes on the
-overload declarations.
+`import wend` takes about 3–4 ms more (33.7 → 37.2 ms, the median of the best three of
+five runs), which goes on the overload declarations.
+
+> *Before:* "`import wend` takes about 3–4 ms more (median 33.7 → 37.2 ms), which goes
+> on the overload declarations." **[Narrowed]** by the audit (addendum A.5): it is the
+> median of the best three of five runs, not of all runs. Revised here in place after
+> the owner's review.
 
 **[Measured] For type checking, after three corrections (§3).** Errors on the
 repository's own code, with Pyright 1.1.407 and ty 0.0.90:
@@ -93,8 +110,17 @@ untyped callers, could not show:
    unknown kind matches it. An untyped pytest fixture passed through `P` was enough:
    `P(dist) / x` became `JoinBelowFile`, and 44 of the new errors in `tests/` followed.
    The fix is a marker, `NotFile`, disjoint from `IsFile` and never produced. The first
-   overload asks for it, so an unknown kind takes it and joins as a path, and only a
-   known `IsFile` reaches the rejecting overload.
+   overload asks for it, so in Pyright an unknown kind takes it and joins as a path, and
+   only a known `IsFile` reaches the rejecting overload. `NotFile` fixed Pyright only:
+   ty gives `Unknown` for a join onto a receiver of unknown kind, and warns
+   `deprecated: nothing can be joined below a path declared a File` (addendum A.5).
+   Those warnings are gone in [Evidence is not a path](2026-10-22-evidence.md) §3.
+
+   > *Before:* "The first overload asks for it, so an unknown kind takes it and joins as
+   > a path, and only a known `IsFile` reaches the rejecting overload." **[Narrowed]**
+   > by the audit (addendum A.5): `NotFile` fixed Pyright only. Revised here in place
+   > after the owner's review.
+
 3. **A literal base is also "some base".** `Under("/srv")` declared only
    `Under[Literal["/srv"]]`, so it did not satisfy a demand for `Under[str]` ("under its
    own base"), in either checker. #106's runtime facts count both atoms, so the old
@@ -116,7 +142,12 @@ The misuses rejected:
 - holding an expression not declared a File, or not declared Readable;
 - joining below a File;
 - an absence (a fact about a name) asked of a held object;
-- an event widened to atoms that were not checked;
+- an event widened to atoms beyond the declaration;
+
+  > *Before:* "an event widened to atoms that were not checked" **[Narrowed]** by the
+  > audit (addendum A.1): `negative.py` rejects widening beyond the declaration, which
+  > is not the same thing. Revised here in place after the owner's review.
+
 - `Confirmed` assigned to `Checked`.
 
 **[Measured] The ty gap.** ty 0.0.90 takes the `File`-first overload with two further
@@ -125,10 +156,20 @@ conditions only when the call has no expected type:
 - the same call inside `reveal_type`, or in an annotated assignment, takes the general
   overload and gives `Unspecified`.
 
-With none or one further condition, ty is consistent; Pyright is consistent in every
-case. The result claims less, never more, so the gap is in precision, not soundness.
-`check.py` expects it with an `# E-ty:` marker, so a fixed ty will show as a mismatch.
-The latest ty available here was 0.0.90.
+The gap is much wider than that. A single condition is fine, but in `reveal_type` ty
+gives `P("a").requires(Exists, Readable)` the type `PathExpr[Never, Unspecified]`: every
+atom is dropped. ty rejects ordinary inline declarations, such as
+`Holds((P(root) / ...).requires(File, Exists, Readable))`; binding the expression to a
+name first avoids it (addendum A.3). Pyright is consistent in every case. The result
+claims less, never more, so the gap is in precision, not soundness. `check.py` expects
+it with an `# E-ty:` marker, so a fixed ty will show as a mismatch. The latest ty
+available here was 0.0.90. [Evidence is not a path](2026-10-22-evidence.md) §3
+diagnoses the gap.
+
+> *Before:* "With none or one further condition, ty is consistent; Pyright is consistent
+> in every case." **[Refuted]** by the audit (addendum A.3): ty drops every atom of
+> `P("a").requires(Exists, Readable)` and rejects ordinary inline declarations. Revised
+> here in place after the owner's review.
 
 **[Measured] The soundness harness**, ported from #106 to core types, ran 400 random
 programs and 1,511 statements (seed 1). In each statement the types were revealed and
@@ -142,9 +183,16 @@ compared with what the runtime declares:
 | declared atoms demanded in context, rejected | 0 of 507 | 0 of 507 |
 | rejected at runtime, not statically | 57 | 57 |
 
-The 57 are declarations the runtime refuses and the types do not model: contradictions
-such as `Exists` with `Absent`, and a `rebase` that is not static. They are imprecise,
-not unsound.
+The 57 are declarations the runtime refuses and the types do not model: 52
+contradictions such as `Exists` with `Absent`, 4 `joinpath` joins below a File (only `/`
+has the JoinBelowFile overload, and `joinpath` is typed `PathExpr[Never, Unspecified]`),
+and 1 `rebase` that is not static (addendum A.4). They are imprecise, not unsound.
+
+> *Before:* "The 57 are declarations the runtime refuses and the types do not model:
+> contradictions such as `Exists` with `Absent`, and a `rebase` that is not static."
+> **[Refuted]** by the audit (addendum A.4): 4 of the 57 are `joinpath` below a File,
+> and §4 named only contradictions and rebase. Revised here in place after the owner's
+> review.
 
 ## 5. The three guarantees, as three types
 
@@ -152,19 +200,35 @@ not unsound.
 
 | guarantee | type | given by | durable? |
 |---|---|---|---|
-| it was true | `Checked[C, K]` at entry, `Confirmed[C, K]` at exit | `Run.enter`, stamped with an epoch | no: `Run.known(event)` says whether *this run* has invalidated it, assuming no other writer |
+| it was true | `Checked[C, K]` at entry, over what is required, and `Confirmed[Q, K]` at exit, over what is ensured: evidence, not paths | `Run.enter`, stamped with an epoch | no: `Run.known(event)` says whether *this run* has invalidated it, assuming no other writer |
 | which object | `Held[Literal["read"], IsFile]` | a `Holds` port, opened beneath the root and judged on its descriptor | its object, kind and access, while open |
-| it remains true | `Sealed` | `seal(held)`: a memfd with write, shrink and grow sealed | its contents, for every holder |
+| it remains true, of the copy (not a snapshot of the file) | `Sealed` | `seal(held)`: a memfd with write, shrink and grow sealed | its contents, for every holder |
+
+> *Before:* "`Checked[C, K]` at entry, `Confirmed[C, K]` at exit" **[Refuted]** by the
+> audit (addendum A.1, A.2): these types carried every declared atom, and a path derived
+> from an event was still that event. Revised here in place after the owner's review.
+
+> *Before:* "it remains true" **[Narrowed]** by the audit (addendum A.6): it is true of
+> the copy, which cannot change, and not a snapshot of the file: a copy made while a
+> writer acts on a multi-page file can be a state the file never had. Revised here in
+> place after the owner's review.
 
 - `Holds` accepts only an expression declaring `File`, `Exists` and `Readable`, at type
   level and at runtime.
 - `Run` executes confined (`confined.Confined`) and keys its knowledge by rendered
-  strings (`Knowledge`). Confinement removes aliasing as a source of error, by the
-  bridge of [the aliasing entry](2026-10-22-aliasing.md#5-the-bridge-alias-free-runs),
-  and nothing more. Another writer can still change, create or delete an ordinary file
+  strings (`Knowledge`). Confinement removes aliasing other than case folding as a
+  source of error, by the bridge of
+  [the aliasing entry](2026-10-22-aliasing.md#5-the-bridge-alias-free-runs), and nothing
+  more. `openat2` does nothing about case folding (aliasing §9, assumption 3;
+  addendum A.6). Another writer can still change, create or delete an ordinary file
   inside the root. So `Run.known(event)` is knowledge **conditional on the closed
   world** (no writer below the root but the run's own steps), not a fact about the
   filesystem now.
+
+  > *Before:* "Confinement removes aliasing as a source of error, by the bridge of
+  > [the aliasing entry](2026-10-22-aliasing.md#5-the-bridge-alias-free-runs), and
+  > nothing more." **[Narrowed]** by the audit (addendum A.6): it omits case folding,
+  > which `openat2` does nothing about. Revised here in place after the owner's review.
 
 **[Interpretation]** No API converts one guarantee into another:
 - `seal` takes a `Held`, not a `Checked`;

@@ -364,6 +364,8 @@ wend's obligations, for every expression `e` and environment `env`:
 | `rebase(old, new)` equals building the expression afresh with `new` in place of `old` (§9) | **tested** (Hypothesis, random terms and substitutions) |
 | a join equals its `base` joined with its `base_rel` | **tested** |
 | a path rendered with `Under(b)` declared is contained in `b`, and every contained rendering is returned unchanged (§10) | **by construction** (each render checks the rendered strings) and **tested** (Hypothesis, random terms and bases, interpreted and compiled) |
+| `declares` names the declared conditions, follows `bind`, `rebase` and the other operations as §10 says, and a union declares what all its alternatives declare (§10.1) | **tested** (Hypothesis, random terms, declarations and operations) |
+| `Step.effects` is `declares.verbs` (§10.1) | **by construction** |
 | a union's readings of a path are exactly its alternatives' verified readings, and `match` reports one, none, or ambiguity accordingly (§11) | **by construction** (readings are the alternatives' `match_all`) and **tested** (Hypothesis, random pairs of terms) |
 | an inferred schema, declared with `from_inferred` or written out with `source()`, validates the tree it was inferred from (§12) | **tested** (Hypothesis, random trees with and without empty directories; real trees in the journal) |
 | matching completeness, outside the limits of §7 | **tested** (Hypothesis round trips; exhaustive enumeration over small domains, which also checks that the limits return only verified bindings) |
@@ -533,6 +535,60 @@ Checks describe the filesystem at the moment they run. They are not atomic
 with any later use of the path, and `access` reports the real user's
 permissions. Like `glob`'s symlink policy, they catch mistakes and state
 intent; they are not a sandbox.
+
+### 10.1 Declarations
+
+`e.declares` names what an expression declares as a value, `Declarations`, with
+three parts:
+
+- `requires`: the *atoms* declared by `requires`;
+- `ensures`: the atoms declared by `ensures`;
+- `under`: the bases of the `Under` conditions of either phase, in declaration
+  order, each once.
+
+Each condition other than `Under` declares one atom:
+
+| condition | `Exists` | `Absent` | `File` | `Dir` | `Readable` | `Writable` | `Creatable` | `Listable` |
+|---|---|---|---|---|---|---|---|---|
+| atom | `exists` | `absent` | `file` | `dir` | `read` | `write` | `create` | `list` |
+
+A declaration is an obligation that the expression states. It is not a fact about
+the filesystem. Atoms are grouped by what makes them true, and so by when they hold:
+
+| group | atoms | made true by | holds |
+|---|---|---|---|
+| containment | `under` | `render`, which checks every rendered path (§10) | for every path the expression renders |
+| state | `exists`, `absent`, `file`, `dir` | the filesystem | when a check finds it: `check` for `requires`, `confirm` for `ensures`, a `Step` on entry and exit |
+| permission | `read`, `write`, `create`, `list` | the filesystem's permissions for the real user | when a check finds it |
+
+A checked state or permission is true at the moment of the check and no later.
+The contract does not say how long it lasts: any effect on the path may end it,
+whether by a later step of the same program or by another process. Checking a
+declaration certifies it once. Nothing in wend certifies that a checked fact still
+holds.
+
+`declares` follows the conditions (§10):
+
+- `requires` and `ensures` add their atoms and bases;
+- `bind` and `rebase` keep the atoms, and pass each base through the same binding
+  or rebasing (a base not built from a rebasing's `old` is kept);
+- every other operation's result declares nothing.
+
+A union declares what every alternative declares (`&` of their declarations: the
+atoms of each phase common to all, and the bases common to all). A path the union
+describes comes from one alternative, so only the common declarations hold of it.
+
+The effects of §10's `Step` are a function of the declaration (`Declarations.verbs`):
+
+- each permission atom of either phase is a verb of the same name;
+- `create` is also a verb when `exists` is ensured but not required;
+- `delete` is a verb when `absent` is ensured but not required.
+
+Declaring more never removes a permission verb, but it can remove `create` or
+`delete`, because those two depend on an atom being *absent* from `requires`. This
+matters to any representation that orders declarations by inclusion. Such an
+ordering can certify every property that persists when atoms are added, and only
+those.
 
 ## 11. Unions and queries
 

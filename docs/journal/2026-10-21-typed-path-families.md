@@ -11,6 +11,16 @@ account of effects. It tests the central claims with prototypes in
 Labels: **[Fact]**, **[Measured]**, **[Proven]**, **[Interpretation]**,
 **[Conjecture]**, **[Proposal]**.
 
+> **Audit, 2026-10-22.** The text below is kept as written. [The addendum](#addendum-audit-2026-10-22)
+> records four counterexamples found later:
+> - the obligations of §2.4 discharge on an existential overlap and ignore deletions;
+> - §2.5's equivalence ignores conditions, including `Under`;
+> - the event types carry atoms never checked;
+> - the stub's three defects, fixed only in #113.
+>
+> It also records the harness failures that could have read as clean, the encodings
+> abandoned before §2.2's, and how §1 maps onto the essays.
+
 ---
 
 ## 1. The thesis
@@ -516,3 +526,170 @@ not for every static representation of effects or negative information (§2.3).
 between three things: a *declared* condition (an obligation), a *checked* condition
 (true when it was checked), and *knowledge* (a checked fact that later effects have
 not invalidated).
+
+---
+
+## Addendum: audit (2026-10-22)
+
+This entry was audited, with the stack of research built on it (#107–#114), against the
+commits, the tests and the session record. The stack's entries are on its branches;
+their research index (`2026-10-22-research-index.md`, on the latest research branch)
+places this entry first. Findings marked "re-run" were reproduced before being written.
+
+### A.1 Counterexamples to this entry's claims
+
+- **[Measured, re-run] §2.4's obligations discharge on an existential overlap, and
+  ignore kills.** `obligations()` marks an input discharged if any supplier, with
+  overlap verdict `"yes"`, ensures it. #89's YES means *some* binding makes the paths
+  meet:
+  - a step writing only `o/a.csv` discharges a reader of `o/{x}.csv`, for every `x`;
+  - with a step deleting `o/a.csv` in between, the obligation is still "discharged via
+    `a.out`". The deleter is listed only as a supplier that lacks `exists`.
+
+  §2.4's "Hoare composition" needs two things this lacks: a supplier that covers *every*
+  binding, which is what #109's must-equal and prefix cancellation give, and kills,
+  which is what #108's forget rule gives. The obligations prototype was superseded by
+  those analyses, which this entry could not link to.
+- **[Measured, re-run] §2.5's equivalence ignores conditions.** "Semantic equivalence is
+  equality of normal forms", but expressions with different conditions compare equal
+  (SEMANTICS.md §10). For
+  `guarded = (P(r) / AnyPath("x")).requires(Under(P(r)))`:
+  - `parse(guarded.pattern, guarded.params) == guarded` is `True`;
+  - yet `guarded` refuses `x="../etc/passwd"` with a containment error, while the
+    parsed expression renders `/srv/../etc/passwd`.
+
+  The round trip forgets the containment guard. §2.5 says printing "forgets
+  conditions", but kept the equivalence claim, and the 3,841 of 3,867 figure was
+  measured on terms without conditions. The owner's decision 3 asks for "safety-relevant
+  validation", so a round trip must be checked with its conditions.
+- **[Measured] §2.1: `Checked[C]` is "a path whose preconditions held when its step
+  started".** The type carries every atom the expression declares, `post_*` included.
+  An output's entry event is typed with `post_exists`, which no entry check examines.
+  §3's own `Output = Checked[Literal["create", "absent", "post_file"]]` shows it. In
+  #113 a second defect appeared: a path derived from an event (`c.parent`, `c / ".."`)
+  is typed, and built, as that event. That breaks the containment of §3's
+  `serve_static`. Both are in `2026-10-22-typed-core.md`, addendum A.1–A.2.
+- **[Measured] Three defects of this stub, found only in #113.**
+  - The overload `self: PathExpr[Any, IsFile] → JoinBelowFile` comes first, so a
+    receiver of unknown kind becomes `JoinBelowFile`.
+  - `K` is unbounded.
+  - A literal `Under` does not declare `Under[str]`.
+
+  The last accounts for most of §5's "weaker" statements. On the same 400 programs this
+  harness gives 200 weaker, of which 170 lacked `Under[str]`; #113's gives 44. §5 named
+  other causes.
+
+### A.2 Harness failures that could have read as clean
+
+**[Fact]**
+- **Pyright refused to analyse** the module-level context file ("Code is too complex
+  to analyze"). The harness first read that as no errors, then crashed on a missing
+  `range`. It now writes one function per program.
+- **A mutant that never applied.** The "revert the rebase rule" mutant silently failed
+  to apply, because `ruff format` had rewrapped the overload. That run measured the
+  fixed rule and reported 0 unsound. A redo with a formatting-tolerant substitution
+  gave 4 unsound and 1 accepted demand.
+- **A generator that could not reach the bug.** Earlier, the reverted rule also passed,
+  for a different reason: random declarations mostly contradicted each other and ended
+  the chain. Only 25 `rebase` statements were generated, none after a successful
+  `Under(STATIC)`. The fix was a 70/30 split of consistent and random declarations,
+  plus hand-written targeted chains. §4.1's and §4.4's bugs are detected by those chains.
+- **A column that measured agreement with Pyright.** The "declared demands rejected"
+  column draws its demands from Pyright's own `reveal_type`. It tests assignability
+  against what Pyright believes, not completeness against the runtime, so it could not
+  see the `Under[str]` gap above. Statements after a runtime raise are skipped: 72 at
+  seed 0, 196 at seed 1.
+
+### A.3 Checker discrepancies, in full
+
+**[Measured]** With a `Never` default and *covariant* `Pre`/`Post`, seven inline calls
+each falsely satisfied a demand:
+
+| call | demand | accepted by |
+|---|---|---|
+| `requires(File)` | readable | ty |
+| `requires()` | readable | both |
+| `requires(Exists)` | readable | Pyright |
+| `requires(Readable)` | read and write | both |
+| `requires(Readable, Exists)` | read and write | Pyright |
+| `ensures(Readable)` | a precondition `read` (a phase confusion) | Pyright |
+| `x: PathExpr[Literal["read"]] = ...requires(Exists)` | readable | Pyright |
+
+§4.2 attributes solving a variable from the expected type to ty alone, but Pyright did
+too, for `requires()`. The phase confusion was not recorded. #113's audit found that
+§4.3's "ty accepted none" holds only for single-atom demands, and that with this
+encoding ty 0.0.90 cannot be both sound and precise (typed-core addendum A.3).
+
+### A.4 Encodings abandoned before §2.2's
+
+**[Fact]**
+- **#105's probe gave each capability its own phantom parameter** (`PathExpr[Yes, W]`).
+  It was replaced by a contravariant union of literal atoms. The reason recorded at the
+  time was that "set inclusion maps to subtyping". The owner had asked "whether Yes and
+  No should represent guaranteed capabilities or merely permitted operations", and that
+  "the default should represent an unknown capability". The union with a `Never`
+  default answers both: atoms are declared obligations, and the default declares
+  nothing. `2026-10-22-declarations.md` (#107) records the decision that followed.
+- **Containment keyed by a parameter's name** (`Under(base: Param[B])`) failed: Pyright
+  widened `Param("root")` to `Param[str]`. That led to bases that are literal strings,
+  bound by `LiteralString`.
+- **`IsDir` and an `Unknown` root of kinds** were dropped.
+
+### A.5 Labels that claim more than was shown
+
+- **[Narrowed] §2.3, "exactly the upward-closed families" ([Proven]).** It needs
+  assumptions the text leaves unnamed:
+  - finitely many minimal elements, since Python unions are finite and `Under` atoms
+    range over unboundedly many literals;
+  - checkers that follow the variance rules of the typing spec;
+  - atoms that are independent.
+- **[Narrowed] §4.6, "At shape (a) there is no principal expression" ([Measured]).** It
+  was shown for two candidate declarations, not in general.
+- **[Refuted], then weakened twice: the principal expression.** The first claim was that
+  it "keeps every reading".
+  - Counterexample: for `{ds}.{dn}` on `q.r.7`, `e` reads `{dn: 7, ds: "q.r"}`, while
+    the principal expression reads `{dn: "r.7", ds: "q"}` and `{dn: "7", ds: "q.r"}`,
+    untyped and with an extra reading.
+  - The claim became "matches some reading", with `limit=4`, plus filling in defaults.
+  - Before that, a parser bug (nested `Text` sources losing their parameters'
+    declarations) had made the round trip 88%, with 415 mismatches. After the fix it
+    was 99.3%.
+  - §4.6 states only the final form.
+- **[Narrowed] §2.1, "containment always".** It holds for the *lexical* half only. The
+  physical half (realpath) is checked at a moment, like a state, and a symlink made
+  later ends it (SEMANTICS.md §10.1 as corrected; confined runs §4).
+- **[Narrowed] §2.2, "a bare annotation accepts any expression".** It fails for a
+  generic `K` without an upper bound, which #113 had to add.
+
+### A.6 §1 against the essays
+
+**[Fact]** Two points of [Future Paths](https://cog.spin.systems/future-paths) that §1
+did not engage, quoted from the essays:
+- **Capabilities.** The essays name "the things one can do with a path
+  (read/write/create/delete/enumerate)". Of `Path[Writable, MayCreate]` they say "this
+  introduces a sort of nullable type to the capability": "some things are going to
+  always be created, some only maybe". The atoms do not match that one to one:
+  - §2.3's effect `create`, which cannot be certified, is the "always created";
+  - `MayCreate` corresponds to the permission atom `create` (`Creatable`), which can be;
+  - the entry uses the one word for both;
+  - `delete` has no atom at all. It is a verb, derived from `Absent` ensured but not
+    required.
+- **A text syntax.** §1 says Part 4 "asks for" a text syntax, and §7 proposes a public
+  `parse`. The essay itself says a text-based pattern syntax "defeats the point of the
+  current design (where Python t-strings handle the parsing)". A `parse` that is only
+  the inverse of `.pattern`, for printing and round trips, sidesteps that reservation.
+  §1 and §7 should have said so.
+
+### A.7 Where this leads
+
+In conceptual order, on the stack's branches:
+1. `2026-10-22-declarations.md` (#107): declarations as obligations.
+2. `2026-10-22-knowledge-states.md` (#108): knowledge and its invalidation.
+3. `2026-10-22-symbolic-families.md` (#109): the same over families.
+4. `2026-10-22-aliasing.md` and `2026-10-22-confined-runs.md` (#110, #112): identity
+   and confinement.
+5. `2026-10-22-typed-core.md` (#113): this entry's encoding moved into the core.
+6. `2026-10-22-publication-and-consistency.md` (#114).
+7. `2026-10-22-synthesis.md`.
+
+The research index on the latest branch links them.

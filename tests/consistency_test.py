@@ -140,12 +140,18 @@ def test_outputs_replaced_one_at_a_time_are_seen_half_updated(tmp_path):
 def test_readers_holding_generations_never_see_a_mixture_under_a_busy_producer(
     tmp_path,
 ):
+    # With its control, under the same producer: readers that go by name,
+    # reading current/a.csv and then current/b.csv, do see mixtures. Without
+    # it, a producer too slow to interleave would pass the test too.
     io = Confined(str(tmp_path))
     g = Generation(io, "", "current")
     g.add("a.csv", b"0")
     g.add("b.csv", b"0")
     g.commit()
-    stop, mixtures, held_reads, olds = threading.Event(), [], [0], []
+    stop = threading.Event()
+    mixtures: dict[str, list] = {"held": [], "by name": []}
+    reads = {"held": 0, "by name": 0}
+    olds = []
 
     def producer():
         pio = Confined(str(tmp_path))
@@ -160,22 +166,35 @@ def test_readers_holding_generations_never_see_a_mixture_under_a_busy_producer(
         finally:
             pio.close()
 
-    def reader():
+    def reader(kind):
         rio = Confined(str(tmp_path))
         try:
             while not stop.is_set():
-                held = hold_dir(rio, "current")
-                try:
-                    pair = (read_in(held, "a.csv"), read_in(held, "b.csv"))
-                finally:
-                    os.close(held)
-                held_reads[0] += 1
+                if kind == "held":
+                    held = hold_dir(rio, "current")
+                    try:
+                        pair = (read_in(held, "a.csv"), read_in(held, "b.csv"))
+                    finally:
+                        os.close(held)
+                else:
+                    try:
+                        pair = (
+                            rio.read_bytes("current/a.csv"),
+                            rio.read_bytes("current/b.csv"),
+                        )
+                    except FileNotFoundError:
+                        continue  # between the producer's two renames
+                reads[kind] += 1
                 if pair[0] != pair[1]:
-                    mixtures.append(pair)
+                    mixtures[kind].append(pair)
         finally:
             rio.close()
 
-    readers = [threading.Thread(target=reader) for _ in range(3)]
+    readers = [
+        threading.Thread(target=reader, args=(kind,))
+        for kind in ("held", "by name")
+        for _ in range(3)
+    ]
     for r in readers:
         r.start()
     producer()
@@ -183,7 +202,8 @@ def test_readers_holding_generations_never_see_a_mixture_under_a_busy_producer(
     for r in readers:
         r.join()
     io.close()
-    assert held_reads[0] > 0 and not mixtures
+    assert reads["held"] > 0 and not mixtures["held"]
+    assert reads["by name"] > 0 and mixtures["by name"]  # the control
 
 
 def test_reclaiming_a_generation_a_reader_holds_fails_its_reads_closed(tmp_path):
@@ -246,3 +266,34 @@ def test_a_name_renamed_over_between_the_collects_is_seen_by_its_name(tmp_path):
     finally:
         io.close()
     assert coherent is False
+
+
+def test_a_collect_observes_the_bytes_it_copies(tmp_path, monkeypatch):
+    # The first pass once took its digest from one read and its copy from
+    # another. A change between the two, undone before the second pass, then
+    # gave a copy the observation never saw, reported coherent. Now the copy
+    # is the read the digest is taken from.
+    from wend._experimental import fresh
+
+    (tmp_path / "a").write_bytes(A0)
+    real, calls = fresh.fingerprint, []
+
+    def fingerprint(fd, *, content):
+        fp = real(fd, content=content)
+        if not calls:  # just after the first observation, another writer
+            (tmp_path / "a").write_bytes(A1)
+        calls.append(fp)
+        return fp
+
+    def between(phase, i):
+        if phase == "first":
+            (tmp_path / "a").write_bytes(A0)  # and undoes it
+
+    monkeypatch.setattr(fresh, "fingerprint", fingerprint)
+    io = Confined(str(tmp_path))
+    try:
+        copies, coherent = collect(io, ["a"], observer="digest", between=between)
+    finally:
+        io.close()
+    assert calls  # the writer acted
+    assert not coherent or copies["a"].read() == A0

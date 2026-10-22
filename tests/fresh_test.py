@@ -71,21 +71,22 @@ MOVES = {
     "mmap, write to a dirty page": "mmap-dirty",
     "mmap, dirty page changed and changed back": "mmap-dirty-aba",
 }
-OBSERVERS = ["meta", "digest", "meta+digest", "watch"]
+# "contents" compares the bytes at the name and nothing else; "digest+identity"
+# (once labelled "digest") also compares which object the name means, and
+# counts a refusal to open it as a change: the two detections the audit found
+# credited to the digest are that column's, not the contents'.
+OBSERVERS = ["meta", "contents", "digest+identity", "meta+digest", "watch"]
+ALL = {"meta", "contents", "digest+identity", "meta+digest", "watch"}
 # Which observer sees which move, on this kernel (ext4, fine timestamps).
 SEES = {
-    "same-size rewrite": {"meta", "digest", "meta+digest", "watch"},
-    "rewrite, mtime restored": {
-        "meta",
-        "digest",
-        "meta+digest",
-        "watch",
-    },  # ctime moved
+    "same-size rewrite": ALL,
+    "rewrite, mtime restored": ALL,  # ctime moved
     "change, then change back": {"meta", "meta+digest", "watch"},
-    "a new file renamed over the name": {"meta", "digest", "meta+digest", "watch"},
-    "a write through a hard link": {"meta", "digest", "meta+digest", "watch"},
-    "mmap, first write to a clean page": {"meta", "digest", "meta+digest"},
-    "mmap, write to a dirty page": {"digest", "meta+digest"},
+    # the same bytes, under the same name: only identity tells
+    "a new file renamed over the name": ALL - {"contents"},
+    "a write through a hard link": ALL,
+    "mmap, first write to a clean page": ALL - {"watch"},
+    "mmap, write to a dirty page": {"contents", "digest+identity", "meta+digest"},
     "mmap, dirty page changed and changed back": set(),
 }
 
@@ -104,6 +105,8 @@ def saw(observer: str, move: str, root: Path) -> bool:
             w = Watch([held])
             w.drain()
             w.events, w.overflowed = 0, False
+        elif observer == "contents":
+            before = p.read_bytes()
         else:
             fp = observe(io, "x", content=observer != "meta")
         if mapped is not None:
@@ -119,12 +122,14 @@ def saw(observer: str, move: str, root: Path) -> bool:
             seen = w.changed()
             w.close()
             return seen
+        if observer == "contents":  # the bytes at the name, read plainly
+            return p.read_bytes() != before
         if observer == "meta+digest":
             return revalidate(fp, io, "x") != "unchanged"
         verdict = revalidate(fp, io, "x")
         if observer == "meta":
             return verdict != "unchanged"
-        # digest alone: the contents and which object, not the times
+        # digest+identity: the contents and which object, not the times
         if verdict in ("replaced", "gone", "refused"):
             return True
         return observe(io, "x", content=True).digest != fp.digest

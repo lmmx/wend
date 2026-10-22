@@ -8,10 +8,13 @@ to outside the root, bind mounts, deletions, files planted), a confined run
 never reads, writes or deletes outside the root; plain runs, checked or
 not, do."""
 
+import ctypes
+import errno
 import os
 import shutil
 import subprocess
 import tempfile
+import threading
 from pathlib import Path
 
 import pytest
@@ -23,6 +26,7 @@ from knowledge_test import ROLES
 from wend import P, Param, Step, T
 from wend._experimental.confined import Confined, Plain, run
 from wend._experimental.families import analyse_families
+from wend.errors import ConditionError
 
 
 SECRET = b"SECRET"
@@ -105,7 +109,16 @@ def test_a_confined_run_of_the_plan_is_a_checked_plain_run(case):
 
 # -- another writer -------------------------------------------------------------
 
-ACTIONS = ["link_file", "link_dir", "dangle", "delete", "plant", "mount"]
+ACTIONS = [
+    "link_file",
+    "link_dir",
+    "dangle",
+    "delete",
+    "plant",
+    "mount",
+    "hardlink",
+    "fifo",
+]
 
 
 def _bind(src: Path, dst: Path) -> bool:
@@ -198,6 +211,21 @@ class Writer:
                 p = missing[k % len(missing)]
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_bytes(b"planted")
+        elif action == "hardlink":
+            # another name for a file outside: no symlink, no mount
+            files = self._existing(Path.is_file)
+            if files:
+                p = files[k % len(files)]
+                p.unlink()
+                os.link(self.outside / "secret", p)
+        elif action == "fifo":
+            missing = [
+                p
+                for p in self._missing()
+                if p.parent.is_dir() and not p.parent.is_symlink()
+            ]
+            if missing:
+                os.mkfifo(missing[k % len(missing)])
         elif action == "mount":
             dirs = self._existing(Path.is_dir)
             if dirs and len(self.mounts) < 2:
@@ -328,6 +356,8 @@ PLAIN = {"checked", "checked-w", "plain", "plain-w"}
         # Before "read": its checks follow the link, so checking them is no
         # defence (only Under's realpath would be, and only when checked).
         (("step", 1, "raw/mon.csv", "link_file"), PLAIN),
+        # The same file, by another name: no symlink and no mount to refuse.
+        (("step", 1, "raw/mon.csv", "hardlink"), PLAIN),
         # Between the checks of "copy" and its bodies, a time-of-check race:
         # exclusive creation refuses a link at the name, not one above it.
         (("use", 2, "out/mon.csv", "dangle"), {"checked-w", "plain-w"}),
@@ -359,6 +389,9 @@ def test_each_move_escapes_a_plain_run_and_is_refused_by_a_confined_one(
                 if action == "link_file":
                     p.unlink()
                     p.symlink_to(outside / "secret")
+                elif action == "hardlink":
+                    p.unlink()
+                    os.link(outside / "secret", p)
                 elif action == "dangle":
                     p.symlink_to(outside / "planted")
                 elif action == "link_dir":
@@ -513,3 +546,64 @@ def test_making_parents_does_not_follow_a_link_on_the_way(kind):
         assert (done, reached) == (
             ([False], False) if kind == "confined" else ([True], True)
         )
+
+
+def test_writing_a_hard_linked_file_refuses_before_truncating(tmp_path):
+    root, outside = tmp_path / "root", tmp_path / "outside"
+    root.mkdir()
+    make_outside(outside)
+    os.link(outside / "secret", root / "x")
+    io = Confined(str(root))
+    try:
+        with pytest.raises(ConditionError, match="hard links"):
+            io.write_bytes("x", b"over")
+    finally:
+        io.close()
+    assert (outside / "secret").read_bytes() == SECRET  # O_TRUNC would have emptied it
+
+
+def test_a_planted_fifo_is_refused_at_once_and_blocks_a_plain_read(tmp_path):
+    os.mkfifo(tmp_path / "x")
+    io = Confined(str(tmp_path))
+    try:
+        with pytest.raises(ConditionError, match="neither a regular file"):
+            io.read_bytes("x")
+    finally:
+        io.close()
+    t = threading.Thread(
+        target=lambda: Plain(str(tmp_path)).read_bytes("x"), daemon=True
+    )
+    t.start()
+    t.join(0.5)
+    assert t.is_alive()  # waiting for a writer that never comes
+    with open(tmp_path / "x", "wb"):  # release it
+        pass
+
+
+def test_no_fallback_where_openat2_is_unavailable(tmp_path, monkeypatch):
+    # Elsewhere the system call number means something else: refuse before
+    # calling it. Where the kernel or a seccomp filter lacks it, refuse at
+    # construction, not at the first access.
+    from wend._experimental import identity
+
+    monkeypatch.setattr(identity.sys, "platform", "darwin")
+    with pytest.raises(identity.UnsupportedPlatformError):
+        Confined(str(tmp_path))
+    monkeypatch.undo()
+
+    def no_openat2(*args):
+        ctypes.set_errno(errno.ENOSYS)
+        return -1
+
+    identity.openat2(os.open(tmp_path, os.O_PATH), ".", os.O_PATH, 0)  # loads _syscall
+    monkeypatch.setattr(identity, "_syscall", no_openat2)
+    with pytest.raises(identity.UnsupportedPlatformError):
+        Confined(str(tmp_path))
+
+    def filtered(*args):
+        ctypes.set_errno(errno.EPERM)
+        return -1
+
+    monkeypatch.setattr(identity, "_syscall", filtered)
+    with pytest.raises(identity.UnsupportedPlatformError):
+        Confined(str(tmp_path))

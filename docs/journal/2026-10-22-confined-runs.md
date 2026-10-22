@@ -17,6 +17,10 @@ is not closed.
 The prototype is `wend._experimental.confined`, with tests in `tests/confined_test.py`
 and two worked pipelines in `docs/journal/scripts/2026-10-22-confined-demo.py`.
 
+[Confinement is not consistency](2026-10-22-confinement-is-not-consistency.md) draws the
+conclusions together. It separates what this executor establishes (path resolution at
+the moment of use) from what it does not (freshness, consistency, contents).
+
 Labels: **[Fact]**, **[Measured]**, **[Proven]**, **[Interpretation]**,
 **[Conjecture]**, **[Proposal]**.
 
@@ -48,6 +52,13 @@ before a step's checks, and between its checks and its bodies.
 
   A name that resolves through a symlink or a mount point is refused, with a
   `ContainmentError` for a check and `ELOOP` or `EXDEV` for an access.
+
+  Each object opened is then judged on its descriptor:
+  - a regular file must have exactly one name;
+  - anything but a regular file or a directory is refused;
+  - opens are non-blocking, and a write truncates only after the judgement.
+
+  Path confinement is not object confinement: §3 has the counterexamples.
 - **`Plain(root)`.** The same operations on ordinary paths, with checks by
   `wend.conditions`. Creation is exclusive unless `exclusive=False`, which opens as
   `open(p, "w")` does.
@@ -66,12 +77,22 @@ everything. Three things give this:
 - the confined checks agree with `wend.conditions` on such a tree;
 - both executors create exclusively.
 
-**[Proven] B. Whatever another writer does below the root, a confined run reads,
-writes and deletes nothing outside it.** This rests on the kernel's guarantee for
-`RESOLVE_BENEATH`, as the [man page](https://man7.org/linux/man-pages/man2/openat2.2.html)
+**[Proven] B. Every path a confined run resolves stays below the root, read as
+written.** This rests on the kernel's guarantee for `RESOLVE_BENEATH`, `NO_SYMLINKS` and
+`NO_XDEV`, as the [man page](https://man7.org/linux/man-pages/man2/openat2.2.html)
 states it. Every operation of `Confined` is relative to a descriptor obtained that way,
 and a descriptor cannot be redirected by later changes to names. B is a property of the
 mechanism, not of the plan.
+
+**[Fact]** B is about *paths*. The first version claimed more, that a confined run reads
+and writes nothing outside the root, and two objects at inside names refuted it:
+- **a hard link to an outside file:** the path is beneath the root, with no link and no
+  mount, and the confined run read the file and overwrote it;
+- **a FIFO at an input's name:** the open blocked indefinitely.
+
+Judging each object on its descriptor (§1) refuses both. B′, that no object outside the
+root is read or written, now holds for every move tested. It is not a guarantee against
+names that another writer adds to an object later.
 
 **[Interpretation] C. An elided check fails closed.** Suppose another writer makes a
 known fact false. Then the access that relied on it either:
@@ -93,6 +114,10 @@ holds.
 | parents made with `os.makedirs` on the path string | the parents-through-a-link test |
 | creation not exclusive | the generated agreement property (§2 A) |
 | the plan kept after a step fails | the generated agreement property |
+| hard-linked files allowed | the never-outside property, the moves table, the truncation test |
+| objects of any kind allowed | the FIFO test |
+| truncation at the open (`O_TRUNC`), before the judgement | the truncation test |
+| blocking opens | the suite hangs on the planted FIFO |
 
 **[Fact]** The first mutant survived every escape test. `RESOLVE_BENEATH` alone
 already refuses an absolute link and a link that climbs out of the root. So
@@ -156,16 +181,19 @@ collide under some binding, and 4 bindings. With them:
 - **Agreement (claim A).** Over 200 examples, each under all four bindings, a confined
   run of the plan and a plain run with every check agreed every time: the same
   completed steps, final tree and data read.
-- **Never outside (claim B).** Over 300 examples with a random schedule of the writer
-  (1 to 4 moves, drawn from links out, dangling links, a directory replaced by a link,
-  deletions, planted files and bind mounts), the confined run never reached outside the
-  root.
+- **Never outside (claims B and B′).** Over 300 examples with a random schedule of the
+  writer, the confined run never reached outside the root. Each schedule has 1 to 4
+  moves, drawn from: links out, dangling links, a directory replaced by a link,
+  deletions, planted files, bind mounts, hard links to an outside file, and FIFOs. The
+  last two were added after the hard-link counterexample (§2), and the property failed
+  on them until objects were judged on their descriptors.
 - **The writer never acts through its own mounts.** The first failure of this property
   was the harness's: the writer planted a link inside a bind mount it had made. That
   writes outside the root without any executor's help.
 
 **[Measured]** 1,000 such pipelines (3,007 steps), each run under the same random
-writer by five executors:
+writer by five executors. This first measurement predates the hard-link and FIFO moves
+and the judgement of objects (§2); it is kept as it was taken.
 
 | executor | runs that reached outside the root | steps completed |
 |---|---|---|
@@ -210,9 +238,19 @@ own data in every file, and replaces the stage with a link to the copy:
 
 ## 7. The answer, so far
 
+**[Fact]** This section first answered "yes, for atoms of names". That overstated it,
+and [the synthesis](2026-10-22-confinement-is-not-consistency.md#7-claims-narrowed)
+narrows it. What the evidence supports is that confined execution:
+- prevented the tested path-resolution attacks from escaping the workspace;
+- with objects judged on their descriptors, prevented the tested object attacks too;
+- preserved the behaviour of honest runs.
+
+The plan's facts stay facts about the past. Confinement makes the names mean what the
+strings say at each use; it does not keep the facts true.
+
 **[Interpretation]** *Can symbolic overlap reasoning support sound pre-execution
-analysis of actual pipelines?* For atoms of names: yes, with a runtime that enforces
-the analysis's weaker assumption and turns violations of the other into errors.
+analysis of actual pipelines?* It can be acted on safely where the runtime enforces the
+analysis's weaker assumption and turns violations of the other into errors:
 - **Lexical identity** becomes a property of the execution:
   - `Under(root)`, or the executor's own containment, puts every rendered path below
     the root without `..`;
@@ -233,8 +271,13 @@ the analysis's weaker assumption and turns violations of the other into errors.
 
 ## 8. Limits
 
-- **[Fact]** Linux 5.6+ only. Symlinks below the root are refused, including those that
-  users put there on purpose; the root itself may be reached through symlinks.
+- **[Fact]** Linux 5.6+ only, and experimental. Elsewhere, or where `openat2` is
+  missing or filtered, `Beneath` raises `UnsupportedPlatformError` at construction; there
+  is no fallback to a weaker resolution.
+- **[Fact]** Symlinks below the root are refused, including those that users put there
+  on purpose; the root itself may be reached through symlinks. Multiply linked regular
+  files are refused too, so hard-link farms (package stores, `cp -al` snapshots) cannot
+  be read confined.
 - **[Fact]** The writer acts only between steps and between a step's checks and its
   bodies. Between two system calls of one body, each call is relative to a descriptor
   already opened beneath, so a swap there fails or acts in the directory already

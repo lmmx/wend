@@ -39,9 +39,11 @@ facts survive changes to the namespace.
 from __future__ import annotations
 
 import ctypes
+import errno
 import os
 import posixpath
 import stat as st
+import sys
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -59,6 +61,7 @@ __all__ = [
     "IdentityKnowledge",
     "IdentityTracker",
     "Trace",
+    "UnsupportedPlatformError",
     "openat2",
     "resolve",
 ]
@@ -371,17 +374,35 @@ class _OpenHow(ctypes.Structure):
     ]
 
 
-_syscall = ctypes.CDLL(None, use_errno=True).syscall
+class UnsupportedPlatformError(OSError):
+    """Resolution held to the string by the kernel is not available here: it
+    needs ``openat2`` (Linux 5.6, and not filtered by seccomp). There is no
+    fallback, since a weaker resolution would lose the guarantee silently."""
+
+
+_syscall: Any = None
 
 
 def openat2(dirfd: int, path: str, flags: int, resolve: int, mode: int = 0o666) -> int:
     """``openat2(2)``: ``path`` opened relative to ``dirfd`` under ``resolve``."""
+    global _syscall
+    if not sys.platform.startswith("linux"):
+        # The system call number means something else elsewhere: never call it.
+        raise UnsupportedPlatformError(
+            errno.ENOSYS, f"openat2 needs Linux, not {sys.platform}"
+        )
+    if _syscall is None:
+        _syscall = ctypes.CDLL(None, use_errno=True).syscall
     how = _OpenHow(flags | os.O_CLOEXEC, mode if flags & os.O_CREAT else 0, resolve)
     fd = _syscall(
         _SYS_OPENAT2, dirfd, os.fsencode(path), ctypes.byref(how), ctypes.sizeof(how)
     )
     if fd < 0:
         e = ctypes.get_errno()
+        if e == errno.ENOSYS:
+            raise UnsupportedPlatformError(
+                e, "openat2 is not available (Linux 5.6+)", path
+            )
         raise OSError(e, os.strerror(e), path)
     return fd
 
@@ -398,8 +419,24 @@ class Beneath:
     RESOLVE = RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_XDEV
 
     def __init__(self, root: str) -> None:
+        if not sys.platform.startswith("linux"):
+            raise UnsupportedPlatformError(
+                errno.ENOSYS, f"openat2 needs Linux, not {sys.platform}"
+            )
         self.root = root
         self.fd = os.open(root, os.O_PATH | os.O_DIRECTORY)
+        try:  # refuse at once where the kernel or a filter will not do this
+            os.close(openat2(self.fd, ".", os.O_PATH, self.RESOLVE))
+        except UnsupportedPlatformError:
+            os.close(self.fd)
+            raise
+        except OSError as e:
+            os.close(self.fd)
+            if e.errno in (errno.EPERM, errno.EINVAL):  # seccomp; unknown flags
+                raise UnsupportedPlatformError(
+                    e.errno, f"openat2 refused here: {e}"
+                ) from e
+            raise
 
     def open(
         self,

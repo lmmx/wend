@@ -74,6 +74,22 @@ class Confined:
             raise
         return os.fstat(fd), fd
 
+    def _object(self, rel: str, s: os.stat_result, atom: str = "read") -> None:
+        """Refuse an object that resolution beneath the root does not confine:
+        a regular file with another name (a hard link, which may lie outside
+        the root), or anything but a regular file or a directory (a FIFO
+        would block, a device would reach outside the filesystem)."""
+        c = CONDITION.get(atom, atom)
+        if st.S_ISREG(s.st_mode):
+            if s.st_nlink != 1:
+                raise ContainmentError(
+                    rel,
+                    c,
+                    f"has {s.st_nlink} names (hard links), which may lie outside the root",
+                )
+        elif not st.S_ISDIR(s.st_mode):
+            raise WrongKindError(rel, c, "is neither a regular file nor a directory")
+
     def check(self, rel: str, atoms: frozenset[str]) -> None:
         """Each atom (`knowledge.CONDITION`) of the path, as `wend.conditions`
         would check it, but resolved beneath the root."""
@@ -96,6 +112,8 @@ class Confined:
             raise WrongKindError(rel, c, "is not a regular file")
         if atom == "dir" and s is not None and not st.S_ISDIR(s.st_mode):
             raise WrongKindError(rel, c, "is not a directory")
+        if atom in ("read", "list", "write") and s is not None:
+            self._object(rel, s, atom)
         if atom in ("read", "list"):
             if s is None:
                 raise MissingPathError(rel, c, "does not exist")
@@ -153,12 +171,27 @@ class Confined:
             fd = nxt
         return fd, name
 
+    def _open(self, rel: str, flags: int) -> int:
+        """``rel`` opened non-blocking, then refused unless the object itself is
+        confined (`_object`), judged on the descriptor, so no race applies."""
+        fd = self.b.open(rel, flags | os.O_NONBLOCK)
+        try:
+            self._object(rel, os.fstat(fd))
+        except BaseException:
+            os.close(fd)
+            raise
+        os.set_blocking(fd, True)
+        return fd
+
     def read_bytes(self, rel: str) -> bytes:
-        with os.fdopen(self.b.open(rel, os.O_RDONLY), "rb") as f:
+        with os.fdopen(self._open(rel, os.O_RDONLY), "rb") as f:
             return f.read()
 
     def write_bytes(self, rel: str, data: bytes) -> None:
-        with os.fdopen(self.b.open(rel, os.O_WRONLY | os.O_TRUNC), "wb") as f:
+        # Truncated only once the object is known confined: O_TRUNC would
+        # act at the open, before it could be judged.
+        with os.fdopen(self._open(rel, os.O_WRONLY), "wb") as f:
+            f.truncate()
             f.write(data)
 
     def create(self, rel: str, data: bytes) -> None:

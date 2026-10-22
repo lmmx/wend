@@ -272,6 +272,34 @@ tell what was attempted and what failed, and the corrections below do that.
   unbounded reading is needed only when a head can name a directory that the mutation
   makes. Not demonstrated.
 
+### A.1′ A harness defect found by an intermittent failure (after the owner's review)
+
+**[Measured]** A full-suite run at #115's head failed once, in
+`test_what_the_analysis_knows_holds_and_what_it_refutes_fails`. Three more full runs
+passed. The owner asked for the failure to be isolated, not dismissed.
+- **Its record was lost.** The background script kept only pytest's summary line, so
+  the first failure's test name and traceback were never saved. A further run of three,
+  keeping failed test names, caught it in the third run. From then on, Hypothesis's
+  example database replayed the case, and the test failed every time in isolation, in
+  about half a second.
+- **The case.** The pipeline `[[create base_day, delete up], [create up]]` on an empty
+  tree. Where `name` is `"raw"` and `rel` is `"."`, the family `up`,
+  `(root / name / rel).parent`, renders to the run's root itself. The plain run deletes
+  the root, then creates a *file* at its path.
+- **What failed.** The test's own cleanup: `TemporaryDirectory` called `rmtree` on a
+  file (`NotADirectoryError`). The property's assertions held. The analysis knew nothing
+  false and refuted nothing that ran. The run did what its steps declared. A confined
+  run would have refused to delete the root (`_not_the_root`).
+- **Why it was intermittent.** Not timing: Hypothesis draws 250 new cases per run, and
+  this one is rare. Once drawn, it is deterministic.
+- **The fix.** Each run's root is now one level below the directory that is cleaned up
+  (`run_root`). The case is pinned with `@example` in both properties, so every run
+  checks it, not only the run that happens to draw it. Pinned on the earlier harness, it
+  fails with the same `NotADirectoryError`; on the new one, both properties pass.
+- **[Interpretation]** A harness that shares its cleanup with the system under test can
+  fail for reasons outside the property. Plain runs may delete their root; the test must
+  let them.
+
 ### A.2 §4's measurements, corrected
 
 - **[Refuted] The refutation count.** The final measurement script counted refuted

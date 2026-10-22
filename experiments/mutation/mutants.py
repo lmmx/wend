@@ -53,6 +53,7 @@ ALIASING = "tests/aliasing_test.py"
 KNOWLEDGE = "tests/knowledge_test.py"
 PUBLISH_TEST = "tests/publish_test.py"
 CONSISTENCY = "tests/consistency_test.py"
+EVENTS_TEST = "tests/events_test.py"
 
 
 @dataclass(frozen=True)
@@ -193,6 +194,14 @@ MUTANTS = [
         "            if False:",
         (LEASES,),
         killed_by=("test_a_run_whose_input_has_a_writer_does_not_start",),
+    ),
+    Mutant(
+        "run: a held input's kind is left to the earlier check",
+        EVENTS,
+        "                    if not held[n].is_file:\n",
+        "                    if False:\n",
+        (EVENTS_TEST,),
+        killed_by=("test_a_swap_between_the_check_and_the_hold_is_judged_at_the_hold",),
     ),
     Mutant(
         "store: a hidden version is made readable by all",

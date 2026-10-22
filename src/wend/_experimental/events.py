@@ -35,9 +35,10 @@ from typing import Any, Generic, Literal, cast
 
 from .._kinds import C, Checked, Confirmed, IsFile, K
 from ..conditions import Step
+from ..errors import WrongKindError
 from .confined import Confined
 from .identity import Held as _Held
-from .knowledge import MUTATING, Knowledge
+from .knowledge import CONDITION, MUTATING, Knowledge
 
 
 __all__ = ["Held", "Holds", "Run", "Sealed", "Spec", "Uses", "seal"]
@@ -210,6 +211,12 @@ class Run:
                     fd = self.io._open(rels[n], os.O_RDONLY)
                     h = Held(paths[n], fd, frozenset({"read"}))
                     held.append(h)
+                    # Judged on the descriptor, like confinement: the check of
+                    # File was of whatever the name led to then.
+                    if not h.is_file:
+                        raise WrongKindError(
+                            rels[n], CONDITION["file"], "is not a regular file"
+                        )
                 entered[n] = _Port(
                     self._event(Checked, paths[n], req, p.expr._bases(env, {}, 0)), h
                 )

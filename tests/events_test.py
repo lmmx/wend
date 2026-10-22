@@ -164,11 +164,17 @@ def test_only_a_readable_file_can_be_held():
         Holds(P("a").requires(Exists))
 
 
+@pytest.mark.parametrize(
+    ("swap", "refusal"),
+    [("hard link", "hard links"), ("directory", "not a regular file")],
+)
 def test_a_swap_between_the_check_and_the_hold_is_judged_at_the_hold(
-    tree, tmp_path_factory
+    tree, tmp_path_factory, swap, refusal
 ):
-    # The check of Readable judges the object too, but the hold is a second
-    # open: another writer can replace the name between the two.
+    # The checks of Readable and File judge the object too, but the hold is a
+    # second open: another writer can replace the name between the two. A
+    # directory is confined, so only the kind refuses it; without that the
+    # body would be handed a held directory typed as a file.
     outside = tmp_path_factory.mktemp("outside") / "secret"
     outside.write_bytes(b"SECRET")
     run = Run(str(tree))
@@ -178,10 +184,13 @@ def test_a_swap_between_the_check_and_the_hold_is_judged_at_the_hold(
         check(rel, atoms)
         if rel == "raw/a.csv":
             (tree / "raw" / "a.csv").unlink()
-            os.link(outside, tree / "raw" / "a.csv")
+            if swap == "hard link":
+                os.link(outside, tree / "raw" / "a.csv")
+            else:
+                (tree / "raw" / "a.csv").mkdir()
 
     run.io.check = check_then_swap
-    with pytest.raises(ConditionError, match="hard links"):
+    with pytest.raises(ConditionError, match=refusal):
         with run.enter(Convert, env(tree)):
             pass
 

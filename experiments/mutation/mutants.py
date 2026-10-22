@@ -15,7 +15,14 @@ Each mutant replaces one passage of one source file. For each, the harness:
    tests without writing bytecode. A mutant of the same size as the source,
    restored within the same second, otherwise leaves a cached ``.pyc`` that
    matches the restored source's size and time to the second, and every
-   later import, in or out of the harness, runs the mutant.
+   later import, in or out of the harness, runs the mutant;
+7. gives every run of the tests an empty Hypothesis example database and the
+   same seed (0). With a database shared across runs, a failing example
+   found under one mutant is replayed under the next, so a verdict can
+   depend on the order of the mutants; and with a fresh seed each run, a
+   property's kill can be luck. Three kills the entries recorded held under
+   only one or two of five seeds (research index); each of those mutants now
+   names a test that rejected it under all five.
 
 A mutant may be expected to survive (``survives=`` gives the reason): then
 it must survive, so that the reason is checked too. A mutant may end the
@@ -440,7 +447,9 @@ MUTANTS = [
         "    if not must_equal(ha, hb) or isinstance(a.head, Deferred):\n",
         "    if isinstance(a.head, Deferred):\n",
         (FAMILIES,),
-        killed_by=("test_what_the_analysis_knows_holds_and_what_it_refutes_fails",),
+        # the soundness property, which the entry recorded, rejected it under
+        # 1 of 5 seeds; the commutation property under 5 of 5
+        killed_by=("test_adjacent_independent_steps_commute",),
     ),
     Mutant(
         "families: relation is coincidence only, not above or below",
@@ -448,7 +457,13 @@ MUTANTS = [
         '    above or below it."""\n    if must_equal(a, b):\n',
         '    above or below it."""\n    return coincide(a, b)\n    if must_equal(a, b):\n',
         (FAMILIES,),
-        killed_by=("test_what_the_analysis_knows_holds_and_what_it_refutes_fails",),
+        # the soundness property, which the entry recorded, rejected it under
+        # 2 of 5 seeds; these under every seed
+        killed_by=(
+            "test_relations_under_shared_bindings",
+            "test_the_worked_pipeline_knows_refutes_and_commutes_what_its_table_shows",
+            "test_adjacent_independent_steps_commute",
+        ),
     ),
     Mutant(
         "families: a child's existence derived from its parent's",
@@ -569,10 +584,9 @@ MUTANTS = [
         "        if st.S_ISLNK(s.st_mode):\n",
         "        if st.S_ISLNK(s.st_mode) and todo:\n",
         (ALIASING,),
-        killed_by=(
-            "test_keyed_by_what_checks_read_every_known_atom_holds",
-            "test_an_output_made_as_a_symlink_follows_its_target",
-        ),
+        # the known-atoms property, which the entry recorded, rejected it under
+        # 2 of 5 seeds; kernel agreement under 5 of 5
+        killed_by=("test_the_kernel_agrees_with_the_model_on_what_is_alias_free",),
     ),
     Mutant(
         "aliasing: no entry clause",
@@ -741,13 +755,18 @@ def failed_tests(tests: tuple[str, ...]) -> tuple[set[str], int]:
                 "-p",
                 "no:cacheprovider",
                 f"--junitxml={xml}",
+                "--hypothesis-seed=0",
                 *tests,
             ],
             cwd=ROOT,
             capture_output=True,
             text=True,
             timeout=900,
-            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
+            env={
+                **os.environ,
+                "PYTHONDONTWRITEBYTECODE": "1",
+                "HYPOTHESIS_STORAGE_DIRECTORY": f"{d}/hypothesis",
+            },
         )
         failed = set()
         if xml.exists():

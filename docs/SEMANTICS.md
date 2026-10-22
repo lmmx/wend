@@ -557,9 +557,14 @@ the filesystem. Atoms are grouped by what makes them true, and so by when they h
 
 | group | atoms | made true by | holds |
 |---|---|---|---|
-| containment | `under` | `render`, which checks every rendered path (§10) | for every path the expression renders |
+| containment, lexical | `under` | `render`, which checks every rendered path (§10) | for every path the expression renders |
+| containment, physical | `under` | the filesystem: `realpath(p)` at or below `realpath(b)` (§10) | when a check finds it, like a state |
 | state | `exists`, `absent`, `file`, `dir` | the filesystem | when a check finds it: `check` for `requires`, `confirm` for `ensures`, a `Step` on entry and exit |
 | permission | `read`, `write`, `create`, `list` | the filesystem's permissions for the real user | when a check finds it |
+
+Only the lexical half of containment is a fact about every rendered path. The
+physical half can be ended by a symlink made after the check, like any checked
+state.
 
 A checked state or permission is true at the moment of the check and no later.
 The contract does not say how long it lasts: any effect on the path may end it,
@@ -577,6 +582,10 @@ holds.
 A union declares what every alternative declares (`&` of their declarations: the
 atoms of each phase common to all, and the bases common to all). A path the union
 describes comes from one alternative, so only the common declarations hold of it.
+A union's effects are not those of its declaration: the verbs below are not
+monotone, so the verbs of `&` can name an effect no alternative has (an
+alternative that reads and ensures `exists`, and one that creates, have a meet
+whose verbs are `create`). `Step` does not accept unions.
 
 The effects of §10's `Step` are a function of the declaration (`Declarations.verbs`):
 

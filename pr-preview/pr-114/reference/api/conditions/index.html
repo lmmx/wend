@@ -2661,7 +2661,7 @@ See docs/SEMANTICS.md §10.</p>
   </span>
 
 <a href="#wend.conditions.Absent" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">Absent</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Final" href="https://docs.python.org/3/library/typing.html#typing.Final">Final</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'absent'</span><span class="p">],</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'absent'</span><span class="p">]]]</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">(</span><span class="s1">'Absent'</span><span class="p">)</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">Absent</span><span class="p">:</span> <span class="n"><span title="typing.Final">Final</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">[</span><span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s1">'absent'</span><span class="p">],</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s1">'absent'</span><span class="p">]]]</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">(</span><span class="s1">'Absent'</span><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2686,12 +2686,12 @@ See docs/SEMANTICS.md §10.</p>
 
 
 <a href="#wend.conditions.Condition" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">Condition</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">)</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">Condition</span><span class="p">(</span><span class="n">name</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
             <p class="doc doc-class-bases">
-              Bases: <code><a class="autorefs autorefs-external" title="typing.Generic" href="https://docs.python.org/3/library/typing.html#typing.Generic">Generic</a>[<span title="wend._kinds.Pre">Pre</span>, <span title="wend._kinds.Post">Post</span>]</code></p>
+              Bases: <code><span title="typing.Generic">Generic</span>[<span title="wend._kinds.Pre">Pre</span>, <span title="wend._kinds.Post">Post</span>]</code></p>
 
 
 
@@ -2755,7 +2755,7 @@ checker it adds its atom <code>Pre</code> to what an expression requires, and
 
 <a href="#wend.conditions.Condition.__call__" class="headerlink" title="Permanent link">&para;</a></h3>
 <div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">__call__</span><span class="p">(</span>
-    <span class="n">path</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">optional</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">many</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="nb">open</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">path</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">optional</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="n">many</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span> <span class="nb">open</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">=</span> <span class="kc">False</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            Entry (wend.schema.Entry)" href="../schema/#wend.schema.Entry">Entry</a></span>
 </code></pre></div>
 
@@ -2797,7 +2797,7 @@ with its cardinality. Other conditions are not callable.</p>
   </span>
 
 <a href="#wend.conditions.Creatable" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">Creatable</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Final" href="https://docs.python.org/3/library/typing.html#typing.Final">Final</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s2">"create"</span><span class="p">],</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s2">"create"</span><span class="p">]]]</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">(</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">Creatable</span><span class="p">:</span> <span class="n"><span title="typing.Final">Final</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">[</span><span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s2">"create"</span><span class="p">],</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s2">"create"</span><span class="p">]]]</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">(</span>
     <span class="s2">"Creatable"</span>
 <span class="p">)</span>
 </code></pre></div>
@@ -2829,7 +2829,7 @@ a directory the process may write to and search.</p>
 
     <div class="doc doc-contents ">
             <p class="doc doc-class-bases">
-              Bases: <code><a class="autorefs autorefs-external" title="typing.NamedTuple" href="https://docs.python.org/3/library/typing.html#typing.NamedTuple">NamedTuple</a></code></p>
+              Bases: <code><span title="typing.NamedTuple">NamedTuple</span></code></p>
 
 
 
@@ -2871,7 +2871,7 @@ it); every other atom holds when a check finds it, at that moment.</p>
   </span>
 
 <a href="#wend.conditions.Declarations.requires" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">requires</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#frozenset">frozenset</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">requires</span><span class="p">:</span> <span class="n"><span title="frozenset">frozenset</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2898,7 +2898,7 @@ it); every other atom holds when a check finds it, at that moment.</p>
   </span>
 
 <a href="#wend.conditions.Declarations.ensures" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">ensures</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#frozenset">frozenset</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">ensures</span><span class="p">:</span> <span class="n"><span title="frozenset">frozenset</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2925,7 +2925,7 @@ it); every other atom holds when a check finds it, at that moment.</p>
   </span>
 
 <a href="#wend.conditions.Declarations.under" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">under</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">under</span><span class="p">:</span> <span class="n"><span title="tuple">tuple</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
 
 
   
@@ -2957,7 +2957,7 @@ it); every other atom holds when a check finds it, at that moment.</p>
   </span>
 
 <a href="#wend.conditions.Declarations.verbs" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">verbs</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#frozenset">frozenset</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">verbs</span><span class="p">:</span> <span class="n"><span title="frozenset">frozenset</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -2983,7 +2983,7 @@ and <code>delete</code> for <code>absent</code> ensured but not required.</p>
 
 
 <a href="#wend.conditions.Declarations.__and__" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">__and__</span><span class="p">(</span><span class="n">other</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#object">object</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            Declarations (wend.conditions.Declarations)" href="./#wend.conditions.Declarations">Declarations</a></span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">__and__</span><span class="p">(</span><span class="n">other</span><span class="p">:</span> <span class="n"><span title="object">object</span></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            Declarations (wend.conditions.Declarations)" href="./#wend.conditions.Declarations">Declarations</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3023,7 +3023,7 @@ both are declared under.</p>
   </span>
 
 <a href="#wend.conditions.Dir" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">Dir</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Final" href="https://docs.python.org/3/library/typing.html#typing.Final">Final</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'dir'</span><span class="p">],</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'dir'</span><span class="p">]]]</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">(</span><span class="s1">'Dir'</span><span class="p">)</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">Dir</span><span class="p">:</span> <span class="n"><span title="typing.Final">Final</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">[</span><span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s1">'dir'</span><span class="p">],</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s1">'dir'</span><span class="p">]]]</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">(</span><span class="s1">'Dir'</span><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3052,7 +3052,7 @@ both are declared under.</p>
 
     <div class="doc doc-contents ">
             <p class="doc doc-class-bases">
-              Bases: <code><a class="autorefs autorefs-external" title="typing.NamedTuple" href="https://docs.python.org/3/library/typing.html#typing.NamedTuple">NamedTuple</a></code></p>
+              Bases: <code><span title="typing.NamedTuple">NamedTuple</span></code></p>
 
 
 
@@ -3089,7 +3089,7 @@ both are declared under.</p>
   </span>
 
 <a href="#wend.conditions.Effect.name" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">name</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">name</span><span class="p">:</span> <span class="n"><span title="str">str</span></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3148,7 +3148,7 @@ both are declared under.</p>
   </span>
 
 <a href="#wend.conditions.Effect.verbs" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">verbs</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#frozenset">frozenset</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">verbs</span><span class="p">:</span> <span class="n"><span title="frozenset">frozenset</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3184,7 +3184,7 @@ both are declared under.</p>
   </span>
 
 <a href="#wend.conditions.Exists" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">Exists</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Final" href="https://docs.python.org/3/library/typing.html#typing.Final">Final</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'exists'</span><span class="p">],</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'exists'</span><span class="p">]]]</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">(</span><span class="s1">'Exists'</span><span class="p">)</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">Exists</span><span class="p">:</span> <span class="n"><span title="typing.Final">Final</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">[</span><span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s1">'exists'</span><span class="p">],</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s1">'exists'</span><span class="p">]]]</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">(</span><span class="s1">'Exists'</span><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3213,7 +3213,7 @@ both are declared under.</p>
   </span>
 
 <a href="#wend.conditions.File" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">File</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Final" href="https://docs.python.org/3/library/typing.html#typing.Final">Final</a></span><span class="p">[</span><span class="n"><span title="wend.conditions.FileCondition">FileCondition</span></span><span class="p">]</span> <span class="o">=</span> <span class="n"><span title="wend.conditions.FileCondition">FileCondition</span></span><span class="p">(</span><span class="s1">'File'</span><span class="p">)</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">File</span><span class="p">:</span> <span class="n"><span title="typing.Final">Final</span></span><span class="p">[</span><span class="n"><span title="wend.conditions.FileCondition">FileCondition</span></span><span class="p">]</span> <span class="o">=</span> <span class="n"><span title="wend.conditions.FileCondition">FileCondition</span></span><span class="p">(</span><span class="s1">'File'</span><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3243,7 +3243,7 @@ joined below it. Add <code>Exists</code> to require that it exists.</p>
   </span>
 
 <a href="#wend.conditions.Listable" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">Listable</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Final" href="https://docs.python.org/3/library/typing.html#typing.Final">Final</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'list'</span><span class="p">],</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'list'</span><span class="p">]]]</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">(</span><span class="s1">'Listable'</span><span class="p">)</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">Listable</span><span class="p">:</span> <span class="n"><span title="typing.Final">Final</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">[</span><span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s1">'list'</span><span class="p">],</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s1">'list'</span><span class="p">]]]</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">(</span><span class="s1">'Listable'</span><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3272,7 +3272,7 @@ joined below it. Add <code>Exists</code> to require that it exists.</p>
   </span>
 
 <a href="#wend.conditions.Readable" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">Readable</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Final" href="https://docs.python.org/3/library/typing.html#typing.Final">Final</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'read'</span><span class="p">],</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'read'</span><span class="p">]]]</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">(</span><span class="s1">'Readable'</span><span class="p">)</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">Readable</span><span class="p">:</span> <span class="n"><span title="typing.Final">Final</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">[</span><span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s1">'read'</span><span class="p">],</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s1">'read'</span><span class="p">]]]</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">(</span><span class="s1">'Readable'</span><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3297,7 +3297,7 @@ joined below it. Add <code>Exists</code> to require that it exists.</p>
 
 
 <a href="#wend.conditions.Step" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">Step</span><span class="p">(</span><span class="n">paths</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="collections.abc.Mapping" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping">Mapping</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">**</span><span class="n">named</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">)</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">Step</span><span class="p">(</span><span class="n">paths</span><span class="p">:</span> <span class="n"><span title="collections.abc.Mapping">Mapping</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">**</span><span class="n">named</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3348,7 +3348,7 @@ each path takes the parameters it uses.</p>
   </span>
 
 <a href="#wend.conditions.Step.paths" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">paths</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#dict">dict</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">paths</span><span class="p">:</span> <span class="n"><span title="dict">dict</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
 
 
   
@@ -3380,7 +3380,7 @@ each path takes the parameters it uses.</p>
   </span>
 
 <a href="#wend.conditions.Step.param_names" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">param_names</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#frozenset">frozenset</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">param_names</span><span class="p">:</span> <span class="n"><span title="frozenset">frozenset</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3407,7 +3407,7 @@ each path takes the parameters it uses.</p>
   </span>
 
 <a href="#wend.conditions.Step.pattern" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">pattern</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">pattern</span><span class="p">:</span> <span class="n"><span title="str">str</span></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3429,7 +3429,7 @@ each path takes the parameters it uses.</p>
 
 
 <a href="#wend.conditions.Step.check" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">check</span><span class="p">(</span><span class="n">mapping</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">fs</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#dict">dict</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span><span class="p">]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">check</span><span class="p">(</span><span class="n">mapping</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">fs</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="dict">dict</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="pathlib.Path">Path</span></span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3455,7 +3455,7 @@ on <code>fs</code> (a <code>wend.fs</code> filesystem; the local disk by default
 
 
 <a href="#wend.conditions.Step.confirm" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">confirm</span><span class="p">(</span><span class="n">mapping</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">fs</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#dict">dict</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span><span class="p">]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">confirm</span><span class="p">(</span><span class="n">mapping</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">fs</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="dict">dict</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="pathlib.Path">Path</span></span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3482,8 +3482,8 @@ on <code>fs</code>.</p>
 
 <a href="#wend.conditions.Step.__call__" class="headerlink" title="Permanent link">&para;</a></h3>
 <div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">__call__</span><span class="p">(</span>
-    <span class="n">mapping</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">fs</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span>
-<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="collections.abc.Iterator" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterator">Iterator</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#dict">dict</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span><span class="p">]]</span>
+    <span class="n">mapping</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">fs</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="collections.abc.Iterator">Iterator</span></span><span class="p">[</span><span class="n"><span title="dict">dict</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="pathlib.Path">Path</span></span><span class="p">]]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3506,7 +3506,7 @@ on <code>fs</code>.</p>
 
 
 <a href="#wend.conditions.Step.effects" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">effects</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Effect (wend.conditions.Effect)" href="./#wend.conditions.Effect">Effect</a></span><span class="p">]</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">effects</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n"><span title="list">list</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Effect (wend.conditions.Effect)" href="./#wend.conditions.Effect">Effect</a></span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3551,7 +3551,7 @@ are listed with no verbs. This reports declarations, not behaviour.</p>
 <a href="#wend.conditions.Under" class="headerlink" title="Permanent link">&para;</a></h2>
               <div class="doc-overloads">
 <div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">Under</span><span class="p">(</span><span class="n">base</span><span class="p">:</span> <span class="n"><span title="wend._kinds.L">L</span></span><span class="p">)</span>
-</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">Under</span><span class="p">(</span><span class="n">base</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="os.PathLike" href="https://docs.python.org/3/library/os.html#os.PathLike">PathLike</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">]</span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.Param
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">Under</span><span class="p">(</span><span class="n">base</span><span class="p">:</span> <span class="n"><span title="str">str</span></span> <span class="o">|</span> <span class="n"><span title="os.PathLike">PathLike</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">]</span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.Param
 
 
   
@@ -3561,13 +3561,13 @@ are listed with no verbs. This reports declarations, not behaviour.</p>
 
   
       dataclass
-   (wend._expr.PathExpr)" href="../wend/#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">])</span>
+   (wend._expr.PathExpr)" href="../wend/#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="typing.Any">Any</span></span><span class="p">,</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">,</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">])</span>
 </code></pre></div>              </div>
 
 
     <div class="doc doc-contents ">
             <p class="doc doc-class-bases">
-              Bases: <code><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a>[&#39;Under[B] | Under[str]&#39;, &#39;Under[B] | Under[str]&#39;]</code>, <code><a class="autorefs autorefs-external" title="typing.Generic" href="https://docs.python.org/3/library/typing.html#typing.Generic">Generic</a>[<span title="wend._kinds.B">B</span>]</code></p>
+              Bases: <code><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a>[&#39;Under[B] | Under[str]&#39;, &#39;Under[B] | Under[str]&#39;]</code>, <code><span title="typing.Generic">Generic</span>[<span title="wend._kinds.B">B</span>]</code></p>
 
 
 
@@ -3645,7 +3645,7 @@ declares <code>Under[str]</code>, "under its own base".</p>
   </span>
 
 <a href="#wend.conditions.Under.name" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">name</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">name</span><span class="p">:</span> <span class="n"><span title="str">str</span></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3681,7 +3681,7 @@ declares <code>Under[str]</code>, "under its own base".</p>
   </span>
 
 <a href="#wend.conditions.Writable" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">Writable</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Final" href="https://docs.python.org/3/library/typing.html#typing.Final">Final</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'write'</span><span class="p">],</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'write'</span><span class="p">]]]</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">(</span><span class="s1">'Writable'</span><span class="p">)</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">Writable</span><span class="p">:</span> <span class="n"><span title="typing.Final">Final</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">[</span><span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s1">'write'</span><span class="p">],</span> <span class="n"><span title="typing.Literal">Literal</span></span><span class="p">[</span><span class="s1">'write'</span><span class="p">]]]</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">(</span><span class="s1">'Writable'</span><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">

@@ -46,8 +46,8 @@ PRELUDE = """\
 from typing import Final, Literal, Never, reveal_type
 from wend import (
     Absent, AnyPath, Checked, Confirmed, Creatable, Dir, Exists, File, IsFile,
-    Listable, P, Param, PathExpr, Readable, SubPath, T, Under, Unspecified,
-    Writable,
+    Listable, P, Param, PathExpr, Readable, Step, SubPath, T, Under,
+    Unspecified, Writable,
 )
 root, name, idx = Param("root"), Param("name"), Param("idx", type=int)
 STATIC: Final = "/srv/static"
@@ -172,6 +172,10 @@ def op(rng: random.Random, var: str, params: set[str]) -> tuple[str, set[str]]:
         return f'{var}.tag(k="v")', params
     if r < 0.70:
         return f"P({var})", params
+    if r < 0.73:  # a union of two alternatives: it declares nothing (§10.1)
+        return f'{var} | (P("/u") / "u.csv").requires(Exists)', params
+    if r < 0.76:  # a step of one path
+        return f"Step(p={var})", params
     derived = [
         (f"{var}.parent", params),
         (f'{var}.with_suffix(".x")', params),
@@ -227,6 +231,26 @@ TARGETED = [
 ]
 
 
+def kind_of(expr: str) -> str:
+    """The operation a statement performs, for the coverage table."""
+    for kind, mark in (
+        ("union", " | "),
+        ("step", "Step("),
+        ("requires", ".requires("),
+        ("ensures", ".ensures("),
+        ("bind", ".bind("),
+        ("rebase", ".rebase("),
+        ("tag", ".tag("),
+    ):
+        if mark in expr:
+            return kind
+    if expr.startswith("P(v") or expr.startswith("P(t"):
+        return "P"
+    if any(m in expr for m in (".parent", ".with_", ".sibling(", ".joinpath(", " / ")):
+        return "derived"
+    return "start"
+
+
 def generate(n: int, seed: int) -> list[list[tuple[str, str]]]:
     rng = random.Random(seed)
     programs = []
@@ -241,6 +265,8 @@ def generate(n: int, seed: int) -> list[list[tuple[str, str]]]:
         for j in range(1, rng.randint(2, 6)):
             expr, params = op(rng, stmts[-1][0], params)
             stmts.append((f"v{i}_{j}", expr))
+            if kind_of(expr) in ("union", "step"):
+                break  # neither is an expression to carry on from
         programs.append(stmts)
     return programs
 
@@ -409,12 +435,28 @@ def context_source(programs, rt, static_types, rng):
     lines = (PRELUDE + DEMANDS).splitlines()
     must_fail, must_pass = set(), set()
     for n, stmts in enumerate(programs):
+        ran = [(v, x) for v, x in stmts if rt[v][0] in ("ok", "other")]
         ok = [(v, x) for v, x in stmts if rt[v][0] == "ok"]
-        if not ok:
+        if not ran:
             continue
         lines.append("")
         lines.append(f"def _p{n}() -> None:")
-        lines.extend(f"    {v} = {x}" for v, x in ok)
+        lines.extend(f"    {v} = {x}" for v, x in ran)
+        # A union or a step declares nothing and gives no evidence: whatever
+        # its operand declared must not be demanded of it, or of a step's
+        # checked paths.
+        for (v, x), (pv, _) in zip(ran[1:], ran, strict=False):
+            k = kind_of(x)
+            if k not in ("union", "step") or rt[pv][0] != "ok":
+                continue
+            for a in sorted(rt[pv][1].atoms)[:2]:
+                if k == "union":
+                    lines.append(f"    {demand(a)}({v})")
+                elif not a.startswith("post_"):
+                    lines.append(f'    evidence_{demand(a)}({v}.check()["p"])')
+                else:
+                    continue
+                must_fail.add(len(lines))
         for var, expr in ok:
             f = rt[var][1]
             absent = [a for a in ATOMS if a not in f.atoms]
@@ -499,6 +541,47 @@ def main() -> int:
     seed = int(sys.argv[2]) if len(sys.argv) > 2 else 0
     programs = generate(n, seed)
     rt = runtime(programs)
+    # Every targeted chain must reach its last statement: a chain refused
+    # before its target tests nothing (the first form of t3 did exactly that).
+    unreached = [
+        f"{v} = {x}  -> {rt[v]}"
+        for stmts in programs
+        for v, x in stmts
+        if v.startswith("t") and rt[v][0] not in ("ok", "other")
+    ]
+    # And every kind of operation must actually run, including a rebase that
+    # moves a static base.
+    ran: Counter[str] = Counter()
+    for stmts in programs:
+        for (v, x), (pv, _) in zip(stmts[1:], stmts, strict=False):
+            if rt[v][0] not in ("ok", "other"):
+                continue
+            k = kind_of(x)
+            ran[k] += 1
+            if k == "rebase" and rt[pv][0] == "ok" and rt[v][0] == "ok":
+                lit = lambda f: {a for a in f.atoms if "Under['" in a}  # noqa: E731
+                if lit(rt[pv][1]) and lit(rt[pv][1]) != lit(rt[v][1]):
+                    ran["rebase moving a static base"] += 1
+    print("executed: " + "  ".join(f"{k}={ran[k]}" for k in sorted(ran)))
+    needed = {
+        "requires",
+        "ensures",
+        "bind",
+        "rebase",
+        "rebase moving a static base",
+        "tag",
+        "P",
+        "derived",
+        "union",
+        "step",
+    }
+    never = sorted(needed - {k for k, c in ran.items() if c})
+    if unreached or never:
+        for line in unreached:
+            print("TARGET NOT REACHED:", line)
+        for k in never:
+            print("NEVER EXECUTED:", k)
+        return 1
     text, where = source(programs)
     with tempfile.TemporaryDirectory() as d:
         f = Path(d) / "generated.py"

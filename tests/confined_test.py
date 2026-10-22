@@ -12,9 +12,12 @@ import ctypes
 import errno
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
 import threading
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -272,6 +275,30 @@ def executor(kind: str, root: Path):
     return Plain(str(root), exclusive=not kind.endswith("-w"))
 
 
+class Blocked(BaseException):
+    """A step waited: not an OSError, which `run` would count as the step
+    failing and go on."""
+
+
+@contextmanager
+def deadline(seconds: float) -> Iterator[None]:
+    """Fail, instead of hanging, if the body blocks. A correct executor never
+    waits: its opens are non-blocking and its creation exclusive. A broken one
+    can open a FIFO the writer planted and wait for ever for its other end; the
+    timer interrupts the open, and its handler raises."""
+
+    def expired(signum, frame):
+        raise Blocked(f"a step blocked for {seconds} s: an open waited on a FIFO?")
+
+    previous = signal.signal(signal.SIGALRM, expired)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, previous)
+
+
 def escapes(kind: str, pipeline, tree, env0, schedule) -> tuple[bool, list[bool]]:
     """Run under the writer; whether anything outside the root was read,
     written or deleted, and which steps completed."""
@@ -288,7 +315,8 @@ def escapes(kind: str, pipeline, tree, env0, schedule) -> tuple[bool, list[bool]
         io = executor(kind, root)
         try:
             elide = None if kind.startswith("checked") else plan(steps)
-            done = run(steps, bodies, env, io, elide=elide, between=w)
+            with deadline(30):
+                done = run(steps, bodies, env, io, elide=elide, between=w)
         finally:
             io.close()
             w.unmount()

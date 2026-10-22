@@ -450,6 +450,19 @@ mount".
   in 37 s. The statement now holds for this mutant too.
 
   > *Before:* as above, in the past tense now.
+- **[Measured] The same hang, in a property, found by the committed harness** (#115).
+  With each run given its own seed and an empty example database, the "creation not
+  exclusive" mutant hung `test_a_confined_run_never_reaches_outside_the_root`, in the
+  kernel's `wait_for_partner`. The writer's `fifo` move plants a FIFO at a name a step
+  will create. With `O_EXCL` the open fails at once (`EEXIST`). Without it,
+  `O_WRONLY | O_CREAT` opens the FIFO and waits for ever for a reader. The earlier
+  harness runs had replayed a failing example of another property first, from a shared
+  database, and never drew this schedule.
+
+  The property's runs now have a 30-second deadline. A correct executor never waits,
+  since its opens are non-blocking and its creation exclusive, so the deadline only
+  turns a hang into a failure. The timer's handler raises `Blocked`, a `BaseException`:
+  `run` counts an `OSError` as the step failing, and goes on.
 - **[Fact]** In #114's harness a mutant that does not compile read as a survivor. The
   same flaw existed in this entry's harness. The audit compiled every mutant against the
   current sources: all compile, so no result here was affected.

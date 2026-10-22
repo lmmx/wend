@@ -28,8 +28,10 @@ The tests are `tests/fresh_test.py`, `publish_test.py`, `consistency_test.py`,
 Labels: **[Fact]**, **[Measured]**, **[Proven]**, **[Interpretation]**,
 **[Conjecture]**, **[Proposal]**.
 
-> **Audit, 2026-10-22.** The text below is kept as written. [The addendum](#addendum-audit-2026-10-22)
-> and [the synthesis](2026-10-22-synthesis.md) refute or narrow five of its claims:
+> **Audit, 2026-10-22.** [The addendum](#addendum-audit-2026-10-22) and
+> [the synthesis](2026-10-22-synthesis.md) refute or narrow five of its claims. **Revised
+> in place after the owner's review:** each is now corrected where it stands, with its
+> earlier wording kept beside it, marked *Before*. The five:
 > - exchange with `expect` prevents a lost update (false for three writers);
 > - no observer can know a snapshot is coherent (true of observers; read leases are not
 >   one);
@@ -156,8 +158,14 @@ exchange with `expect`, and the test shows its cost:
 - but our version *was* the file between the two exchanges, and a reader could have
   read it.
 
-A lost update is prevented, at the price of a withdrawn version being visible. Avoiding
-both needs coordination, such as a lock all writers take.
+With two writers, a lost update is prevented, at the price of a withdrawn version being
+visible. With three it is not: in 126 of the 420 schedules a writer is told "published"
+and its version is gone (addendum A.1; synthesis §2). Avoiding both needs coordination,
+such as a lock all writers take, or a claim that cannot be undone (`Store`).
+
+> *Before:* "A lost update is prevented, at the price of a withdrawn version being
+> visible." **[Refuted]** by the audit (addendum A.1): false for three writers, by the
+> synthesis's exhaustive schedules. Revised here in place after the owner's review.
 
 **[Measured] Durability, in a crash model** (`tests/durability_test.py`, root and loop
 devices).
@@ -239,10 +247,10 @@ ext4 masks the second only when a rename replaces a file. That is the dependence
 filesystem-specific "persistence properties" that Pillai et al. measured. This crash
 model has no device that reorders its own writes or loses a volatile cache.
 
-> *Before:* "Publication was atomic in every case: old or new, never torn." **[Narrowed]**
-> when the table was repaired, after the owner's review: two of its rows are a name
-> leading to the new object with 0 bytes, which is neither. The atomicity is of the
-> name, not of the contents.
+> *Before:* "Publication was atomic in every case: old or new, never torn." **[Refuted]**
+> by the audit (addendum A.1): two of the table's rows are a name leading to the new
+> object with 0 bytes, which is neither. The atomicity is of the name, not of the
+> contents. Revised here in place after the owner's review.
 
 ## 3. Consistency across steps
 
@@ -252,10 +260,17 @@ what they need:
 | | ordinary primitives | needs coordination | impossible under our assumptions |
 |---|---|---|---|
 | **detecting changes** | yes, partly: the table of §1 | | detecting *every* change, by observation alone |
-| **an immutable snapshot of one input** | yes: `Sealed` (a sealed memfd copy); a reflink where the filesystem has them | | |
+| **an immutable copy of one input** | yes: `Sealed` (a sealed memfd copy); a reflink where the filesystem has them. The copy cannot change, but without a read lease it need not be a version the file ever had | a copy that is one version: a read lease, with ownership or `CAP_LEASE` (synthesis §4.2) | |
 | **publishing one output atomically** | yes: a draft and `linkat`/`rename`; durable with both syncs | | |
-| **a coherent snapshot of several inputs** | | yes: a producer publishing *generations*, a reader holding one; or privilege (filesystem snapshots) | knowing it, by observation, against a writer who leaves no trace |
+| **a coherent snapshot of several inputs** | | yes: a producer publishing *generations* that nothing writes into, a reader holding one; or the privilege to exclude writers (read leases), or filesystem snapshots | knowing it, by observation, against a writer who leaves no trace |
 | **committing several outputs atomically** | yes, for readers that hold the generation directory: one exchange publishes all | reclaiming old generations needs to know no reader still holds them | for readers that open each output by name separately |
+
+> *Before*, in the table: "an immutable snapshot of one input: yes: `Sealed`", and a
+> coherent snapshot needing only a producer's generations or filesystem snapshots.
+> **[Refuted]** and **[Narrowed]** by the audit (addendum A.1): a `Sealed` copy can be
+> torn (244 of 300 reads of a 64-page file mixed two versions); a read lease excludes
+> the writer no observer sees; and a generation is coherent only if nothing writes into
+> it. Revised here in place after the owner's review.
 
 **[Measured] A snapshot that never existed** (`tests/consistency_test.py`).
 - **The setup.** Two inputs, `a` and `b`. Another writer changes both together, as one
@@ -294,18 +309,30 @@ in the first execution, and no observation differs, since the writer leaves no t
 But the reads of different files happen at different instants, so no two of the copied
 values ever held together. The reader cannot tell the two executions apart.
 
+The proof quantifies over *observers*, and it stands. A read lease is not an observer:
+it is refused while any process can write the file, and an open for writing waits while
+it is held. So a coherent copy is possible by exclusion, with ownership or `CAP_LEASE`
+(addendum A.1; the leases entry's Proposition L). The model's untraced writer is also
+bounded by writeback: it is invisible only while its page stays dirty.
+
 **[Interpretation]** The double collect, the classic shared-memory snapshot algorithm,
 is correct only if the reader can see every change, as with sequence numbers in shared
-memory. Wait-free snapshots need writers' help (Afek et al., 1993). Files give neither,
-for an uncooperative writer. Hence the "needs coordination" column: the producer must
-cooperate.
+memory. Afek et al. (1993) build wait-free snapshots in which each update embeds a scan,
+so writers help; whether helping is necessary is not what that paper proves. Files give
+neither, for an uncooperative writer. Hence the "needs coordination" column: the
+producer must cooperate, or the reader must have the privilege to exclude.
+
+> *Before:* "Wait-free snapshots need writers' help (Afek et al., 1993) … the producer
+> must cooperate." **[Narrowed]** by the audit (addendum A.1), for the citation and for
+> exclusion. Revised here in place after the owner's review.
 
 **[Measured] Generations** (`publish.Generation`). Each output is drafted into a fresh
 hidden directory and published there. The directory is synced, then exchanged with the
 current generation in one `renameat2`.
-- **Holding a generation is coherent.** A reader holding the generation directory read
-  one generation of every file, while a commit happened between its reads. A reader
-  going by name read `(A1, B2)`.
+- **Holding a generation read one generation.** A reader holding the generation
+  directory read one generation of every file, while a commit happened between its
+  reads. A reader going by name read `(A1, B2)`. That holds while nothing writes into
+  the generation, which nothing here enforced (below, and addendum A.1).
 - **Under a busy producer**, with 59 generations committed while 3 readers held and
   read, no reader saw a mixture. **Revised in place:** the test now has its control.
   Under the same producer, 3 readers going by name see mixtures, in 5 of 5 runs here.
@@ -318,8 +345,10 @@ current generation in one `renameat2`.
 **[Proven] Why a held generation is coherent.** The assumptions:
 - every file of a generation is published into its directory before the directory is
   published;
-- nothing writes into a published generation. This is the producer's protocol, the
-  cooperation.
+- nothing writes into a published generation. This binds *every* writer, not only the
+  producer, and nothing enforced it: members were ordinary mode-0644 files, and
+  synthesis §3 reads bytes rewritten in place through a held generation. `Store`
+  detects such a write (manifests) or, with privilege, prevents it (immutable members).
 
 Under them, every name a reader resolves relative to a held generation directory reaches
 a file of that generation, with the contents it had at commit. The held descriptor fixes
@@ -327,6 +356,11 @@ the directory object (#110, #112). Its entries do not change after commit, by th
 protocol, and if the generation is reclaimed, lookups fail. The argument relies on the
 protocol and on the kernel's semantics for descriptors, and is tested above; it is not
 checked by a machine.
+
+> *Before:* "**Holding a generation is coherent.**", and the second assumption as "nothing
+> writes into a published generation. This is the producer's protocol, the
+> cooperation." **[Narrowed]** by the audit (addendum A.1): the assumption binds every
+> writer, and nothing enforced it. Revised here in place after the owner's review.
 
 ## 4. One state-transition model
 
@@ -429,15 +463,23 @@ as "no failure". The harness now reports collection errors.
 
 - **[Proven], under stated assumptions:**
   - no observer can know that copies of two files were coherent, against a writer who
-    leaves no trace (§3);
-  - a held generation is coherent under the producer's protocol (§3);
-  - a draft is unnameable until published (`open(2)`, `O_TMPFILE`);
+    leaves no trace (§3). A read lease is not an observer: it excludes the writer;
+  - a held generation is coherent if nothing writes into it, which nothing here enforced
+    (§3);
+  - a draft has no name until published (`open(2)`, `O_TMPFILE`). It is not private: a
+    process that may inspect the writer can name it (drafts entry);
   - publication is atomic for readers (`rename(2)`);
   - `"create"` never clobbers (`linkat`).
+
+  > *Before:* the first three items read "no observer can know that copies of two files
+  > were coherent, against a writer who leaves no trace (§3); a held generation is
+  > coherent under the producer's protocol (§3); a draft is unnameable until published
+  > (`open(2)`, `O_TMPFILE`)". **[Narrowed]** and **[Refuted]** by the audit
+  > (addendum A.1). Revised here in place after the owner's review.
 - **[Measured] Tested here:**
   - the observer table;
   - partial visibility, killed writers, path swaps, clobbering and interleaving;
-  - the visible withdrawal by compare-and-swap;
+  - the visible withdrawal by exchange with `expect`;
   - durability in the crash model;
   - generations under a busy producer;
   - the lifecycle through `Run`.

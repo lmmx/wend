@@ -24,7 +24,8 @@ the moment of use) from what it does not (freshness, consistency, contents).
 Labels: **[Fact]**, **[Measured]**, **[Proven]**, **[Interpretation]**,
 **[Conjecture]**, **[Proposal]**.
 
-> **Audit, 2026-10-22.** The text below is kept as written. [The addendum](#addendum-audit-2026-10-22)
+> **Audit, 2026-10-22.** Corrected claims are now revised in place, with their earlier
+> wording kept beside each, marked *Before*. [The addendum](#addendum-audit-2026-10-22)
 > corrects §3 (`RESOLVE_NO_XDEV` guards the boundary too), §2 (claim A's precondition
 > after objects were judged, and its status) and §5 (stale numbers, an unsupported
 > sentence), and records what the escape oracle cannot see.
@@ -73,14 +74,30 @@ before a step's checks, and between its checks and its bodies.
 
 ## 2. Claims, and what they rest on
 
-**[Proven] A. Without another writer, confinement changes nothing.** On a tree with no
-symlink or mount point below the root, a confined run of the plan completes the same
-steps, reads the same data and leaves the same tree as a plain run that checks
-everything. Three things give this:
+**[Proven] from tested premises. A. Without another writer, confinement changes
+nothing.** On a tree with no symlink, no mount, no multiply linked file and no special
+file below the root, a confined run of the plan completes the same steps, reads the same
+data and leaves the same tree as a plain run that checks everything. Three things give
+this:
 - the analysis's soundness: a known atom holds whenever every earlier step completed
   ([families](2026-10-22-symbolic-families.md) §4, tested there);
 - the confined checks agree with `wend.conditions` on such a tree;
 - both executors create exclusively.
+
+A also rests on must-equal, a [Conjecture] (families §1.1), and the analysis's soundness
+is [Measured] (families §4; addendum A.2).
+
+> *Before:* "On a tree with no symlink or mount point below the root, a confined run of
+> the plan completes the same steps, reads the same data and leaves the same tree as a
+> plain run that checks everything." **[Refuted]** by the audit (addendum A.2): since
+> objects are judged, a confined run also refuses multiply linked regular files and
+> special files, which a plain run reads. Revised here in place after the owner's
+> review.
+
+> *Before:* "[Proven] A. Without another writer, confinement changes nothing."
+> **[Narrowed]** by the audit (addendum A.2): A rests on the families analysis's
+> soundness, which is [Measured], and on must-equal, a [Conjecture]. Revised here in
+> place after the owner's review.
 
 **[Proven] B. Every path a confined run resolves stays below the root, read as
 written.** This rests on the kernel's guarantee for `RESOLVE_BENEATH`, `NO_SYMLINKS` and
@@ -132,9 +149,17 @@ inside the root**. The test that rejects the mutant:
 - deleting `out/mon.csv` then deletes the source, `raw/mon.csv`, while the plan still
   knows that the source exists.
 
-Nothing leaves the root, but the plan's lexical identity is false. So the two flags
-protect the two assumptions separately: `BENEATH` the boundary, `NO_SYMLINKS` and
-`NO_XDEV` the identity.
+Nothing leaves the root, but the plan's lexical identity is false. The flags do not
+protect the two assumptions separately, though. Without `NO_XDEV` a run escapes: a bind
+mount below the root leads outside, and `BENEATH` alone does not stop it (addendum A.1).
+So `BENEATH` guards the boundary, against links that leave it; `NO_XDEV` guards the
+boundary, against mounts that leave it, and identity, against mounts within it;
+`NO_SYMLINKS` guards identity only.
+
+> *Before:* "So the two flags protect the two assumptions separately: `BENEATH` the
+> boundary, `NO_SYMLINKS` and `NO_XDEV` the identity." **[Refuted]** by the audit
+> (addendum A.1): with `RESOLVE_NO_XDEV` removed, a bind mount below the root leads
+> outside. Revised here in place after the owner's review.
 
 **[Fact]** An earlier version of that test overwrote the source by copying through the
 link instead. Exclusive creation refused that on its own, so the mutant survived it too.
@@ -229,15 +254,25 @@ Over 1,000 pipelines and 2,997 steps:
 
 **[Interpretation]** Three readings:
 - **Checking everything did not prevent a single escape** here: the checked and elided
-  plain runs reached outside in exactly the same runs. The writer's moves are swaps
+  plain runs reached outside in as many runs (60 against 60, 69 against 69), though
+  which runs was not compared (addendum A.3). The writer's moves are swaps
   that checks follow, or races that come after the checks. Elision is not what makes a
   plain run unsafe; the elision-only escape of §4 needs a dangling link at a name whose
   absence is known, which random schedules rarely build.
-- **Confinement costs completion, by design.** 258 steps that complete without the
+- **Confinement costs completion, by design.** 238 steps that complete without the
   writer fail under it, where the plain runs went on through the writer's links.
-- **The plan elided 623 of 9,769 required atoms.** That is fewer than in the modelled
+- **The plan elided 623 of 9,634 required atoms.** That is fewer than in the modelled
   runs of the families entry, because half these pipelines are drawn at random and
   most of them fail early, after which nothing is elided.
+
+> *Before:* "the checked and elided plain runs reached outside in exactly the same
+> runs." **[Refuted]** by the audit (addendum A.3): the measurement script compared
+> totals only, not which runs. Revised here in place after the owner's review.
+
+> *Before:* "258 steps that complete without the writer fail under it" and "The plan
+> elided 623 of 9,769 required atoms." **[Refuted]** by the audit (addendum A.3): both
+> were the first run's figures, stale under the second table. Revised here in place
+> after the owner's review.
 
 ## 6. Two pipelines of realistic shape
 

@@ -206,6 +206,32 @@ MUTANTS = [
         killed_by=("test_a_swap_between_the_check_and_the_hold_is_judged_at_the_hold",),
     ),
     Mutant(
+        "events: known is always true",
+        EVENTS,
+        "        return all(self.knowledge.knows(a, str(event.path)) for a in event.atoms)\n",
+        "        return True\n",
+        (EVENTS_TEST,),
+        killed_by=("test_an_event_stays_known_until_this_run_invalidates_it",),
+    ),
+    Mutant(
+        "events: a sealed copy without the write seal",
+        EVENTS,
+        "            F_SEAL_WRITE | F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_SEAL,\n",
+        "            F_SEAL_SHRINK | F_SEAL_GROW | F_SEAL_SEAL,\n",
+        (EVENTS_TEST,),
+        killed_by=(
+            "test_a_held_input_does_not_keep_its_contents_but_a_sealed_copy_does",
+        ),
+    ),
+    Mutant(
+        "events: inputs held without the object judgement",
+        EVENTS,
+        "                    fd = self.io._open(rels[n], os.O_RDONLY)\n",
+        "                    fd = self.io.b.open(rels[n], os.O_RDONLY | os.O_NONBLOCK)\n",
+        (EVENTS_TEST,),
+        killed_by=("test_a_swap_between_the_check_and_the_hold_is_judged_at_the_hold",),
+    ),
+    Mutant(
         "store: a hidden version is made readable by all",
         PUBLISH,
         "os.mkdir(self.hidden, 0o700, dir_fd=self.parentfd)",
@@ -622,6 +648,19 @@ MUTANTS = [
         ),
     ),
     # -- publication and consistency (2026-10-22-publication-and-consistency.md)
+    Mutant(
+        "publish: create renames over the name",
+        PUBLISH,
+        "            os.link(src, name, dst_dir_fd=self.dirfd, follow_symlinks=True)\n",
+        "            os.rename(\n"
+        "                self._link_fresh(src, name),\n"
+        "                name,\n"
+        "                src_dir_fd=self.dirfd,\n"
+        "                dst_dir_fd=self.dirfd,\n"
+        "            )\n",
+        (PUBLISH_TEST,),
+        killed_by=("test_create_never_clobbers_where_checking_first_does",),
+    ),
     Mutant(
         "publish: a draft has a name from the start (no O_TMPFILE)",
         PUBLISH,

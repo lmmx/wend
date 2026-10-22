@@ -425,7 +425,8 @@ def concurrent_producers(base: Path) -> Outcome:
     assert isinstance(e, Conflict) and left == ["v000001"]
     return Outcome(
         "a second producer claims the same version first",
-        "this run's claim refused, its version never visible; theirs is v1",
+        "this run's claim refused, its version never visible under a version "
+        "name; theirs is v1",
         "construction, given the store protocol (claim latest + 1)",
     )
 

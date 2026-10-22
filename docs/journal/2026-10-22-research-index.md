@@ -56,7 +56,8 @@ addendum, and its tests. All branches are unmerged.
 | 8 | [The typed core](2026-10-22-typed-core.md) | #113 | df1ca7c, 5672297, addendum 95ab9ee | `experiments/typed_core/`, `tests/events_test.py` |
 | 9 | [Freshness, publication and consistency](2026-10-22-publication-and-consistency.md) | #114 | 9bc511c, addendum 51cc4a0 | `tests/{fresh,publish,consistency,lifecycle,durability}_test.py` |
 | 10 | [Synthesis](2026-10-22-synthesis.md) | #115 | 164eac2, 4f1bf41, and the leases commit (revisions in place) | `experiments/synthesis/`, `tests/synthesis_test.py` |
-| 11 | [Leases](2026-10-22-leases.md) | #115 | this commit | `tests/leases_test.py`, `experiments/mutation/mutants.py` |
+| 11 | [Leases](2026-10-22-leases.md) | #115 | 8b2caa0 | `tests/leases_test.py`, `experiments/mutation/mutants.py` |
+| 12 | [Drafts](2026-10-22-drafts.md) | #115 | this commit | `tests/drafts_test.py`, `experiments/mutation/mutants.py` |
 
 ## How the discoveries build on one another
 
@@ -122,6 +123,13 @@ addendum, and its tests. All branches are unmerged.
     - A lease taken in-process makes the host the owner of its break signal. A helper
       that takes the leases and exits leaves them owned by no living process.
     - Proposition L: a leased copy is one version, under five named assumptions.
+11. **Who can reach an unpublished output (drafts entry).**
+    - A draft is nameless, not private. The processes that may inspect the writer can
+      read, write, name and take it: its uid while it is dumpable, and root.
+    - A store's hidden version has a name, so dumpability does not guard it. The kernel
+      makes each version name hold one directory; that it is the writer's is detected
+      at the claim, never prevented.
+    - What ordinary users have, and what needs privilege, in one table (drafts §4).
    - Every guarantee is classed: by construction, under named assumptions, or
      impossible without cooperation or exclusion (synthesis §6).
 
@@ -144,7 +152,9 @@ addendum, and its tests. All branches are unmerged.
 | A pinned directory pins names, not contents | observed | synthesis §3 |
 | `FS_IMMUTABLE_FL` refuses every write tried, including through a mapping made before the flag (`SIGBUS`) | observed; mechanism conjectured | synthesis §3 |
 | A `Sealed` copy cannot change, but can be torn: a state the file never had | observed (244 of 300) | synthesis §4.3 |
-| An unpublished `O_TMPFILE` draft can be named by another process through `/proc/<pid>/fd` | observed (same uid unless non-dumpable; root always) | synthesis §5 |
+| An unpublished `O_TMPFILE` draft can be read, written, named and taken by another process through `/proc/<pid>/fd` | observed (same uid unless non-dumpable; root always; never another unprivileged uid) | synthesis §5; drafts §2 |
+| A process that changed its uid is non-dumpable by default | observed (`fs.suid_dumpable` 0) | drafts §2 |
+| A store's hidden version can be claimed, or replaced, by any process that may rename in the store's directory, even at mode 0700; a sticky directory stops other uids | observed | drafts §3 |
 | Event types carry every declared atom, and paths derived from events stay events | observed in both checkers and at runtime | typed-core addendum A.1–A.2 |
 | A union's verbs are not those of its alternatives | observed | SEMANTICS.md §10.1; declarations §3 |
 | Containment holds for every rendered path only lexically | refutes the earlier statement | declarations §3; SEMANTICS.md §10.1 |
@@ -170,7 +180,9 @@ addendum, and its tests. All branches are unmerged.
 | a filesystem that grants leases excludes every change | `/proc/uptime` | `LEASABLE`: tested filesystems only | leases §3.4 |
 | `F_SETSIG` to `SIGURG`, then `F_SETOWN` 0, keeps break signals from the host | a writer between `F_SETLEASE` and `F_SETOWN` | a helper process takes the leases | leases §3.2–§3.3 |
 | leases need privilege | `nobody` leases its own file | ownership or `CAP_LEASE` | leases §5 |
-| a draft is unnameable until published | `linkat` through `/proc/<pid>/fd` | other uids only, or a non-dumpable run | synthesis §5 |
+| a draft is unnameable until published | `linkat` through `/proc/<pid>/fd` | other uids only, or a non-dumpable run; and the same processes can read and write it | synthesis §5; drafts §2 |
+| nothing of an unclaimed store version is ever visible | the hidden directory, listed and readable (mode 0755) | private while filled (0700); nothing visible under a version's name | drafts §3 |
+| the store's claim is the writer's, given the protocol | another process claims or replaces the hidden draft | identity checked at the claim: detected, not prevented | drafts §3 |
 | a derivation records what the step used | a read after the entry observation | reads recorded and checked at exit | synthesis §5 |
 | the families tests show the analysis knows what it should | a "learn nothing" mutant passed | an oracle of the worked pipeline | families addendum A.1 |
 
@@ -182,9 +194,10 @@ These are the gaps that remain after the audit.
   - The kill tables of #108–#114 come from scripts in the session's scratch space.
   - The tests that kill each mutant are committed; the harnesses that made the mutants
     are not.
-  - Begun: `experiments/mutation/mutants.py` is committed, with the leases entry's ten
-    mutants. It guards against the defects the audit found in the earlier harnesses. The
-    earlier entries' mutants are to be moved into it.
+  - Begun: `experiments/mutation/mutants.py` is committed, with 17 mutants of the leases
+    and drafts entries. It guards against the defects the audit found in the earlier
+    harnesses, and against a third it found itself: a mutant's stale bytecode, run by
+    every later import (drafts §5). The earlier entries' mutants are to be moved into it.
   - The precision measurements of #108 and #109 can be rerun only through the tests'
     generators.
 - **Privileged evidence is not run in CI.** These skip without root, loop devices,
@@ -206,6 +219,8 @@ These are the gaps that remain after the audit.
   - names under leases (synthesis §8);
   - a persistent lease helper; xfs and btrfs; whether L3 is complete; reporting the
     `O_TRUNC` gap (leases §8);
+  - a warning for shared stores; a draft written by a helper; Yama; same-uid manifest
+    integrity (drafts §7);
   - exchange between shared names (§2.2);
   - the unbounded made-parents case (families addendum A.1);
   - must/may/disjoint as distinct rules (families addendum A.4);

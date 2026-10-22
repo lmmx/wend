@@ -10,7 +10,12 @@ Each mutant replaces one passage of one source file. For each, the harness:
 4. runs them on the mutant and records which failed;
 5. requires that at least one of ``killed_by`` failed: a kill by some other
    test may be for the wrong reason (an assertion that fails because the
-   setup broke, not because the property went).
+   setup broke, not because the property went);
+6. restores the source with its original modification time, and runs the
+   tests without writing bytecode. A mutant of the same size as the source,
+   restored within the same second, otherwise leaves a cached ``.pyc`` that
+   matches the restored source's size and time to the second, and every
+   later import, in or out of the harness, runs the mutant.
 
 A mutant may be expected to survive (``survives=`` gives the reason): then
 it must survive, so that the reason is checked too. A mutant may end the
@@ -23,6 +28,7 @@ Exit status 0 only if every mutant met its expectation.
 
 from __future__ import annotations
 
+import os
 import py_compile
 import signal
 import subprocess
@@ -37,6 +43,8 @@ ROOT = Path(__file__).resolve().parents[2]
 FRESH = "src/wend/_experimental/fresh.py"
 EVENTS = "src/wend/_experimental/events.py"
 LEASES = "tests/leases_test.py"
+PUBLISH = "src/wend/_experimental/publish.py"
+DRAFTS = "tests/drafts_test.py"
 
 
 @dataclass(frozen=True)
@@ -178,6 +186,78 @@ MUTANTS = [
         (LEASES,),
         killed_by=("test_a_run_whose_input_has_a_writer_does_not_start",),
     ),
+    Mutant(
+        "store: a hidden version is made readable by all",
+        PUBLISH,
+        "os.mkdir(self.hidden, 0o700, dir_fd=self.parentfd)",
+        "os.mkdir(self.hidden, 0o755, dir_fd=self.parentfd)",
+        (DRAFTS,),
+        killed_by=(
+            "test_a_hidden_version_is_private_while_it_is_filled",
+            "test_other_users_see_a_hidden_version_s_name_but_not_its_contents",
+        ),
+    ),
+    Mutant(
+        "store: a claimed version is left private",
+        PUBLISH,
+        "            os.fchmod(self.dirfd, 0o755)  # readable once claimed\n",
+        "",
+        (DRAFTS,),
+        killed_by=(
+            "test_a_hidden_version_is_private_while_it_is_filled",
+            "test_other_users_see_a_hidden_version_s_name_but_not_its_contents",
+        ),
+    ),
+    Mutant(
+        "store: members are added by the hidden name",
+        PUBLISH,
+        "        d = Draft(self.store.io, self.dir, held=self.dirfd)\n        d.write(data)\n",
+        "        d = Draft(self.store.io, self.dir)\n        d.write(data)\n",
+        (DRAFTS,),
+        killed_by=("test_a_replaced_hidden_directory_is_neither_filled_nor_claimed",),
+    ),
+    Mutant(
+        "draft: a held directory is ignored",
+        PUBLISH,
+        "        if self.held is None:\n",
+        "        if True:\n",
+        (DRAFTS,),
+        killed_by=("test_a_replaced_hidden_directory_is_neither_filled_nor_claimed",),
+    ),
+    Mutant(
+        "store: no check before the claim",
+        PUBLISH,
+        "            if _ident_at(self.parentfd, self.hidden) != self.ident:\n",
+        "            if False:\n",
+        (DRAFTS,),
+        killed_by=(
+            "test_a_replaced_hidden_directory_is_neither_filled_nor_claimed",
+            "test_a_draft_claimed_by_another_process_is_detected_and_left",
+        ),
+    ),
+    Mutant(
+        "store: no check after the claim",
+        PUBLISH,
+        "            if _ident_at(self.parentfd, name) != self.ident:\n"
+        "                raise Inconsistent(\n"
+        '                    f"version {self.n} was claimed with',
+        "            if False:\n"
+        "                raise Inconsistent(\n"
+        '                    f"version {self.n} was claimed with',
+        (DRAFTS,),
+        killed_by=("test_a_directory_put_in_place_as_the_claim_is_made_is_detected",),
+    ),
+    Mutant(
+        "store: a version another process claimed is removed",
+        PUBLISH,
+        'self.abandon() if outcome == "abandon" else self._spend()',
+        'self.abandon() if outcome != "claimed" else self._spend()',
+        (DRAFTS,),
+        killed_by=(
+            "test_a_draft_claimed_by_another_process_is_detected_and_left",
+            "test_a_draft_claimed_as_its_claim_is_made_is_left",
+        ),
+    ),
 ]
 
 
@@ -199,6 +279,7 @@ def failed_tests(tests: tuple[str, ...]) -> tuple[set[str], int]:
             capture_output=True,
             text=True,
             timeout=900,
+            env={**os.environ, "PYTHONDONTWRITEBYTECODE": "1"},
         )
         failed = set()
         if xml.exists():
@@ -211,6 +292,7 @@ def failed_tests(tests: tuple[str, ...]) -> tuple[set[str], int]:
 def run(m: Mutant) -> tuple[bool, str]:
     path = ROOT / m.file
     original = path.read_text()
+    times = os.stat(path)
     text = original
     for old, new in ((m.old, m.new), *m.extra):
         if text.count(old) != 1:
@@ -225,6 +307,7 @@ def run(m: Mutant) -> tuple[bool, str]:
         return False, f"HARNESS: the mutant does not compile: {e.msg}"
     finally:
         path.write_text(original)
+        os.utime(path, ns=(times.st_atime_ns, times.st_mtime_ns))
     if m.ends_run and code == -m.ends_run:
         return (
             True,

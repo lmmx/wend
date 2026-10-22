@@ -3,9 +3,11 @@ docs/journal/2026-10-22-publication-and-consistency.md).
 
 The counterpart of a held input. A `Draft` is a write capability for a new
 object with no name: ``O_TMPFILE`` in a directory held beneath the run's
-root. No reader can open it by any name while it is written, and nothing is
-left behind if the writer fails or dies. `Draft.publish` gives it a name in
-one system call, under a policy:
+root. No reader that goes by names can open it while it is written, and
+nothing is left behind if the writer fails or dies. A process that may
+inspect the writer (its uid while it is dumpable, and root) can still reach
+it through ``/proc``: read it, write it, name it (see `Draft`).
+`Draft.publish` gives it a name in one system call, under a policy:
 
 - ``"create"``: ``linkat``, which refuses an existing name (``EEXIST``);
 - ``"replace"``: link under a fresh name, then ``renameat`` over the name;
@@ -130,16 +132,31 @@ class Published:
 @dataclass
 class Draft:
     """A new, nameless object in ``directory`` (below ``io``'s root), and
-    the capability to write it until it is published or abandoned."""
+    the capability to write it until it is published or abandoned. With
+    ``held``, a descriptor of that directory, the draft is made there, not
+    wherever ``directory`` leads by then.
+
+    Nameless is not private. The object is reachable as ``/proc/<pid>/fd/N``
+    by every process that may inspect the writer's (``ptrace``'s read check):
+    processes of the writer's uid while it is dumpable, which is the default,
+    and root always. Each of them can read it, write into it and give it a
+    name, partial contents and all (docs/journal/2026-10-22-drafts.md). It is
+    private against other unprivileged uids, and against the writer's own
+    only if the writer's process is non-dumpable, a process-wide setting
+    this library does not change."""
 
     io: Confined
     directory: str
+    held: int | None = None
     dirfd: int = field(init=False)
     fd: int = field(init=False)
     spent: bool = field(init=False, default=False)
 
     def __post_init__(self) -> None:
-        self.dirfd = self.io._dir(self.directory)
+        if self.held is None:
+            self.dirfd = self.io._dir(self.directory)
+        else:
+            self.dirfd = os.dup(self.held)
         try:
             self.fd = os.open(
                 ".", os.O_TMPFILE | os.O_WRONLY | os.O_CLOEXEC, 0o644, dir_fd=self.dirfd
@@ -436,10 +453,21 @@ class Store:
     """Versions of a set of outputs, in one directory, never overwritten.
     Version ``n`` is claimed by renaming a filled hidden directory to
     ``v{n:06d}`` with ``RENAME_NOREPLACE``: if another writer claimed ``n``
-    first the rename fails, and nothing of this version was ever visible.
-    With readers taking the highest version as current, a claim of ``n``
-    is "replace the current version if it is still ``n - 1``": the
-    identity-conditioned compare-and-swap that exchange cannot give.
+    first the rename fails, and nothing of this version was ever visible
+    under a version's name. With readers taking the highest version as
+    current, a claim of ``n`` is "replace the current version if it is still
+    ``n - 1``": the identity-conditioned compare-and-swap that exchange
+    cannot give.
+
+    What the kernel enforces is only that one directory holds each version's
+    name. That the directory claimed is the one its writer filled, and that
+    nobody writes into it, rests on the other processes: those of the
+    writer's uid, and any other with write permission on the store's
+    directory, can move, replace or claim a hidden draft. A commit detects
+    each of these (`Inconsistent`) and returns no `Version`; it cannot
+    prevent them (docs/journal/2026-10-22-drafts.md). A hidden draft is
+    private (mode 0700) from other users while it is filled, though its name
+    is listed to any who can read the store's directory.
 
     Each version holds a ``MANIFEST`` (one ``name sha256`` line per member);
     its commit returns a `Version` carrying the manifest's digest, for
@@ -508,15 +536,42 @@ def _digest(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def _ident(fd: int) -> tuple[int, int]:
+    s = os.fstat(fd)
+    return (s.st_dev, s.st_ino)
+
+
+def _ident_at(dirfd: int, name: str) -> tuple[int, int] | None:
+    try:
+        s = os.stat(name, dir_fd=dirfd, follow_symlinks=False)
+    except FileNotFoundError:
+        return None
+    return (s.st_dev, s.st_ino)
+
+
 class VersionDraft:
-    """The next version of a `Store`, filled in a hidden directory: each
-    member is a `Draft`, published there under ``"create"``."""
+    """The next version of a `Store`, filled in a hidden directory, held by
+    its descriptor: each member is a `Draft` made there, published under
+    ``"create"``, whatever the hidden name leads to by then."""
 
     def __init__(self, store: Store, n: int) -> None:
         self.store, self.n = store, n
         self.parentfd = store.io._dir(store.rel)
         self.hidden = f".{store.PREFIX}{n:06d}.draft-{secrets.token_hex(6)}"
-        os.mkdir(self.hidden, 0o755, dir_fd=self.parentfd)
+        try:
+            # private while it is filled: other users may list its name, but
+            # can neither enter it nor read what is in it
+            os.mkdir(self.hidden, 0o700, dir_fd=self.parentfd)
+            self.dirfd = openat2(
+                self.parentfd,
+                self.hidden,
+                os.O_RDONLY | os.O_DIRECTORY,
+                Beneath.RESOLVE,
+            )
+        except BaseException:
+            os.close(self.parentfd)
+            raise
+        self.ident = _ident(self.dirfd)
         self.dir = f"{store.rel}/{self.hidden}"
         self.members: dict[str, str] = {}
         self.spent = False
@@ -526,14 +581,17 @@ class VersionDraft:
             raise ValueError("this version was committed or abandoned")
         if name == "MANIFEST":
             raise ValueError("MANIFEST is the version's own")
-        d = Draft(self.store.io, self.dir)
+        d = Draft(self.store.io, self.dir, held=self.dirfd)
         d.write(data)
         d.publish(_name(name), policy="create")
         self.members[name] = _digest(data)
 
     def commit(self, *, immutable: bool = False) -> Version:
         """Claim the version. Raises `Conflict` if another writer claimed it;
-        nothing of this version was visible. With ``immutable`` (needs
+        nothing of this version was visible under a version's name. Raises
+        `Inconsistent` if the hidden directory was moved, replaced or claimed
+        by another process: no `Version` is returned, and a version claimed
+        by another is left as it is. With ``immutable`` (needs
         ``CAP_LINUX_IMMUTABLE``), every member is made immutable before the
         claim and the version directory after it (an immutable directory
         cannot be renamed): from then on no write, truncation, rename,
@@ -542,21 +600,32 @@ class VersionDraft:
         if self.spent:
             raise ValueError("this version was committed or abandoned")
         text = "".join(f"{n} {h}\n" for n, h in sorted(self.members.items())).encode()
-        d = Draft(self.store.io, self.dir)
+        d = Draft(self.store.io, self.dir, held=self.dirfd)
         d.write(text)
         d.publish("MANIFEST", policy="create")
-        genfd = self.store.io._dir(self.dir)
-        claimed = False
+        name = f"{self.store.PREFIX}{self.n:06d}"
+        outcome = "abandon"  # or "claimed", or "theirs": claimed, not by us
         try:
             if immutable:
                 for m in [*self.members, "MANIFEST"]:
-                    mfd = openat2(genfd, m, os.O_RDONLY, Beneath.RESOLVE)
+                    mfd = openat2(self.dirfd, m, os.O_RDONLY, Beneath.RESOLVE)
                     try:
                         _set_immutable(mfd)
                     finally:
                         os.close(mfd)
-            os.fsync(genfd)
-            name = f"{self.store.PREFIX}{self.n:06d}"
+            os.fchmod(self.dirfd, 0o755)  # readable once claimed
+            os.fsync(self.dirfd)
+            if _ident_at(self.parentfd, self.hidden) != self.ident:
+                if _ident_at(self.parentfd, name) == self.ident:
+                    outcome = "theirs"
+                    raise Inconsistent(
+                        f"version {self.n} was claimed by another process, "
+                        "with this draft's directory, before it was committed"
+                    )
+                raise Inconsistent(
+                    f"version {self.n}'s hidden directory was moved or replaced "
+                    "by another process"
+                )
             try:
                 renameat2(
                     self.parentfd, self.hidden, self.parentfd, name, RENAME_NOREPLACE
@@ -565,35 +634,59 @@ class VersionDraft:
                 raise Conflict(
                     f"version {self.n} was claimed by another writer"
                 ) from None
-            claimed = True
+            except FileNotFoundError:
+                if _ident_at(self.parentfd, name) == self.ident:
+                    outcome = "theirs"
+                    raise Inconsistent(
+                        f"version {self.n} was claimed by another process, with "
+                        "this draft's directory, as it was being claimed"
+                    ) from None
+                raise Inconsistent(
+                    f"version {self.n}'s hidden directory was moved by another "
+                    "process as it was claimed"
+                ) from None
+            if _ident_at(self.parentfd, name) != self.ident:
+                raise Inconsistent(
+                    f"version {self.n} was claimed with a directory another "
+                    "process put in this draft's place: it is not this version"
+                )
+            outcome = "claimed"
             os.fsync(self.parentfd)
             if immutable:
-                _set_immutable(genfd)  # the same directory, now claimed
+                _set_immutable(self.dirfd)  # the same directory, now claimed
         finally:
-            os.close(genfd)
             # Unclaimed, for any reason, it is removed: flagged members too,
-            # which nothing else could delete.
-            self._spend() if claimed else self.abandon()
+            # which nothing else could delete. Claimed by another, it is a
+            # version, and not this writer's to remove.
+            self.abandon() if outcome == "abandon" else self._spend()
         return Version(self.store.rel, self.n, _digest(text))
 
     def abandon(self) -> None:
-        """Give up the version: its hidden directory is removed."""
+        """Give up the version: its members are removed through the held
+        directory, and the directory too while its hidden name still leads
+        to it (another process may have moved it)."""
         if self.spent:
             return
-        genfd = self.store.io._dir(self.dir)
         try:
-            for m in os.listdir(genfd):
-                mfd = openat2(genfd, m, os.O_RDONLY | os.O_NONBLOCK, Beneath.RESOLVE)
+            for m in os.listdir(self.dirfd):
                 try:
-                    _set_immutable(mfd, False)
-                finally:
-                    os.close(mfd)
+                    mfd = openat2(
+                        self.dirfd, m, os.O_RDONLY | os.O_NONBLOCK, Beneath.RESOLVE
+                    )
+                    try:
+                        _set_immutable(mfd, False)
+                    finally:
+                        os.close(mfd)
+                    os.unlink(m, dir_fd=self.dirfd)
+                except IsADirectoryError, PermissionError:
+                    pass  # not a member this draft made
+            if _ident_at(self.parentfd, self.hidden) == self.ident:
+                os.rmdir(self.hidden, dir_fd=self.parentfd)
         finally:
-            os.close(genfd)
-        self.store.io.delete(self.dir)
-        self._spend()
+            self._spend()
 
     def _spend(self) -> None:
+        os.close(self.dirfd)
         os.close(self.parentfd)
         self.spent = True
 

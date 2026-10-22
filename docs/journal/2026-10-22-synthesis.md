@@ -4,7 +4,8 @@
 > refuted or narrowed, the corrected statement replaces it and the earlier wording is kept
 > beside it, marked *Before*:
 > - the lease claims of §4.2, §6 and §8: see
->   [Leases](2026-10-22-leases.md).
+>   [Leases](2026-10-22-leases.md);
+> - the draft and `Store` claims of §5 and §6: see [Drafts](2026-10-22-drafts.md).
 
 The stack #107–#114 built its mechanisms one problem at a time:
 - declarations as obligations;
@@ -503,18 +504,32 @@ Three defects of #113–#114's `Run` appeared only when the mechanisms were comp
      `derivations` but not here.
    - It is keyed by path now.
 
-**Another writer can name an unpublished draft.** The `O_TMPFILE` is reachable as
-`/proc/<pid>/fd/N`, and `linkat(..., AT_SYMLINK_FOLLOW)` gives it a name, partial contents
-and all, which survives the writer's death. **[Measured]** Who can do it:
+**Another process can reach an unpublished draft.** The `O_TMPFILE` is reachable as
+`/proc/<pid>/fd/N`. Through it a process can read the draft, write into it, give it a name
+with `linkat(..., AT_SYMLINK_FOLLOW)` (partial contents and all, surviving the writer's
+death), and take the writer's descriptor with `pidfd_getfd`. **[Measured]** Who can do it
+(drafts §2):
 
 | who | writer dumpable (default) | writer non-dumpable (`prctl(PR_SET_DUMPABLE, 0)`) |
 |---|---|---|
-| another process, same uid, unprivileged | names the draft | `EACCES` |
-| root | names the draft | names the draft |
+| another process, same uid, unprivileged | reads, writes, names, takes | none of these |
+| another uid, unprivileged | none of these | none of these |
+| root | reads, writes, names, takes | reads, writes, names, takes |
 
-"Unnameable until published" therefore holds against other uids, and against the same uid
-only if the run is non-dumpable. That is a process-wide setting, which a library should
-not change silently.
+A draft is therefore private against other uids, and against the same uid only if the
+run is non-dumpable. That is a process-wide setting, which a library should not change.
+A process that changed its uid is non-dumpable by default.
+
+> *Before:* the table had only "names the draft", for the same uid and root, and the text
+> said "'Unnameable until published' therefore holds against other uids". **[Narrowed]**:
+> every process that can name the draft can also read and write it, so integrity and
+> confidentiality fall with exclusive publication (drafts §2).
+
+A `Store`'s hidden draft is weaker still: it has a name, which dumpability does not guard.
+Processes that may rename in the store's directory could claim it, or replace it, before
+its writer. Its contents were readable by every user. It is now private (0700) while it is
+filled, held by its descriptor, and checked by identity at its claim. Each interference is
+detected, none prevented (drafts §3).
 
 `O_EXCL` on the `O_TMPFILE` would forbid every link, the writer's own publication
 included.
@@ -542,11 +557,11 @@ writers.
 
 | guarantee | mechanism | assumption | evidence |
 |---|---|---|---|
-| a claimed version has one winner; a loser is never visible; beliefs match the state | `RENAME_NOREPLACE` (sticky register) | every writer follows the store protocol | `concurrent_producers`; `test_a_claimed_version_has_one_winner_and_no_visible_loser` |
+| a claimed version has one winner; a loser is never visible under a version's name; beliefs match the state | `RENAME_NOREPLACE` (sticky register); identity checked at the claim | every process that may rename in the store's directory follows the store protocol: the writers' uid, root, and other uids if the directory is writable by them and not sticky (drafts §3). Interference is detected (`Inconsistent`), not prevented | `concurrent_producers`; `test_a_claimed_version_has_one_winner_and_no_visible_loser`; `tests/drafts_test.py` |
 | a pinned reader returns only bytes the version committed | manifest digest | SHA-256 collision resistance; the digest from the run's record | `member_tampered` |
-| an unpublished draft cannot be named by another process | `O_TMPFILE` | the other process is another uid, or the run is non-dumpable; not root | §5 |
+| an unpublished draft cannot be read, written or named by another process | `O_TMPFILE` | the other process is another uid, or the run is non-dumpable; never against root | §5; drafts §2 |
 | an input is a coherent snapshot of several files others write in place | read leases, taken by a helper, with sizes | L1–L5 of proposition L (leases §4): ownership or `CAP_LEASE`; a filesystem in `LEASABLE`; contents change only through the filesystem's files (L3, L4) | `pair_updated_mid_entry_leased`; `tests/leases_test.py` |
-| members of a committed version cannot change at all | `FS_IMMUTABLE_FL` | `CAP_LINUX_IMMUTABLE` to set it; nobody with it acting against the run | `test_immutable_members_refuse_every_writer_tried` |
+| members of a committed version cannot change at all | `FS_IMMUTABLE_FL` | privilege: `CAP_LINUX_IMMUTABLE` to set it, and nobody with it acting against the run. An ordinary user's `commit(immutable=True)` is refused (`EPERM`) and leaves nothing; ordinary users have the manifest's detection instead (drafts §4) | `test_immutable_members_refuse_every_writer_tried`; `test_an_ordinary_user_cannot_make_a_version_immutable` |
 | a version is not removed under a reader | `flock` lease | readers pin rather than go by path | `test_a_version_is_reclaimed_only_once_no_reader_holds_it` |
 | `known()` | knowledge of this run's effects | nobody else writes below the root (closed world) | `input_rewritten_after` |
 | "unchanged" and `invalidated()` | observation | the observer saw every change: false for dirty-mapping writers, and only between writebacks (#114 addendum) | `fresh_test` |

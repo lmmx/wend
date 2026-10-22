@@ -29,6 +29,7 @@ from wend.errors import (
     CapabilityError,
     ConditionError,
     ContainmentError,
+    IndeterminateError,
     InvalidBindingError,
     MissingPathError,
     PathExistsError,
@@ -248,6 +249,59 @@ def test_creatable_looks_for_the_nearest_existing_directory(tree):
     deep.check(root=tree)
     with pytest.raises(CapabilityError, match="is not a directory"):
         (P(root) / "raw" / "a.csv" / "below").requires(Creatable).check(root=tree)
+
+
+def test_a_broken_symlink_blocks_creation(tree):
+    # At the name, creating the path would write through the link, wherever
+    # it points; above it, mkdir -p fails on the name the link occupies.
+    for e in (
+        (P(root) / "out" / "dangling").requires(Creatable),
+        (P(root) / "out" / "dangling").requires(Writable),
+        (P(root) / "out" / "dangling" / "x" / "y").requires(Creatable),
+    ):
+        with pytest.raises(CapabilityError, match="broken symlink"):
+            e.check(root=tree)
+    with pytest.raises(OSError):
+        os.makedirs(tree / "out" / "dangling" / "x")
+    (P(root) / "raw" / "escape" / "new").requires(Creatable)  # a link that resolves
+
+
+_LINKS = {"ok": "d", "broken": "gone/deeper", "file": "f", "loop": "loop"}
+
+
+@settings(max_examples=200, deadline=None, suppress_health_check=list(HealthCheck))
+@given(
+    st.lists(st.sampled_from(["d", "f", "x", "y", *_LINKS]), min_size=1, max_size=4),
+)
+def test_creatable_says_whether_a_missing_path_can_be_made(tmp_path_factory, parts):
+    # For a path that does not exist, Creatable holds exactly when making its
+    # parents and then the path itself, exclusively, succeeds.
+    r = tmp_path_factory.mktemp("t")
+    (r / "d").mkdir()
+    (r / "f").write_text("f")
+    for name, target in _LINKS.items():
+        (r / name).symlink_to(target)
+    p = r.joinpath(*parts)
+    try:
+        if os.path.exists(p):
+            return
+    except OSError:
+        return
+    e = P(str(p)).requires(Creatable)
+    try:
+        e.check()
+        says = True
+    except CapabilityError:
+        says = False
+    except IndeterminateError:
+        return  # a symlink loop on the way: neither outcome is known
+    try:
+        os.makedirs(p.parent, exist_ok=True)
+        os.close(os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL))
+        made = True
+    except OSError:
+        made = False
+    assert says == made, (parts, says, made)
 
 
 def test_capabilities_use_the_process_permissions(tree, monkeypatch):

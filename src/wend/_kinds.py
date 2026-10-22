@@ -71,26 +71,66 @@ X6 = TypeVar("X6")
 
 
 class _Evidence:
-    """What a check found: ``atoms`` true of ``path`` when it ran (and the
-    run's ``epoch``, when a `Run` made it). It is about that path only. It
-    is not a path: ``.path`` gives the path, ordinary, and nothing derived
-    from it carries the evidence. ``os.fspath`` and ``open`` take it as the
-    path it is about, which uses the path without deriving another."""
+    """What one check found, and nothing more.
 
-    __slots__ = ("atoms", "epoch", "path")
+    - ``path``: the path the check was about, as rendered; not an object.
+    - ``atoms``: the conditions found true by lookups of ``path`` while the
+      check ran (one ``stat`` and one ``lstat`` for the state atoms, one
+      ``access`` per permission): each held at some instant of the check, not
+      necessarily all at the same instant, nor of the same object.
+    - ``bases``: the bases ``path`` was found contained in, lexically and
+      after resolving symlinks.
+    - ``epoch``: the step of a `Run` that made it, or ``None``.
+
+    It is a record of the past. A later change to the filesystem does not
+    update it, and nothing about it says the atoms still hold. It is not a
+    path: ``.path`` gives the path, ordinary, and nothing derived from it
+    carries the evidence. ``os.fspath`` (and so ``open``) takes it as the
+    path it is about, unchanged. It cannot be altered once made; it can be
+    constructed directly, as any type can be cast, and then certifies
+    nothing."""
+
+    __slots__ = ("_atoms", "_bases", "_epoch", "_path")
 
     def __init__(
-        self, path: Path, atoms: frozenset[str] = frozenset(), epoch: int | None = None
+        self,
+        path: Path,
+        atoms: frozenset[str] = frozenset(),
+        epoch: int | None = None,
+        bases: tuple[Path, ...] = (),
     ) -> None:
-        self.path = path
-        self.atoms = atoms
-        self.epoch = epoch
+        object.__setattr__(self, "_path", path)
+        object.__setattr__(self, "_atoms", frozenset(atoms))
+        object.__setattr__(self, "_epoch", epoch)
+        object.__setattr__(self, "_bases", tuple(bases))
+
+    def __setattr__(self, name: str, value: object) -> None:
+        raise AttributeError(f"{type(self).__name__} cannot be altered")
+
+    def __delattr__(self, name: str) -> None:
+        raise AttributeError(f"{type(self).__name__} cannot be altered")
+
+    @property
+    def path(self) -> Path:
+        return self._path
+
+    @property
+    def atoms(self) -> frozenset[str]:
+        return self._atoms
+
+    @property
+    def bases(self) -> tuple[Path, ...]:
+        return self._bases
+
+    @property
+    def epoch(self) -> int | None:
+        return self._epoch
 
     def __fspath__(self) -> str:
-        return str(self.path)
+        return str(self._path)
 
     def __repr__(self) -> str:
-        return f"{type(self).__name__}({str(self.path)!r}, {sorted(self.atoms)})"
+        return f"{type(self).__name__}({str(self._path)!r}, {sorted(self._atoms)})"
 
 
 class Checked(_Evidence, Generic[C, K]):

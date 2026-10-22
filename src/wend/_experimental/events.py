@@ -213,8 +213,10 @@ class Run:
         root*. Not whether it holds now; another writer is invisible here."""
         return all(self.knowledge.knows(a, str(event.path)) for a in event.atoms)
 
-    def _event(self, cls: type, path: str, atoms: frozenset[str]) -> Any:
-        return cls(Path(path), atoms, self.epoch)
+    def _event(
+        self, cls: type, path: str, atoms: frozenset[str], bases: tuple[Path, ...]
+    ) -> Any:
+        return cls(Path(path), atoms, self.epoch, bases)
 
     @contextmanager
     def enter[S: Spec](self, spec: type[S], env: Mapping[str, Any]) -> Iterator[S]:
@@ -250,7 +252,11 @@ class Run:
                     pfd, _ = self.io._parent(rels[n], make=True)
                     os.close(pfd)
                     d = drafts[n] = Draft(self.io, rels[n].rpartition("/")[0])
-                entered[n] = _Port(self._event(Checked, paths[n], req), h, d)
+                entered[n] = _Port(
+                    self._event(Checked, paths[n], req, p.expr._bases(env, {}, 0)),
+                    h,
+                    d,
+                )
             try:
                 yield cast("S", spec(entered))
             except BaseException:
@@ -277,7 +283,9 @@ class Run:
                 post = p.expr.declares.ensures
                 self.io.check(rels[n], post)
                 self.knowledge.learn(post, paths[n])
-                self.confirmed[n] = self._event(Confirmed, paths[n], post)
+                self.confirmed[n] = self._event(
+                    Confirmed, paths[n], post, p.expr._bases(env, {}, 1)
+                )
         finally:
             for h in held:
                 h.close()

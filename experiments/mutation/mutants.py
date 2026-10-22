@@ -16,13 +16,17 @@ Each mutant replaces one passage of one source file. For each, the harness:
    restored within the same second, otherwise leaves a cached ``.pyc`` that
    matches the restored source's size and time to the second, and every
    later import, in or out of the harness, runs the mutant;
-7. gives every run of the tests an empty Hypothesis example database and the
-   same seed (0). With a database shared across runs, a failing example
-   found under one mutant is replayed under the next, so a verdict can
-   depend on the order of the mutants; and with a fresh seed each run, a
-   property's kill can be luck. Three kills the entries recorded held under
-   only one or two of five seeds (research index); each of those mutants now
-   names a test that rejected it under all five.
+7. runs the tests under the ``mutation`` Hypothesis profile
+   (``tests/conftest.py``): no example database, and no shrinking or
+   explaining of a failure, which only a person reads; and with the same
+   seed (0). With a database shared across runs, a failing example found
+   under one mutant is replayed under the next, so a verdict can depend on
+   the order of the mutants; and with a fresh seed each run, a property's
+   kill can be luck. Three kills the entries recorded held under only one
+   or two of five seeds (research index); each of those mutants now names a
+   test that rejected it under all five. Without the database, shrinking
+   and explaining each failure of the expensive properties took one run
+   past its timeout.
 
 A mutant may be expected to survive (``survives=`` gives the reason): then
 it must survive, so that the reason is checked too. A mutant may end the
@@ -755,6 +759,7 @@ def failed_tests(tests: tuple[str, ...]) -> tuple[set[str], int]:
                 "-p",
                 "no:cacheprovider",
                 f"--junitxml={xml}",
+                "--hypothesis-profile=mutation",
                 "--hypothesis-seed=0",
                 *tests,
             ],

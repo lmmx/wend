@@ -21,6 +21,15 @@ import platform
 import sys
 
 import pytest
+from hypothesis import Phase, settings
+
+
+# The mutation harness asks only whether a test fails. It neither shrinks
+# nor explains a failure, and keeps no examples between runs, so that no
+# mutant's verdict depends on another's (experiments/mutation/mutants.py).
+settings.register_profile(
+    "mutation", phases=[Phase.explicit, Phase.generate, Phase.target], database=None
+)
 
 
 REQUIRE = "WEND_REQUIRE_PRIVILEGED"

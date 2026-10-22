@@ -152,7 +152,7 @@ required atoms were already known. All 255 refuted predictions failed, as predic
 | forget below the mutated path, not above it | soundness |
 | never forget | soundness |
 | `file` and `dir` exclusive even for a missing path | a unit test, not the properties |
-| learn a port's preconditions before every port's check has passed | not rejected |
+| learn a port's preconditions before every port's check has passed | not rejected; since the owner's review, the oracle's failed-entry test (see the addendum) |
 
 - **The `file`/`dir` mutant.** No role requires `File` or `Dir` without `Exists`, so
   the generated pipelines never reach the case. The unit test covers it.
@@ -275,8 +275,36 @@ status, so that the text above still shows what was believed when it was written
   - **agreement** compares `analyse` with `Tracker`, which share `Knowledge`. That is
     self-consistency, not an oracle.
 
-  No test asserts what the analysis *knows*. A model that knows nothing passes. The
-  #109 addendum records the same gap there, measured.
+  No test asserted what the analysis knows of a whole pipeline. The #109 addendum
+  records the same gap there, measured.
+
+  **Revised in place, after the owner's review.**
+  - Four unit tests each assert single facts, and they reject a model that learns
+    nothing: `test_an_undeclared_effect_breaks_the_closed_world`, the two forgetting
+    tests, and `test_file_and_dir_exclude_each_other_only_for_an_existing_path`. The
+    randomised properties alone would pass such a model.
+  - Now two oracle tests state exactly what a worked pipeline's knowledge is, worked
+    out by hand from the rules, for `analyse` and for `Tracker` on disk:
+    `test_the_analysis_knows_exactly_what_the_worked_pipeline_establishes` and
+    `test_the_tracker_knows_the_same_and_learns_nothing_from_a_failed_entry`.
+  - **[Measured]** Four mutants, against the earlier tests and against the oracle:
+
+    | mutant | earlier tests | oracle |
+    |---|---|---|
+    | learn nothing | rejected (4 tests) | rejected |
+    | never forget | rejected (5) | rejected |
+    | forget only the mutated path | rejected (3) | passes: the pipeline has no paths above or below each other |
+    | learn a port's preconditions before every port's check has passed | **not rejected** | rejected |
+
+  - **[Interpretation]** The last is §4's mutant, sound and more precise. The oracle
+    rejects it by asserting the rule as designed: a step that fails at entry teaches
+    nothing, even what its passing checks found. Adopting the mutant would be a
+    decision to change the oracle, not a bug fix. That is what an oracle can and cannot
+    do: it pins the knowledge exactly, and a person decides whether a difference is a
+    defect or a refinement.
+
+  > *Before:* "No test asserts what the analysis *knows*. A model that knows nothing
+  > passes." **[Narrowed]**: true of the properties, not of the unit tests.
 - **[Refuted] §6, "A static type can carry this faithfully" and "A `Checked[...]` handle
   produced at a step's entry certifies the preconditions".** The typed core (#113)
   carries an event, but its addendum records two ways the type claims more than the

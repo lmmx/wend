@@ -403,9 +403,18 @@ mount".
   move does nothing when `mount` fails. Two of §3's mutant kills (mounts crossed, and
   deletion entering mounts) come only from such tests. Unprivileged CI would run none of
   them. There is no Linux skip marker.
-- **[Fact]** "Blocking opens" is rejected only by the mutant harness's 240-second
-  timeout: the suite simply hangs, since there is no `pytest-timeout`. So "Every mutant
-  is rejected by a test" overstates it for that mutant.
+- **[Fact]** "Blocking opens" was rejected only by the mutant harness's 240-second
+  timeout: the suite simply hung, since there is no `pytest-timeout`. So "Every mutant
+  is rejected by a test" overstated it for that mutant.
+
+  **Revised in place, after the owner's review.** **[Measured]**
+  `test_a_planted_fifo_is_refused_at_once_and_blocks_a_plain_read` now makes the
+  confined read in a thread with a one-second deadline, as it already did for the plain
+  read. Under the mutant it fails ("the confined open blocked on the FIFO") in about a
+  second. `tests/confined_test.py` then runs to completion: 17 passed and that 1 failed,
+  in 37 s. The statement now holds for this mutant too.
+
+  > *Before:* as above, in the past tense now.
 - **[Fact]** In #114's harness a mutant that does not compile read as a survivor. The
   same flaw existed in this entry's harness. The audit compiled every mutant against the
   current sources: all compile, so no result here was affected.

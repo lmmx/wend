@@ -364,7 +364,8 @@ cites. The tests had passed throughout. What this found, they could not.
      while two of its rows show a name leading to the new object with 0 bytes. The
      atomicity is of the name, not the contents, and the statement is narrowed so;
    - two cited test names were stale. Every test name the journals cite now exists, on
-     every branch of the stack, checked by a search.
+     every branch of the stack, checked by a search, but one: the audit's record of a
+     test since renamed, which now names what it became.
 
 ## The harness checked against itself
 

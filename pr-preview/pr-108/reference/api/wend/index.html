@@ -5332,13 +5332,31 @@ files on disk, and compiled for fast batch resolution.</p>
 
 
 <a href="#wend.P" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">P</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span> <span class="o">=</span> <span class="s1">'.'</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+          <div class="doc-overloads">
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">P</span><span class="p">(</span><span class="n">arg</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
 
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
-</code></pre></div>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="CA">CA</span></span><span class="p">,</span> <span class="n"><span title="KA">KA</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="CA">CA</span></span><span class="p">,</span> <span class="n"><span title="KA">KA</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">P</span><span class="p">(</span><span class="n">arg</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="os.PathLike" href="https://docs.python.org/3/library/os.html#os.PathLike">PathLike</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">]</span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.Param
+
+
+  
+      dataclass
+  " href="./#wend.Param">Param</a></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="string.templatelib.Template" href="https://docs.python.org/3/library/string.templatelib.html#string.templatelib.Template">Template</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
+</code></pre></div>          </div>
+
 
     <div class="doc doc-contents first">
 
@@ -5362,7 +5380,7 @@ files on disk, and compiled for fast batch resolution.</p>
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents first">
@@ -5561,40 +5579,36 @@ files on disk, and compiled for fast batch resolution.</p>
 
 <a href="#wend.PathExpr.__truediv__" class="headerlink" title="Permanent link">&para;</a></h4>
           <div class="doc-overloads">
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">__truediv__</span><span class="p">(</span><span class="n">other</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathUnion
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">__truediv__</span><span class="p">(</span><span class="n">other</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="wend._experimental.typed.JoinBelowFile">JoinBelowFile</span></span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">__truediv__</span><span class="p">(</span><span class="n">other</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathUnion
 
 
   
       dataclass
-   (wend._union.PathUnion)" href="./#wend.PathUnion">PathUnion</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathUnion
+   (wend._experimental.typed.PathUnion)" href="./#wend.PathUnion">PathUnion</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathUnion
 
 
   
       dataclass
-   (wend._union.PathUnion)" href="./#wend.PathUnion">PathUnion</a></span>
+   (wend._experimental.typed.PathUnion)" href="./#wend.PathUnion">PathUnion</a></span>
 </code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">__truediv__</span><span class="p">(</span>
     <span class="n">other</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="os.PathLike" href="https://docs.python.org/3/library/os.html#os.PathLike">PathLike</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">]</span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.Param
 
 
   
       dataclass
-   (wend._params.Param)" href="./#wend.Param">Param</a></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+  " href="./#wend.Param">Param</a></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
 
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.Text
-
-
-  
-      dataclass
-   (wend._expr.Text)" href="./#wend.Text">Text</a></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="string.templatelib.Template" href="https://docs.python.org/3/library/string.templatelib.html#string.templatelib.Template">Template</a></span><span class="p">,</span>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">]</span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="string.templatelib.Template" href="https://docs.python.org/3/library/string.templatelib.html#string.templatelib.Template">Template</a></span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
 
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
 </code></pre></div>          </div>
 
 
@@ -5618,12 +5632,17 @@ files on disk, and compiled for fast batch resolution.</p>
 
 
 <a href="#wend.PathExpr.__rtruediv__" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">__rtruediv__</span><span class="p">(</span><span class="n">other</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">__rtruediv__</span><span class="p">(</span><span class="n">other</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="os.PathLike" href="https://docs.python.org/3/library/os.html#os.PathLike">PathLike</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">]</span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.Param
 
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
+  " href="./#wend.Param">Param</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -5651,7 +5670,7 @@ files on disk, and compiled for fast batch resolution.</p>
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -5679,7 +5698,7 @@ files on disk, and compiled for fast batch resolution.</p>
 
   
       dataclass
-   (wend._union.PathUnion)" href="./#wend.PathUnion">PathUnion</a></span>
+   (wend._experimental.typed.PathUnion)" href="./#wend.PathUnion">PathUnion</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -5842,7 +5861,7 @@ files on disk, and compiled for fast batch resolution.</p>
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -5941,7 +5960,7 @@ join. Bases chain: <code>(root / "a" / "b").base.base</code> is <code>root</code
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -5972,7 +5991,7 @@ rebasing <code>self</code> elsewhere moves the sibling with it (§9).</p>
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -6025,13 +6044,137 @@ rebasing <code>self</code> elsewhere moves the sibling with it (§9).</p>
 
 
 <a href="#wend.PathExpr.requires" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">requires</span><span class="p">(</span><span class="o">*</span><span class="n">conditions</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+          <div class="doc-overloads">
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">requires</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
 
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
-</code></pre></div>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">requires</span><span class="p">(</span><span class="n">file</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.FileCondition">FileCondition</span></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'file'</span><span class="p">],</span> <span class="n"><span title="wend._experimental.typed.IsFile">IsFile</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">requires</span><span class="p">(</span>
+    <span class="n">file</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.FileCondition">FileCondition</span></span><span class="p">,</span> <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s2">"file"</span><span class="p">]</span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.IsFile">IsFile</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">requires</span><span class="p">(</span>
+    <span class="n">file</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.FileCondition">FileCondition</span></span><span class="p">,</span> <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span> <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s2">"file"</span><span class="p">]</span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.IsFile">IsFile</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">requires</span><span class="p">(</span>
+    <span class="n">file</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.FileCondition">FileCondition</span></span><span class="p">,</span>
+    <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c3</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s2">"file"</span><span class="p">]</span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.IsFile">IsFile</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">requires</span><span class="p">(</span>
+    <span class="n">file</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.FileCondition">FileCondition</span></span><span class="p">,</span>
+    <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c3</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c4</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X4">X4</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s2">"file"</span><span class="p">]</span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X4">X4</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.IsFile">IsFile</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">requires</span><span class="p">(</span>
+    <span class="n">file</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.FileCondition">FileCondition</span></span><span class="p">,</span>
+    <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c3</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c4</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X4">X4</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c5</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X5">X5</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s2">"file"</span><span class="p">]</span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X4">X4</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X5">X5</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.IsFile">IsFile</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">requires</span><span class="p">(</span><span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">requires</span><span class="p">(</span>
+    <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span> <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">requires</span><span class="p">(</span>
+    <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span> <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span> <span class="n">c3</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">requires</span><span class="p">(</span>
+    <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c3</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c4</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X4">X4</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X4">X4</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">requires</span><span class="p">(</span>
+    <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c3</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c4</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X4">X4</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c5</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X5">X5</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X4">X4</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X5">X5</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">requires</span><span class="p">(</span>
+    <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c3</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c4</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X4">X4</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c5</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X5">X5</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+    <span class="n">c6</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.X6">X6</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X4">X4</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X5">X5</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X6">X6</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">requires</span><span class="p">(</span><span class="o">*</span><span class="n">conds</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div>          </div>
+
 
     <div class="doc doc-contents ">
 
@@ -6058,13 +6201,137 @@ unchanged.</p>
 
 
 <a href="#wend.PathExpr.ensures" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">ensures</span><span class="p">(</span><span class="o">*</span><span class="n">conditions</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+          <div class="doc-overloads">
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">ensures</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
 
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
-</code></pre></div>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">ensures</span><span class="p">(</span><span class="n">file</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.FileCondition">FileCondition</span></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'post_file'</span><span class="p">],</span> <span class="n"><span title="wend._experimental.typed.IsFile">IsFile</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">ensures</span><span class="p">(</span>
+    <span class="n">file</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.FileCondition">FileCondition</span></span><span class="p">,</span> <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s2">"post_file"</span><span class="p">]</span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.IsFile">IsFile</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">ensures</span><span class="p">(</span>
+    <span class="n">file</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.FileCondition">FileCondition</span></span><span class="p">,</span> <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">],</span> <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s2">"post_file"</span><span class="p">]</span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.IsFile">IsFile</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">ensures</span><span class="p">(</span>
+    <span class="n">file</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.FileCondition">FileCondition</span></span><span class="p">,</span>
+    <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">],</span>
+    <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">],</span>
+    <span class="n">c3</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s2">"post_file"</span><span class="p">]</span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.IsFile">IsFile</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">ensures</span><span class="p">(</span>
+    <span class="n">file</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.FileCondition">FileCondition</span></span><span class="p">,</span>
+    <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">],</span>
+    <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">],</span>
+    <span class="n">c3</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">],</span>
+    <span class="n">c4</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X4">X4</span></span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s2">"post_file"</span><span class="p">]</span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X4">X4</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.IsFile">IsFile</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">ensures</span><span class="p">(</span>
+    <span class="n">file</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.FileCondition">FileCondition</span></span><span class="p">,</span>
+    <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">],</span>
+    <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">],</span>
+    <span class="n">c3</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">],</span>
+    <span class="n">c4</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X4">X4</span></span><span class="p">],</span>
+    <span class="n">c5</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X5">X5</span></span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s2">"post_file"</span><span class="p">]</span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X4">X4</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X5">X5</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.IsFile">IsFile</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">ensures</span><span class="p">(</span><span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">ensures</span><span class="p">(</span>
+    <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">],</span> <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">ensures</span><span class="p">(</span>
+    <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">],</span> <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">],</span> <span class="n">c3</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">]</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">ensures</span><span class="p">(</span>
+    <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">],</span>
+    <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">],</span>
+    <span class="n">c3</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">],</span>
+    <span class="n">c4</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X4">X4</span></span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X4">X4</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">ensures</span><span class="p">(</span>
+    <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">],</span>
+    <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">],</span>
+    <span class="n">c3</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">],</span>
+    <span class="n">c4</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X4">X4</span></span><span class="p">],</span>
+    <span class="n">c5</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X5">X5</span></span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X4">X4</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X5">X5</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">ensures</span><span class="p">(</span>
+    <span class="n">c1</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span><span class="p">],</span>
+    <span class="n">c2</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span><span class="p">],</span>
+    <span class="n">c3</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span><span class="p">],</span>
+    <span class="n">c4</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X4">X4</span></span><span class="p">],</span>
+    <span class="n">c5</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X5">X5</span></span><span class="p">],</span>
+    <span class="n">c6</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.X6">X6</span></span><span class="p">],</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X1">X1</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X2">X2</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X3">X3</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X4">X4</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X5">X5</span></span> <span class="o">|</span> <span class="n"><span title="wend._experimental.typed.X6">X6</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">ensures</span><span class="p">(</span><span class="o">*</span><span class="n">conds</span><span class="p">:</span> <span class="n"><span title="wend._experimental.typed.Condition">Condition</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">])</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div>          </div>
+
 
     <div class="doc doc-contents ">
 
@@ -6125,7 +6392,7 @@ runtime checks, not a fact about the filesystem.</p>
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -6153,7 +6420,7 @@ collects them through a path's derivation (§13).</p>
 
 
 <a href="#wend.PathExpr.check" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">check</span><span class="p">(</span><span class="n">mapping</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">fs</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">check</span><span class="p">(</span><span class="n">mapping</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">fs</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="wend._experimental.typed.Checked">Checked</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -6242,12 +6509,12 @@ as <code>check</code> does.</p>
   </span>
 
 <a href="#wend.PathExpr.params" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">params</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#dict">dict</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.Param
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">params</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="collections.abc.Mapping" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping">Mapping</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.Param
 
 
   
       dataclass
-   (wend._params.Param)" href="./#wend.Param">Param</a></span><span class="p">]</span>
+  " href="./#wend.Param">Param</a></span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -6421,7 +6688,7 @@ applies them explicitly (§3.1).</p>
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -6608,7 +6875,7 @@ applies them explicitly (§3.1).</p>
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -6631,12 +6898,12 @@ applies them explicitly (§3.1).</p>
 
 
 <a href="#wend.PathExpr.with_suffix" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">with_suffix</span><span class="p">(</span><span class="n">suffix</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">with_suffix</span><span class="p">(</span><span class="n">suffix</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
 
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -6664,7 +6931,7 @@ applies them explicitly (§3.1).</p>
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -6692,7 +6959,7 @@ applies them explicitly (§3.1).</p>
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -6749,7 +7016,7 @@ between unbound paths (<code>config.relative_to(root)</code>) needs no bindings.
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -6779,13 +7046,21 @@ free, with its default (§3.1).</p>
 
 
 <a href="#wend.PathExpr.rebase" class="headerlink" title="Permanent link">&para;</a></h4>
+          <div class="doc-overloads">
 <div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">rebase</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
 
 
   
       dataclass
-   (wend._expr.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span>
-</code></pre></div>
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.Under">Under</span></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">],</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">rebase</span><span class="p">(</span><span class="o">*</span><span class="n">args</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._experimental.typed.PathExpr)" href="./#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
+</code></pre></div>          </div>
+
 
     <div class="doc doc-contents ">
 
@@ -6843,7 +7118,7 @@ parameter given no binding takes its default, if it declares one
 
 
 <a href="#wend.PathExpr.resolve" class="headerlink" title="Permanent link">&para;</a></h4>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">resolve</span><span class="p">(</span><span class="n">mapping</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="bp">cls</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#type">type</a></span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">resolve</span><span class="p">(</span><span class="n">mapping</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="bp">cls</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#type">type</a></span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-external" title="pathlib.Path" href="https://docs.python.org/3/library/pathlib.html#pathlib.Path">Path</a></span><span class="p">,</span> <span class="o">**</span><span class="n">kw</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="wend._experimental.typed.Resolved">Resolved</span></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.C">C</span></span><span class="p">,</span> <span class="n"><span title="wend._experimental.typed.K">K</span></span><span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -8071,7 +8346,7 @@ written there, so an option may hold separators. <code>Alt("", x)</code> makes
 
   
       dataclass
-   (wend._union.PathUnion)" href="./#wend.PathUnion">PathUnion</a></span>
+   (wend._experimental.typed.PathUnion)" href="./#wend.PathUnion">PathUnion</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -8439,7 +8714,7 @@ written there, so an option may hold separators. <code>Alt("", x)</code> makes
 
   
       dataclass
-   (wend._union.PathUnion)" href="./#wend.PathUnion">PathUnion</a></span>
+   (wend._experimental.typed.PathUnion)" href="./#wend.PathUnion">PathUnion</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -8467,7 +8742,7 @@ written there, so an option may hold separators. <code>Alt("", x)</code> makes
 
   
       dataclass
-   (wend._union.PathUnion)" href="./#wend.PathUnion">PathUnion</a></span>
+   (wend._experimental.typed.PathUnion)" href="./#wend.PathUnion">PathUnion</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">

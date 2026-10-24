@@ -8,11 +8,9 @@ on:
     tags:
       - "*"
   pull_request:
+  # Deploy Release starts a release's run on its tag (a tag its token pushes starts no
+  # workflow). Not workflow_run, as in lmmx/pq-glue and lmmx/polars-genson
   workflow_dispatch:
-  workflow_run:
-    workflows: ["Deploy Release"]
-    types:
-      - completed
 
 permissions:
   contents: read
@@ -33,7 +31,6 @@ jobs:
         )
       )
       || (github.event_name == 'workflow_dispatch')
-      || (github.event_name == 'workflow_run')
     steps:
       - name: Confirm commit message matched
         run: echo "Commit message matched the condition."
@@ -60,7 +57,7 @@ jobs:
     name: Release
     environment: pypi
     runs-on: ubuntu-latest
-    if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_run' }}
+    if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch' }}
     needs: [build]
     permissions:
       id-token: write
@@ -74,8 +71,9 @@ jobs:
         with:
           subject-path: "wheels-*/*"
 
+      # Only a run on a tag publishes: a run started on a branch builds and attests
       - name: Publish to PyPI
-        if: ${{ startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_run' }}
+        if: ${{ startsWith(github.ref, 'refs/tags/') }}
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: wheels-sdist/

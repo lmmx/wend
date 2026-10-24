@@ -17,7 +17,8 @@ from wend import (
     Readable,
     T,
 )
-from wend._experimental.events import Held, Holds, Sealed, Spec, Uses
+from wend._experimental.events import Held, Holds, Makes, Sealed, Spec, Uses
+from wend._experimental.publish import Draft
 
 
 root, name = Param("root"), Param("name")
@@ -32,6 +33,11 @@ out = (
 class Convert(Spec):
     src = Holds(raw)
     dst = Uses(out)
+
+
+class Produce(Spec):
+    src = Holds(raw)
+    dst = Makes(out)
 
 
 # It was true: evidence of a step's entry (what it requires) or exit (what
@@ -50,3 +56,8 @@ def reads_object(h: Held[Literal["read"], IsFile]) -> bytes:
 # It remains true: contents no holder can change.
 def trusts(s: Sealed) -> bytes:
     return s.read()
+
+
+# A write capability for an output no one can see yet.
+def drafts(d: Draft) -> None:
+    d.write(b"")

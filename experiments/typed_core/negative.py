@@ -6,6 +6,8 @@ from typing import Literal
 
 from common import (
     Convert,
+    Produce,
+    drafts,
     out,
     raw,
     reads_object,
@@ -17,7 +19,7 @@ from common import (
 )
 
 from wend import Checked, Confirmed, Exists, File, IsFile, P, PathExpr, Readable
-from wend._experimental.events import Held, Holds, Run, seal
+from wend._experimental.events import Held, Holds, Makes, Run, seal
 
 
 def an_event_is_not_an_object(run: Run) -> None:
@@ -94,3 +96,14 @@ def an_event_does_not_widen(p: Checked[Literal["exists"], IsFile]) -> None:
 def confirmed_is_not_checked(p: Confirmed[Literal["exists"], IsFile]) -> None:
     c: Checked[Literal["exists"], IsFile] = p  # E: two kinds of evidence
     del c
+
+
+def a_draft_is_not_an_input(run: Run) -> None:
+    with run.enter(Produce, {"root": "/data", "name": "a"}) as s:
+        reads_object(s.dst)  # E: a draft is written, not held for reading
+        seal(s.dst)  # E: nor sealed: it has no contents yet that anyone saw
+        drafts(s.src)  # E: and a held input is not a draft
+
+
+def only_a_new_file_can_be_made() -> None:
+    Makes(raw)  # E: an existing input is not a new file

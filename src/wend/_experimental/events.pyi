@@ -13,8 +13,9 @@ from .._kinds import C, Checked, Confirmed, IsFile, K, Unspecified
 from ..conditions import Step
 from .confined import Confined
 from .knowledge import Knowledge
+from .publish import Derivation, Draft, Published
 
-__all__ = ["Held", "Holds", "Run", "Sealed", "Spec", "Uses", "seal"]
+__all__ = ["Held", "Holds", "Makes", "Run", "Sealed", "Spec", "Uses", "seal"]
 
 CC = TypeVar("CC")
 KX = TypeVar("KX", bound=Unspecified)
@@ -70,6 +71,20 @@ class Holds:
         self, obj: Spec, owner: type[Any] | None = None
     ) -> Held[Literal["read"], IsFile]: ...
 
+class Makes:
+    """Only an expression declaring a new file can be made."""
+
+    def __init__(
+        self,
+        expr: PathExpr[Literal["absent", "create"], IsFile, Literal["file", "exists"]],
+    ) -> None: ...
+    @overload
+    def __get__(
+        self, obj: None, owner: type[Any] | None = None
+    ) -> PathExpr[Literal["absent", "create"], IsFile, Literal["file", "exists"]]: ...
+    @overload
+    def __get__(self, obj: Spec, owner: type[Any] | None = None) -> Draft: ...
+
 class Spec:
     def __init__(self, entered: Mapping[str, Any]) -> None: ...
     @classmethod
@@ -82,6 +97,8 @@ class Run:
     knowledge: Knowledge
     epoch: int
     confirmed: dict[str, Confirmed[Any, Any]]
+    published: dict[str, Published]  # by output path below the root
+    derivations: list[Derivation]
     def __init__(self, root: str) -> None: ...
     def known(self, event: Checked[Any, Any] | Confirmed[Any, Any]) -> bool:
         """Not invalidated by this run's steps: conditional on no other writer."""

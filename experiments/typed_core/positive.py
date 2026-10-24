@@ -3,7 +3,17 @@
 from pathlib import Path
 from typing import Literal
 
-from common import Convert, out, raw, reads_object, trusts, was_made, was_readable
+from common import (
+    Convert,
+    Produce,
+    drafts,
+    out,
+    raw,
+    reads_object,
+    trusts,
+    was_made,
+    was_readable,
+)
 
 from wend import Checked, Exists, File, IsFile, P, PathExpr, Readable, Under
 from wend._experimental.events import Run, seal
@@ -72,3 +82,9 @@ def file_then_more() -> None:
     # without an expected type: here, it falls back to the general overload.
     f: ReadableFile = P("a").requires(File, Exists, Readable)  # E-ty: a known gap
     del e, f
+
+
+def a_step_drafts_its_output(run: Run) -> None:
+    with run.enter(Produce, {"root": "/data", "name": "a"}) as s:
+        drafts(s.dst)  # an output is a draft inside the step
+        s.dst.write(reads_object(s.src))

@@ -41,7 +41,7 @@ from .identity import Held as _Held
 from .knowledge import CONDITION, MUTATING, Knowledge
 
 
-__all__ = ["Held", "Holds", "Run", "Sealed", "Spec", "Uses", "seal"]
+__all__ = ["Held", "Holds", "Makes", "Run", "Sealed", "Spec", "Uses", "seal"]
 
 
 class Held(_Held, Generic[C, K]):  # noqa: UP046 (variance is declared, not inferred)
@@ -133,9 +133,35 @@ class Holds(Generic[C, K]):  # noqa: UP046
         return obj._entered(self.name).held
 
 
+class Makes(Generic[C, K]):  # noqa: UP046
+    """One output of a `Spec`: on an entered instance, a `publish.Draft` in the
+    output's directory, which no reader can see. When the step finishes the
+    run publishes it under the output's name (``"create"``: never over
+    another file), confirms it, and records what it was made from. If the
+    step fails the draft is abandoned and nothing appears. The expression
+    must declare a new file (absent and creatable, a file once made)."""
+
+    def __init__(self, expr: Any) -> None:
+        d = expr.declares
+        if not ({"absent", "create"} <= d.requires and {"file", "exists"} <= d.ensures):
+            raise TypeError(
+                f"{expr.pattern!r} must require Absent, Creatable and ensure File, Exists to be made"
+            )
+        self.expr = expr
+        self.name = ""
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        self.name = name
+
+    def __get__(self, obj: Any, owner: type | None = None) -> Any:
+        if obj is None:
+            return self.expr
+        return obj._entered(self.name).draft
+
+
 class Spec:
-    """A step declared as a class of `Uses` and `Holds` attributes, entered
-    with `Run.enter`."""
+    """A step declared as a class of `Uses`, `Holds` and `Makes` attributes,
+    entered with `Run.enter`."""
 
     def __init__(self, entered: Mapping[str, _Port]) -> None:
         self.__dict__["_ports"] = entered
@@ -151,7 +177,7 @@ class Spec:
         out: dict[str, Any] = {}
         for klass in reversed(cls.__mro__):
             for n, v in vars(klass).items():
-                if isinstance(v, (Uses, Holds)):
+                if isinstance(v, (Uses, Holds, Makes)):
                     out[n] = v
         return out
 
@@ -161,9 +187,12 @@ class Spec:
 
 
 class _Port:
-    def __init__(self, checked: Checked[Any, Any], held: Held[Any, Any] | None) -> None:
+    def __init__(
+        self, checked: Checked[Any, Any], held: Held[Any, Any] | None, draft: Any = None
+    ) -> None:
         self.checked = checked
         self.held = held
+        self.draft = draft
 
 
 class Run:
@@ -176,6 +205,8 @@ class Run:
         self.knowledge = Knowledge()
         self.epoch = 0
         self.confirmed: dict[str, Confirmed[Any, Any]] = {}
+        self.published: dict[str, Any] = {}  # publish.Published, by output path
+        self.derivations: list[Any] = []  # publish.Derivation, in order
 
     def known(self, event: Checked[Any, Any] | Confirmed[Any, Any]) -> bool:
         """Whether no step of this run has invalidated ``event`` since: every
@@ -194,8 +225,12 @@ class Run:
         input, run the body, forget what its mutations may change, check the
         postconditions and learn them, as `Confirmed` events in
         ``self.confirmed``."""
+        from .fresh import fingerprint
+        from .publish import Derivation, Draft
+
         self.epoch += 1
-        ports, held = spec.ports(), []
+        ports, held, drafts = spec.ports(), [], {}
+        observed = {}
         paths = {n: p.expr.render(env) for n, p in ports.items()}
         rels = {n: self.io.rel(paths[n]) for n in ports}
         entered: dict[str, _Port] = {}
@@ -206,7 +241,7 @@ class Run:
             for n, p in ports.items():
                 req = p.expr.declares.requires
                 self.knowledge.learn(req, paths[n])
-                h = None
+                h = d = None
                 if isinstance(p, Holds):
                     fd = self.io._open(rels[n], os.O_RDONLY)
                     h = Held(paths[n], fd, frozenset({"read"}))
@@ -217,15 +252,39 @@ class Run:
                         raise WrongKindError(
                             rels[n], CONDITION["file"], "is not a regular file"
                         )
+                    observed[rels[n]] = fingerprint(fd, content=True)
+                elif isinstance(p, Makes):
+                    # the output's directory, made if missing (directories
+                    # become visible early; the file does not)
+                    pfd, _ = self.io._parent(rels[n], make=True)
+                    os.close(pfd)
+                    d = drafts[n] = Draft(self.io, rels[n].rpartition("/")[0])
                 entered[n] = _Port(
-                    self._event(Checked, paths[n], req, p.expr._bases(env, {}, 0)), h
+                    self._event(Checked, paths[n], req, p.expr._bases(env, {}, 0)),
+                    h,
+                    d,
                 )
             try:
                 yield cast("S", spec(entered))
+            except BaseException:
+                for d in drafts.values():
+                    d.abandon()
+                raise
             finally:
                 for n, p in ports.items():
                     if p.expr.declares.verbs & MUTATING:
                         self.knowledge.forget(paths[n])
+            # Each output is published whole, one after another: a failure
+            # here leaves the earlier ones published (a Generation publishes
+            # several together).
+            try:
+                for n, d in drafts.items():
+                    pub = d.publish(rels[n].rpartition("/")[2], policy="create")
+                    self.published[rels[n]] = pub
+                    self.derivations.append(Derivation(pub, dict(observed)))
+            finally:
+                for d in drafts.values():
+                    d.abandon()
             self.epoch += 1
             for n, p in ports.items():
                 post = p.expr.declares.ensures

@@ -23,7 +23,6 @@ from wend._experimental.typed import (
     Writable,
     facts,
 )
-from wend.conditions import _verbs
 from wend.errors import PathOperationError
 
 
@@ -36,13 +35,13 @@ CONDS = [Exists, Absent, File, Dir, Readable, Writable, Creatable, Listable]
     post=st.lists(st.sampled_from(CONDS), max_size=4, unique=True),
 )
 def test_effect_verbs_are_a_function_of_the_declared_atoms(pre, post):
-    # The effect graph reads Step.effects; Step.effects reads conditions.
-    # Both agree with verbs() of the atoms the static types carry.
+    # The effect graph reads Step.effects, which is the declaration's verbs
+    # (#107). Both agree with verbs() of the atoms the static types carry.
     try:
         e = (P(Param("root")) / "x").requires(*pre).ensures(*post)
     except PathOperationError:
         return  # a contradiction: rejected when declared
-    assert verbs(facts(e).atoms) == _verbs(e.conditions)
+    assert verbs(facts(e).atoms) == e.declares.verbs
 
 
 root, day = Param("root"), Param("day")

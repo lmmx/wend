@@ -54,6 +54,48 @@ Creatable = Condition('Creatable')
 
 The path exists, or could be created now: its nearest existing ancestor is a directory the process may write to and search.
 
+## Declarations
+
+Bases: `NamedTuple`
+
+What an expression declares (docs/SEMANTICS.md §10.1): the atoms it requires before it is used, the atoms it ensures after it is produced, and the bases it is declared `Under`.
+
+A declaration is an obligation, not a fact about the filesystem. Only containment holds of every path the expression renders (`render` checks it); every other atom holds when a check finds it, at that moment.
+
+### requires
+
+```python
+requires: frozenset[str]
+```
+
+### ensures
+
+```python
+ensures: frozenset[str]
+```
+
+### under
+
+```python
+under: tuple[PathExpr, ...]
+```
+
+### verbs
+
+```python
+verbs: frozenset[str]
+```
+
+The effects declared (what `Step.effects` reports): each permission in either phase, `create` for `exists` ensured but not required, and `delete` for `absent` ensured but not required.
+
+### \_\_and\_\_
+
+```python
+__and__(other: object) -> Declarations
+```
+
+What both declare: the atoms of each phase in both, and the bases both are declared under.
+
 ## Dir
 
 ```python

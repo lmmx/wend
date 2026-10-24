@@ -47,18 +47,22 @@ The entries label each statement. The labels map onto four statuses:
 ## The entries, in conceptual order
 
 Each row lists the PR, the entry, the commits that carry its research and its audit
-addendum, and its tests. All branches are unmerged.
+addendum, and its tests. Every PR has landed on master as one squash commit, titled with
+its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #115,
+#111. The commits named here are on the PR branches, which are kept.
+
+> *Before:* "All branches are unmerged." Revised when the stack landed.
 
 | # | entry | PR | commits | tests and scripts |
 |---|---|---|---|---|
-| 0 | [Future Paths, taken stock](2026-10-21-future-paths-stock.md) (on #105's branch) | #105 | b7d2345 | `scripts/2026-10-21-capability-probe.py` |
+| 0 | [Future Paths, taken stock](2026-10-21-future-paths-stock.md) | #105 | b7d2345 | `scripts/2026-10-21-capability-probe.py` |
 | 0 | [Symbolic overlap](2026-10-20-overlap-research-89.md), [choices](2026-10-21-choices-semantics-89.md) | merged | | `tests/overlap_test.py`, `tests/choices_semantics_test.py` |
-| 1 | [Typed path families](2026-10-21-typed-path-families.md) (on #106's branch) | #106 | 2b3f392, addendum 520f21e | `experiments/typed/`, `tests/{typed,patterns,obligations}_test.py` |
+| 1 | [Typed path families](2026-10-21-typed-path-families.md) | #106 | 2b3f392, addendum 520f21e | `experiments/typed/`, `tests/{typed,patterns,obligations}_test.py` |
 | 2 | [Declarations are obligations](2026-10-22-declarations.md), and SEMANTICS.md §10.1 | #107 | 04fa23f, 1643cd1 | `tests/contract_test.py`, `conditions_test.py` |
 | 3 | [What a program knows](2026-10-22-knowledge-states.md) | #108 | 70db979, addendum 8c6de83 | `tests/knowledge_test.py` |
 | 4 | [Families before binding](2026-10-22-symbolic-families.md) | #109 | 6ac4d38, tests and addendum ea44af0 | `tests/families_test.py`, `scripts/2026-10-22-families-demo.py` |
 | 5 | [When two strings name one file](2026-10-22-aliasing.md) | #110 | f55be8e, addendum 4dfa278 | `tests/aliasing_test.py` |
-| 5′ | `Creatable` through a dangling link (no entry; aliasing addendum A.2) | #111 | 355ea00 | `tests/conditions_test.py` on its branch |
+| 5′ | `Creatable` through a dangling link (no entry; aliasing addendum A.2) | #111 | 355ea00 | `tests/conditions_test.py`, and the last row of `confined_test`'s moves |
 | 6 | [Running the plan confined](2026-10-22-confined-runs.md) | #112 | 5619102, bc845dc, d73b5fb, addendum 4aa656a | `tests/confined_test.py`, `scripts/2026-10-22-confined-demo.py` |
 | 7 | [Confinement is not consistency](2026-10-22-confinement-is-not-consistency.md) | #112 | d73b5fb, addendum 4aa656a | `tests/held_test.py` |
 | 8 | [The typed core](2026-10-22-typed-core.md) | #113 | df1ca7c, 5672297, addendum 95ab9ee; §6 revised in place, 653f457 | `experiments/typed_core/`, `tests/events_test.py` |
@@ -405,6 +409,10 @@ own versions; the entries' scripts were not kept, so their mutants may have diff
 
 The final run, at 86e6141: all 65 mutants met their expectation, in 32 minutes. Two
 survive, as expected, and one ends the test run by `SIGIO`, as expected.
+
+Since #111 landed, a third survives, as expected: the aliasing creation key, which
+aliasing addendum A.2 argues is equivalent under #111's `Creatable`. On the landed tree
+all 65 mutants meet their expectation.
 
 ## Reproducing the evidence
 

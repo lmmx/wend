@@ -109,12 +109,18 @@ expectation, after every commit:
 
 ## 5. Risks
 
-- **The merge order of the PRs.** The plan assumes the stack is merged as one branch of
-  history, as synthesis §9 proposed. Done on unmerged branches, each commit would have
-  to be merged up the stack again.
-- **#111.** If #111 merges first, `identity._key`'s creation clause becomes removable
-  (aliasing addendum A.2). That is a separate, later commit, with the creation mutant
-  moved to "survives, equivalent".
+- **The merge order of the PRs.** The stack has landed, one squash commit per PR
+  (research index), not as one branch of history as synthesis §9 proposed. The plan's
+  commits would now go on master, and need no merging up a stack.
+- **#111.** #111 landed last, and `identity._key`'s creation clause is now removable
+  (aliasing addendum A.2). Removing it is a separate, later commit. The harness already
+  expects the creation mutant to survive, as equivalent.
+
+> *Before:* "The plan assumes the stack is merged as one branch of history, as synthesis
+> §9 proposed. Done on unmerged branches, each commit would have to be merged up the
+> stack again." And: "If #111 merges first, `identity._key`'s creation clause becomes
+> removable (aliasing addendum A.2). That is a separate, later commit, with the creation
+> mutant moved to "survives, equivalent"." Revised when the stack landed.
 - **#113's core typing.** It is in `src/wend`, not `_experimental`. Consolidating the
   experimental half does not touch it, and it should be reviewed alone first.
 - **The harness's passages.** Moving code breaks them by design. Step 1 must update them

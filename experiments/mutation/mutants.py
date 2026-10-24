@@ -559,8 +559,12 @@ MUTANTS = [
         '    if atom in ("create", "write") and t.obj is None:\n',
         "    if False:\n",
         (ALIASING,),
-        # equivalent once #111 is merged: then expected to survive
-        killed_by=("test_a_missing_paths_creation_is_judged_where_the_check_looks",),
+        # equivalent since #111: Creatable refuses a broken symlink on the
+        # way, so creation needs no key of its own (aliasing addendum A.2)
+        survives=(
+            "equivalent since #111: Creatable refuses a broken symlink on the "
+            "way, so creation needs no key of its own (aliasing addendum A.2)"
+        ),
     ),
     Mutant(
         "aliasing: absent follows a final symlink",

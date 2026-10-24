@@ -58,7 +58,7 @@ Creatable: Final[Condition[Literal["create"], Literal["post_create"]]] = Conditi
 )
 ```
 
-The path exists, or could be created now: its nearest existing ancestor is a directory the process may write to and search.
+The path exists, or could be created now: no broken symlink occupies its name or a name above it, and its nearest existing ancestor is a directory the process may write to and search.
 
 ## Declarations
 

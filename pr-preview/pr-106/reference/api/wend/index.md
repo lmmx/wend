@@ -396,6 +396,14 @@ ensures(*conds: Condition[Any, Any]) -> PathExpr[C, K]
 
 This path, declaring conditions that must hold after it has been produced (checked by `confirm`): `e.ensures(File, Exists)`.
 
+#### declares
+
+```python
+declares: Declarations
+```
+
+What this expression declares, as atoms per phase and the bases it is declared `Under` (docs/SEMANTICS.md §10.1): an obligation the runtime checks, not a fact about the filesystem.
+
 #### tag
 
 ```python
@@ -984,6 +992,14 @@ requires(*conditions: Any) -> PathUnion
 ```python
 ensures(*conditions: Any) -> PathUnion
 ```
+
+#### declares
+
+```python
+declares: Declarations
+```
+
+What every alternative declares: a path the union describes comes from one of them, so only their common declarations hold of it.
 
 #### param\_names
 

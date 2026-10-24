@@ -1467,6 +1467,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#wend.PathExpr.declares" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;declares
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#wend.PathExpr.tag" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2393,6 +2404,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;ensures
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wend.PathUnion.declares" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;declares
       </span>
     </span>
   </a>
@@ -3799,6 +3821,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#wend.PathExpr.declares" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;declares
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#wend.PathExpr.tag" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -4725,6 +4758,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;ensures
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wend.PathUnion.declares" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;declares
       </span>
     </span>
   </a>
@@ -6294,6 +6338,37 @@ unchanged.</p>
         <p>This path, declaring conditions that must hold after it has been
 produced (checked by <code>confirm</code>): <code>e.ensures(File, Exists)</code>.</p>
 
+
+    </div>
+
+</div>
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="wend.PathExpr.declares" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">declares</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#wend.PathExpr.declares" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">declares</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Declarations (wend.conditions.Declarations)" href="../conditions/#wend.conditions.Declarations">Declarations</a></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>What this expression declares, as atoms per phase and the bases it
+is declared <code>Under</code> (docs/SEMANTICS.md §10.1): an obligation the
+runtime checks, not a fact about the filesystem.</p>
 
     </div>
 
@@ -8672,6 +8747,36 @@ written there, so an option may hold separators. <code>Alt("", x)</code> makes
 
     <div class="doc doc-contents ">
 
+
+    </div>
+
+</div>
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h4 id="wend.PathUnion.declares" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">declares</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#wend.PathUnion.declares" class="headerlink" title="Permanent link">&para;</a></h4>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">declares</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Declarations (wend.conditions.Declarations)" href="../conditions/#wend.conditions.Declarations">Declarations</a></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>What every alternative declares: a path the union describes comes
+from one of them, so only their common declarations hold of it.</p>
 
     </div>
 

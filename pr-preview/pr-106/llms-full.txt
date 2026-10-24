@@ -3152,6 +3152,14 @@ ensures(*conds: Condition[Any, Any]) -> PathExpr[C, K]
 
 This path, declaring conditions that must hold after it has been produced (checked by `confirm`): `e.ensures(File, Exists)`.
 
+#### declares
+
+```python
+declares: Declarations
+```
+
+What this expression declares, as atoms per phase and the bases it is declared `Under` (docs/SEMANTICS.md §10.1): an obligation the runtime checks, not a fact about the filesystem.
+
 #### tag
 
 ```python
@@ -3741,6 +3749,14 @@ requires(*conditions: Any) -> PathUnion
 ensures(*conditions: Any) -> PathUnion
 ```
 
+#### declares
+
+```python
+declares: Declarations
+```
+
+What every alternative declares: a path the union describes comes from one of them, so only their common declarations hold of it.
+
 #### param\_names
 
 ```python
@@ -4218,6 +4234,48 @@ Creatable: Final[Condition[Literal["create"], Literal["post_create"]]] = Conditi
 ```
 
 The path exists, or could be created now: its nearest existing ancestor is a directory the process may write to and search.
+
+## Declarations
+
+Bases: `NamedTuple`
+
+What an expression declares (docs/SEMANTICS.md §10.1): the atoms it requires before it is used, the atoms it ensures after it is produced, and the bases it is declared `Under`.
+
+A declaration is an obligation, not a fact about the filesystem. Only containment holds of every path the expression renders (`render` checks it); every other atom holds when a check finds it, at that moment.
+
+### requires
+
+```python
+requires: frozenset[str]
+```
+
+### ensures
+
+```python
+ensures: frozenset[str]
+```
+
+### under
+
+```python
+under: tuple[PathExpr, ...]
+```
+
+### verbs
+
+```python
+verbs: frozenset[str]
+```
+
+The effects declared (what `Step.effects` reports): each permission in either phase, `create` for `exists` ensured but not required, and `delete` for `absent` ensured but not required.
+
+### \_\_and\_\_
+
+```python
+__and__(other: object) -> Declarations
+```
+
+What both declare: the atoms of each phase in both, and the bases both are declared under.
 
 ## Dir
 

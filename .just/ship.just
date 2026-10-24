@@ -34,6 +34,9 @@ release bump_level="patch":
         new_version=$(uv version --short)
         git reset --soft HEAD~1
 
+        # 📝 Title the changelog's Unreleased notes $new_version (its GitHub Release takes them)
+        python3 docs/scripts/changelog.py release "$new_version"
+
         # ✅ Stage everything again and create the real release commit
         git add --all
         git commit -m  "chore(release): bump 🐍 -> v$new_version"

@@ -34,7 +34,8 @@ contract. This version adds parameter defaults (§3.1), connectivity (§9),
 conditions (§10), unions and queries (§11), schemas (§12) and lineage (§13).
 A later version is expected to extend the contract for Windows path flavours.
 §14 describes the experimental run model of `wend._experimental` on the research
-branches. It is not part of the contract.
+branches. It is not part of the contract. §15 adds relations between families
+(`wend.relate`) and effects across a pipeline (`wend.effects`).
 
 ## 1. Terms
 
@@ -1047,3 +1048,112 @@ A `Store` holds versions `v000001`, `v000002`, … of a set of outputs.
 
 The tests that need privilege are marked `privileged`. CI runs them as root, in a job
 where one that skips fails (`tests/conftest.py`).
+
+## 15. Relations between families
+
+`relate(a, b)` says how the paths two expressions render relate, before any binding.
+Paths are compared as strings (lexical identity): rendered, then split into an anchor
+(`""`, `"/"` or `"//"`) and segments as `PurePosixPath` splits them. Two paths are:
+- **the same**, when anchor and segments are equal;
+- one **inside** the other, when they share the anchor and its segments are the
+  other's followed by one or more segments (a `..` segment is a segment like any
+  other);
+- one **containing** the other, the reverse;
+- otherwise neither.
+
+### 15.1 The bindings considered
+
+With `shared=True` (the default) a parameter name takes one value on both sides, as
+the paths of one run of a pipeline do. The bindings considered are those under which
+**both** expressions render (§3.1: an unbound parameter with a default renders its
+default). With `shared=False`, every binding of `a` is paired with every binding of
+`b`.
+
+### 15.2 The answers
+
+Each of `same`, `inside` (`a` inside `b`) and `contains` (`a` containing `b`) is one
+of:
+
+| answer | meaning |
+|---|---|
+| `"always"` | it holds for every binding considered |
+| `"sometimes"` | it holds for at least one, shown by an `Example` whose bindings render both paths |
+| `"never"` | it holds for none |
+| `"unknown"` | neither was established |
+
+`"always"` is vacuous if no binding renders both; the `Example`, when one is found,
+shows that one does. `Relation.kind` summarises: `"same"`, `"inside"` or `"contains"`
+when that is always; `"disjoint"` when all three are never; `"overlapping"` when one is
+sometimes; `"unknown"` otherwise. A union relates as its alternatives do: never when
+every pair is never, sometimes when one pair shows it, and never always.
+
+### 15.3 How each answer is proved
+
+1. **Rendering is a function of structure.** Two pieces of normal form with equal
+   structure, comparing parameters by name, render equal text for one binding. A
+   parameter's declaration (type, choices, kind) decides which bindings are accepted,
+   never what an accepted one renders. Defaults are the exception: a name both sides
+   give different defaults renders differently when unbound, and is not compared
+   equal.
+2. **Prefix cancellation.** Under shared bindings, a head and leading parts that are
+   equal by (1) render one string `s` wherever both expressions render. Joining `s`
+   onto a relative remainder is injective and keeps "inside", so `a` and `b` relate
+   exactly as their remainders do. Under independent bindings only literal heads and
+   literal segments cancel. Deferred heads never do.
+3. **Structure decides** when the remainders are both empty (the same, always), or
+   one is empty and the other holds a segment (inside or containing, always; a
+   `SubPath` may be empty, so alone it decides nothing), or their first parts are
+   different literal segments (never, all three).
+4. **Otherwise the overlap analysis decides** (`wend._overlap`, §15.5): `same` asks
+   whether the remainders can render one path; `inside` whether `a`'s can render one
+   strictly below `b`'s, built as `b`'s remainder, a segment parameter and a `SubPath`;
+   `contains` the reverse. Its NO is `"never"`, except for `inside` and `contains` when
+   the inner side may render a `..` segment (a literal one, a head parameter or a
+   deferred head), which a segment parameter and a `SubPath` cannot spell: that is
+   `"unknown"`. Its YES is `"sometimes"` only once a binding of the whole expressions
+   confirms it; its MAYBE is `"unknown"`.
+
+`builtin_values=True` assumes bound values are of builtin types, as the overlap
+analysis does, which proves more answers `"never"`; `Relation.assumptions` names it
+when an answer relied on it.
+
+### 15.4 Effects across steps
+
+`wend.effects.EffectGraph(steps)` relates the paths named steps declare (`Step.effects`,
+§10.1), shared bindings by default. A port supplies its path if it declares `create`
+or `write`, deletes it if it declares `delete`, and is an input if it declares `read`
+or `list`. Its links, each with the certainty of the relation behind it:
+
+| link | between | when |
+|---|---|---|
+| dependency, `via="read"` | a supplier and a reader | the reader's path is the supplier's |
+| dependency, `via="list"` | a supplier and a lister | the supplier's path is the listed directory, or inside it |
+| hazard | a reader and a deleter in another step | the read path is the deleted one, or inside it; for a listing, also a deleted path inside the listed directory |
+| conflict | two suppliers | their paths are the same |
+| conflict | a supplier and a deleter | the supplied path is the deleted one, or inside it |
+
+A pair whose relation is `"never"` has no link. `"always"`, `"sometimes"` and
+`"unknown"` links are all kept, and every query but `dependencies(certain=True)` counts
+them all, which is the only safe reading for deciding what may run independently.
+`dependencies(certain=True)` keeps the `"always"` links, those that hold on every run:
+a lower bound, for reports, never for scheduling. `order()`
+puts each step after every step it may depend on, and each deleter after the readers
+of what it deletes; `stages()` groups steps that may run at once, never two that
+conflict.
+
+The graph describes declarations, not behaviour: a step's code may touch paths it
+does not declare. Identity is lexical: two spellings of one file (a symlink, a
+relative and an absolute path, `..`, case on a case-insensitive filesystem) are two
+paths here, so a missing link is only as good as the convention that every step spells
+a file one way.
+
+### 15.5 The overlap analysis
+
+The engine behind §15.3 (4), private as `wend._overlap`: it asks whether two
+expressions can render one path, answering YES with a witness both render, NO when no
+*shape* of one meets a shape of the other, or MAYBE. A shape over-approximates the
+paths an expression renders: an anchor and a sequence of segments drawn from regular
+languages, or runs of them, built from the expression's literals, fields, finite
+domains, `SubPath`s and heads. Every rule keeps every path the contract lets the
+expression render, so disjoint shapes are disjoint paths. Its derivation, measurements
+and limits are in `docs/journal/2026-10-20-overlap-research-89.md`.

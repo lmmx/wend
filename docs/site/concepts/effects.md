@@ -172,6 +172,57 @@ wend.errors.PathExistsError: 'data/clean/mon.csv' already exists (required: Abse
 `write`, `create`, `list` or `delete`. It reports the declarations, and does not observe
 what the step does.
 
+## Across a pipeline
+
+Because a step declares its paths as expressions, what several steps do to each other can
+be worked out before any of them runs, and before any value is bound.
+[`relate`][wend.relate] says how two families of paths relate: whether they name the same
+path, one inside the other, or neither, for every binding (`"always"`), for some
+(`"sometimes"`, with an example), for none (`"never"`), or `"unknown"`:
+
+```pycon
+>>> from wend import relate
+>>> relate(src, dst).kind
+'disjoint'
+>>> relate(src, P(root) / "raw").inside
+'always'
+>>> relate(src, P(root) / "raw" / T(t"{Param('other')}.csv")).same
+'sometimes'
+```
+
+By default a parameter name means one value on both sides, as in one run of a pipeline:
+`{root}/raw/{day}.csv` and `{root}/clean/{day}.csv` never meet, whatever `root` and `day`
+are. An [`EffectGraph`][wend.effects.EffectGraph] relates every path of a set of steps:
+which step reads what another writes, which deletes what another reads, and which two
+write one path. From that it gives an order, the steps that may run at once, and why:
+
+```pycon
+>>> from wend.effects import EffectGraph
+>>> clean = P(root) / "clean" / T(t"{day}.csv")
+>>> report = Step(
+...     src=clean.requires(Readable),
+...     out=(P(root) / "reports" / T(t"{day}.html")).ensures(Exists),
+... )
+>>> purge = Step(old=(P(root) / "raw" / T(t"{day}.csv")).ensures(Absent))
+>>> graph = EffectGraph({"convert": convert, "report": report, "purge": purge})
+>>> graph.order()
+['convert', 'report', 'purge']
+>>> graph.stages()
+[['convert'], ['report', 'purge']]
+>>> graph.independent("report", "purge")
+True
+>>> for line in graph.explain("purge"):
+...     print(line)
+purge.old deletes what convert.src reads, on every run, so convert runs first: {root}/raw/{day}.csv (e.g. day='data', root='out': out/raw/data.csv)
+```
+
+Every link carries how sure it is. A dependency that is only `"sometimes"` or `"unknown"`
+still orders the steps, because only that reading is safe;
+[`dependencies(certain=True)`][wend.effects.EffectGraph.dependencies] keeps those that hold
+on every run. Paths are compared as strings: a symlink, or a relative and an absolute
+spelling of one file, are two paths to the graph
+([SEMANTICS.md §15](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#15-relations-between-families)).
+
 ## Errors
 
 Each failed condition raises a [`ConditionError`][wend.ConditionError]. Its `path` is the
@@ -221,7 +272,7 @@ filesystem.
 
 - [`wend.conditions`][wend.conditions], [`Step`][wend.Step],
   [`PathExpr.check`][wend.PathExpr.check], [`PathExpr.confirm`][wend.PathExpr.confirm],
-  [`wend.errors`][wend.errors]
+  [`wend.errors`][wend.errors], [`relate`][wend.relate], [`wend.effects`][wend.effects]
 - [SEMANTICS.md §10](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#10-conditions)
   (conditions), [§11](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#11-unions-and-queries)
   (unions and `first`) and [§12](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#12-schemas)

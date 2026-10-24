@@ -36,6 +36,19 @@ description: "The wend package: building, resolving, matching and discovering pa
       heading_level: 3
 
 
+## Relations between families
+
+::: wend.relate
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+::: wend.Relation
+    options:
+      show_root_heading: true
+      heading_level: 3
+
+
 ## Parameters
 
 ::: wend.Param

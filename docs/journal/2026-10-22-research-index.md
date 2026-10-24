@@ -72,6 +72,7 @@ its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #
 | 11 | [Leases](2026-10-22-leases.md) | #115 | 8b2caa0; §3.4 revised for Linux 7.0, 43c675d | `tests/leases_test.py`, `experiments/mutation/mutants.py` |
 | 12 | [Drafts](2026-10-22-drafts.md) | #115 | aa38be1; Yama answered, a60bb7e | `tests/drafts_test.py`, `experiments/mutation/mutants.py` |
 | 13 | [Consolidation: a plan](2026-10-22-consolidation.md) (a proposal) | #115 | a60bb7e | none: nothing in it is done |
+| 14 | [Relations between families, and effects across a pipeline](2026-10-24-relations-and-effects-118.md), and SEMANTICS.md §15 (after 0.3.0) | #118 | on the PR's branch | `tests/{relate,effects}_test.py`, `bench/effects.py`, `examples/pipeline_effects.py` |
 
 ## How the discoveries build on one another
 
@@ -153,6 +154,15 @@ its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #
       makes each version name hold one directory; that it is the writer's is detected
       at the claim, never prevented.
     - What ordinary users have, and what needs privilege, in one table (drafts §4).
+12. **From one answer to three (#118).**
+    - Overlap answered one question: can two families meet? `relate` answers three,
+      same, inside and contains, and each always, sometimes, never or unknown, so a
+      dependency can be certain and not only possible.
+    - Prefix cancellation (#109) is what makes "always" provable under one root, and the
+      public `wend.effects` graph is built on it.
+    - Two answers the engine gives are not yet proofs: a NO for "strictly below" when the
+      inner side may render `..`, and a witness of two remainders that binds no prefix
+      parameter.
 
 ## Discoveries not to lose
 
@@ -180,6 +190,7 @@ its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #
 | A held object's kind must be judged on its descriptor: a directory is confined, so judging confinement there does not judge the kind | observed; closed | typed-core §6 (revised) |
 | A union's verbs are not those of its alternatives | observed | SEMANTICS.md §10.1; declarations §3 |
 | Containment holds for every rendered path only lexically | refutes the earlier statement | declarations §3; SEMANTICS.md §10.1 |
+| A NO for "strictly below" does not rule out lexical nesting: `/x/..` is inside `/x`, and no segment parameter renders `..` | found by reading the construction; pinned | relations §5; `test_dotdot_makes_a_path_lexically_inside_and_is_never_ruled_out_by_shape` |
 | Durability needs the file's sync *and* the directory's | observed, in one crash model (ext4, loop device) | #114 §2 and addendum A.3 |
 
 | An absent sync permits loss and does not promise it: a crash test may require only the guaranteed outcome, the permitted set, or that a loss is possible | argued; measured stable under writeback load on this machine, which is no guarantee | publication §2 (revised); `durability_test` |
@@ -216,6 +227,7 @@ its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #
 | a derivation records what the step used | a read after the entry observation | reads recorded and checked at exit | synthesis §5 |
 | the families tests show the analysis knows what it should | a "learn nothing" mutant passed | an oracle of the worked pipeline | families addendum A.1 |
 
+| an overlap witness of two remainders is a witness of the two paths | a value for a parameter shared with the prefix that does not render there | a full binding that renders both and shows the relation | relations §5 |
 | each crash row's observed outcome can be asserted | an absent sync permits loss, never promises it | guaranteed, permitted and demonstrated outcomes | publication §2 |
 | a failure that passes on rerun is no defect | a rare generated case, found again in a third full run | the harness fixed and the case pinned | families A.1′ |
 

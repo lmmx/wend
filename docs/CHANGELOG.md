@@ -7,6 +7,38 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
 
 ## Unreleased
 
+### New
+
+- **Relations between families** (#118). `wend.relate(a, b)` says, before any binding,
+  whether two expressions, unions or strings name the same path, one inside the other, or
+  neither. Each of its three answers, `same`, `inside` and `contains`, is `"always"`,
+  `"sometimes"` (with an example of the bindings and the paths), `"never"` or
+  `"unknown"`. A parameter name means one value on both sides unless `shared=False`.
+  `Relation.kind` sums it up in one word: `"same"`, `"inside"`, `"contains"`,
+  `"disjoint"`, `"overlapping"` or `"unknown"`.
+  [SEMANTICS.md §15](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md) says how
+  each answer is proved, and that identity is lexical: a symlink, `..` resolved on disk
+  or case folding are not seen.
+- **Effects across a pipeline** (#118). `wend.effects.EffectGraph(steps)` relates what a
+  set of `Step`s declare they read, list, write and delete, with every link as sure as its
+  relation:
+  - dependencies, hazards (a step that reads a path another deletes, or lists a directory
+    another deletes inside) and conflicts (two steps that write, or write and delete, one
+    path);
+  - `order()`, `stages()` (the groups that may run at once), `independent(x, y)`,
+    `dependencies(certain=True)` (the links that hold on every run) and `explain()`, one
+    sentence per link with an example.
+
+  Under one shared `{root}`, a six-step pipeline that the experimental graph could not
+  order (four "maybe" edges and a false cycle) gets five certain dependencies, an order and
+  stages, in about 0.2 ms where the experimental graph took 27 to 40 ms.
+
+### Changed
+
+- The overlap analysis behind `relate` moved from `wend._experimental.overlap` into the
+  wheel as the private `wend._overlap`. The experimental name is an alias for it, and
+  `wend._experimental.effects` stays, superseded by `wend.effects`.
+
 ## 0.3.0
 
 wend 0.3.0 adds typed declarations and evidence to `PathExpr`, and makes `Creatable` refuse

@@ -30,7 +30,9 @@ Nothing occupies the path's name, not even a broken symlink.
 Condition(name: str)
 ```
 
-A property of a path, checked when the path is realised.
+Bases: `Generic[Pre, Post]`
+
+A property of a path, checked when the path is realised. For a type checker it adds its atom `Pre` to what an expression requires, and `Post` to what it ensures (the same atom, for every condition).
 
 ### name
 
@@ -145,7 +147,7 @@ Something exists at the path (symlinks are followed).
 ## File
 
 ```python
-File: Final[FileCondition] = Condition('File')
+File: Final[FileCondition] = FileCondition('File')
 ```
 
 The path names a regular file: if it exists it is one, and nothing can be joined below it. Add `Exists` to require that it exists.
@@ -241,14 +243,20 @@ The filesystem effects each path declares: `read`, `write`, `create`, `list` (ca
 ## Under
 
 ```python
-Under(base: Any)
+Under(base: L)
 ```
 
-Bases: `Condition`
+```python
+Under(base: str | PathLike[str] | Param | PathExpr[Any, Any, Any])
+```
+
+Bases: `Condition['Under[B] | Under[str]', 'Under[B] | Under[str]']`, `Generic[B]`
 
 The path stays under `base`: lexically when it is rendered, and after resolving symlinks when it is checked.
 
 `base` is rendered with the same bindings as the path, so its parameters must be among the path's. Lexically, the path must start with the base's components and have no `..` after them.
+
+For a type checker, a literal string base gives the atom its identity (`Under[Literal["/srv/static"]]`); every base, literal or not, also declares `Under[str]`, "under its own base".
 
 ### base
 

@@ -2692,10 +2692,14 @@ See docs/SEMANTICS.md §10.</p>
 </code></pre></div>
 
     <div class="doc doc-contents ">
+            <p class="doc doc-class-bases">
+              Bases: <code><a class="autorefs autorefs-external" title="typing.Generic" href="https://docs.python.org/3/library/typing.html#typing.Generic">Generic</a>[<span title="wend._kinds.Pre">Pre</span>, <span title="wend._kinds.Post">Post</span>]</code></p>
 
 
 
-        <p>A property of a path, checked when the path is realised.</p>
+        <p>A property of a path, checked when the path is realised. For a type
+checker it adds its atom <code>Pre</code> to what an expression requires, and
+<code>Post</code> to what it ensures (the same atom, for every condition).</p>
 
 
 
@@ -3213,7 +3217,7 @@ both are declared under.</p>
   </span>
 
 <a href="#wend.conditions.File" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">File</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Final" href="https://docs.python.org/3/library/typing.html#typing.Final">Final</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.FileCondition">FileCondition</span></span><span class="p">]</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></span><span class="p">(</span><span class="s1">'File'</span><span class="p">)</span>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">File</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Final" href="https://docs.python.org/3/library/typing.html#typing.Final">Final</a></span><span class="p">[</span><span class="n"><span title="wend._experimental.typed.FileCondition">FileCondition</span></span><span class="p">]</span> <span class="o">=</span> <span class="n"><span title="wend.conditions.FileCondition">FileCondition</span></span><span class="p">(</span><span class="s1">'File'</span><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3553,12 +3557,25 @@ are listed with no verbs. This reports declarations, not behaviour.</p>
   </span>
 
 <a href="#wend.conditions.Under" class="headerlink" title="Permanent link">&para;</a></h2>
-<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">Under</span><span class="p">(</span><span class="n">base</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">)</span>
-</code></pre></div>
+              <div class="doc-overloads">
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">Under</span><span class="p">(</span><span class="n">base</span><span class="p">:</span> <span class="n"><span title="wend._kinds.L">L</span></span><span class="p">)</span>
+</code></pre></div><div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">Under</span><span class="p">(</span><span class="n">base</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" title="os.PathLike" href="https://docs.python.org/3/library/os.html#os.PathLike">PathLike</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">]</span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.Param
+
+
+  
+      dataclass
+   (wend._params.Param)" href="../wend/#wend.Param">Param</a></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._expr.PathExpr)" href="../wend/#wend.PathExpr">PathExpr</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">])</span>
+</code></pre></div>              </div>
+
 
     <div class="doc doc-contents ">
             <p class="doc doc-class-bases">
-              Bases: <code><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a></code></p>
+              Bases: <code><a class="autorefs autorefs-internal" title="            Condition (wend.conditions.Condition)" href="./#wend.conditions.Condition">Condition</a>[&#39;Under[B] | Under[str]&#39;, &#39;Under[B] | Under[str]&#39;]</code>, <code><a class="autorefs autorefs-external" title="typing.Generic" href="https://docs.python.org/3/library/typing.html#typing.Generic">Generic</a>[<span title="wend._kinds.B">B</span>]</code></p>
 
 
 
@@ -3567,6 +3584,9 @@ resolving symlinks when it is checked.</p>
 <p><code>base</code> is rendered with the same bindings as the path, so its parameters
 must be among the path's. Lexically, the path must start with the base's
 components and have no <code>..</code> after them.</p>
+<p>For a type checker, a literal string base gives the atom its identity
+(<code>Under[Literal["/srv/static"]]</code>); every base, literal or not, also
+declares <code>Under[str]</code>, "under its own base".</p>
 
 
 

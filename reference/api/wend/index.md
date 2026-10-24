@@ -32,9 +32,11 @@ Make a path expression from a t-string.
 PathExpr(head: Head, parts: tuple[Part, ...] = ())
 ```
 
-Bases: `_Cached`
+Bases: `_Cached`, `Generic[C, K, Q]`
 
 A symbolic path. Build with `P`, `T`, or `Param / ...`.
+
+For a type checker, `C` is what it requires, `K` whether it is declared a File, and `Q` what it ensures (`wend._kinds`).
 
 #### head
 
@@ -418,7 +420,7 @@ This path, tagged with metadata (`source="upload"`): what it is for or where it 
 check(mapping: Any = None, /, *, fs: Any = None, **kw: Any) -> Checked[C, K]
 ```
 
-Render, check every precondition against the filesystem now, and return the path. Raises a `ConditionError` for the first that fails: `IndeterminateError` when the filesystem cannot say. `fs` is a `wend.fs` filesystem (the local disk by default).
+Render, check every precondition against the filesystem now, and return the path. Raises a `ConditionError` for the first that fails: `IndeterminateError` when the filesystem cannot say. `fs` is a `wend.fs` filesystem (the local disk by default). The path carries no evidence of the check; `checked` returns the evidence.
 
 #### confirm
 
@@ -426,7 +428,23 @@ Render, check every precondition against the filesystem now, and return the path
 confirm(mapping: Any = None, /, *, fs: Any = None, **kw: Any) -> Path
 ```
 
-Render, check every postcondition against the filesystem now, and return the path. Raises a `ConditionError` for the first that fails, as `check` does.
+Render, check every postcondition against the filesystem now, and return the path. Raises a `ConditionError` for the first that fails, as `check` does; `confirmed` returns the evidence.
+
+#### checked
+
+```python
+checked(mapping: Any = None, /, *, fs: Any = None, **kw: Any) -> Checked[C, K]
+```
+
+`check`, returning the evidence instead of the path (SEMANTICS.md §10.2): a `Checked` recording the path, the atoms this expression requires and the bases it was found under, each found true by a lookup of the path during this call. Raises as `check` does, so there is no evidence of a check that failed. Its type carries what this expression requires and nothing it ensures. It records the past: a later change does not update it.
+
+#### confirmed
+
+```python
+confirmed(mapping: Any = None, /, *, fs: Any = None, **kw: Any) -> Confirmed[Q, K]
+```
+
+`confirm`, returning the evidence (SEMANTICS.md §10.2): a `Confirmed` recording the path and the atoms this expression ensures, found true during this call. Its type carries what it ensures and nothing it requires.
 
 #### param\_names
 
@@ -1329,6 +1347,60 @@ many(rows: Iterable[Any]) -> list[tuple[str, ...]]
 ```
 
 Render every expression for each mapping (or object) in `rows`, as tuples.
+
+## Kinds and evidence
+
+The type parameters that track what an expression declares (see `PathExpr`), and the evidence that `checked` and `confirmed` return: a record of what one check found of one rendered path, at the moment it ran, which is not a path and carries nothing to paths derived from it.
+
+### wend.IsFile
+
+Bases: `Unspecified`
+
+`File` declared, in `requires` or `ensures`: nothing can be joined below the path (the runtime raises).
+
+### wend.NotFile
+
+Bases: `Unspecified`
+
+`File` known not to be declared: disjoint from `IsFile`.
+
+### wend.Unspecified
+
+`File` not declared, or not known to be.
+
+### wend.JoinBelowFile
+
+What joining below a declared File gives, for a type checker: not a path (the runtime raises `PathOperationError`).
+
+### wend.Checked
+
+```python
+Checked(
+    path: Path,
+    atoms: frozenset[str] = frozenset(),
+    epoch: int | None = None,
+    bases: tuple[Path, ...] = (),
+)
+```
+
+Bases: `_Evidence`, `Generic[C, K]`
+
+Evidence that a path's preconditions held when it was checked (a step's entry): `C` is what was required, and so what was checked.
+
+### wend.Confirmed
+
+```python
+Confirmed(
+    path: Path,
+    atoms: frozenset[str] = frozenset(),
+    epoch: int | None = None,
+    bases: tuple[Path, ...] = (),
+)
+```
+
+Bases: `_Evidence`, `Generic[Q, K]`
+
+Evidence that a path's postconditions held when it was confirmed (a step's exit): `Q` is what was ensured. Not a `Checked`.
 
 ## Also exported from `wend`
 

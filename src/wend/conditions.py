@@ -28,8 +28,9 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any, Final, Generic, Literal, NamedTuple, overload
 
+from ._kinds import B, L, Post, Pre
 from .errors import (
     CapabilityError,
     ContainmentError,
@@ -43,6 +44,7 @@ from .errors import (
 
 if TYPE_CHECKING:
     from ._expr import PathExpr
+    from ._params import Param
     from .schema import Entry
 
 
@@ -63,8 +65,10 @@ __all__ = [
 ]
 
 
-class Condition:
-    """A property of a path, checked when the path is realised."""
+class Condition(Generic[Pre, Post]):  # noqa: UP046 (variance is declared, not inferred)
+    """A property of a path, checked when the path is realised. For a type
+    checker it adds its atom ``Pre`` to what an expression requires, and
+    ``Post`` to what it ensures (the same atom, for every condition)."""
 
     __slots__ = ("name",)
 
@@ -105,31 +109,40 @@ class Condition:
         return condition_schema(self, source, handler)
 
 
-Exists = Condition("Exists")
+class FileCondition(Condition[Literal["file"], Literal["file"]]):
+    """``File``: adds its atom and, for a type checker, the kind `IsFile`, below
+    which nothing can be joined."""
+
+    __slots__ = ()
+
+
+Exists: Final[Condition[Literal["exists"], Literal["exists"]]] = Condition("Exists")
 """Something exists at the path (symlinks are followed)."""
 
-Absent = Condition("Absent")
+Absent: Final[Condition[Literal["absent"], Literal["absent"]]] = Condition("Absent")
 """Nothing occupies the path's name, not even a broken symlink."""
 
-File = Condition("File")
+File: Final[FileCondition] = FileCondition("File")
 """The path names a regular file: if it exists it is one, and nothing can be
 joined below it. Add ``Exists`` to require that it exists."""
 
-Dir = Condition("Dir")
+Dir: Final[Condition[Literal["dir"], Literal["dir"]]] = Condition("Dir")
 """The path names a directory: if it exists it is one."""
 
-Readable = Condition("Readable")
+Readable: Final[Condition[Literal["read"], Literal["read"]]] = Condition("Readable")
 """The path exists and the process may read it."""
 
-Writable = Condition("Writable")
+Writable: Final[Condition[Literal["write"], Literal["write"]]] = Condition("Writable")
 """The process may write the path: it exists and is writable, or it is
 `Creatable`."""
 
-Creatable = Condition("Creatable")
+Creatable: Final[Condition[Literal["create"], Literal["create"]]] = Condition(
+    "Creatable"
+)
 """The path exists, or could be created now: its nearest existing ancestor is
 a directory the process may write to and search."""
 
-Listable = Condition("Listable")
+Listable: Final[Condition[Literal["list"], Literal["list"]]] = Condition("Listable")
 """The path is an existing directory the process may list."""
 
 _SIMPLE = (Exists, Absent, File, Dir, Readable, Writable, Creatable, Listable)
@@ -146,17 +159,27 @@ _CONTRADICTIONS = (
 
 
 @dataclass(frozen=True)
-class Under(Condition):
+class Under(Condition["Under[B] | Under[str]", "Under[B] | Under[str]"], Generic[B]):  # noqa: UP046
     """The path stays under ``base``: lexically when it is rendered, and after
     resolving symlinks when it is checked.
 
     ``base`` is rendered with the same bindings as the path, so its parameters
     must be among the path's. Lexically, the path must start with the base's
     components and have no ``..`` after them.
+
+    For a type checker, a literal string base gives the atom its identity
+    (``Under[Literal["/srv/static"]]``); every base, literal or not, also
+    declares ``Under[str]``, "under its own base".
     """
 
     base: PathExpr
 
+    @overload
+    def __init__(self: Under[L], base: L) -> None: ...
+    @overload
+    def __init__(
+        self: Under[str], base: str | os.PathLike[str] | Param | PathExpr[Any, Any, Any]
+    ) -> None: ...
     def __init__(self, base: Any) -> None:
         from ._expr import _coerce
 

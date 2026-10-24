@@ -17,7 +17,9 @@ Checks are point in time. A path that exists when it is checked may be gone when
 ## Absent
 
 ```python
-Absent = Condition('Absent')
+Absent: Final[Condition[Literal["absent"], Literal["post_absent"]]] = Condition(
+    "Absent"
+)
 ```
 
 Nothing occupies the path's name, not even a broken symlink.
@@ -49,7 +51,9 @@ __call__(
 ## Creatable
 
 ```python
-Creatable = Condition('Creatable')
+Creatable: Final[Condition[Literal["create"], Literal["post_create"]]] = Condition(
+    "Creatable"
+)
 ```
 
 The path exists, or could be created now: its nearest existing ancestor is a directory the process may write to and search.
@@ -99,7 +103,7 @@ What both declare: the atoms of each phase in both, and the bases both are decla
 ## Dir
 
 ```python
-Dir = Condition('Dir')
+Dir: Final[Condition[Literal['dir'], Literal['post_dir']]] = Condition('Dir')
 ```
 
 The path names a directory: if it exists it is one.
@@ -131,7 +135,9 @@ verbs: frozenset[str]
 ## Exists
 
 ```python
-Exists = Condition('Exists')
+Exists: Final[Condition[Literal["exists"], Literal["post_exists"]]] = Condition(
+    "Exists"
+)
 ```
 
 Something exists at the path (symlinks are followed).
@@ -139,7 +145,7 @@ Something exists at the path (symlinks are followed).
 ## File
 
 ```python
-File = Condition('File')
+File: Final[FileCondition] = Condition('File')
 ```
 
 The path names a regular file: if it exists it is one, and nothing can be joined below it. Add `Exists` to require that it exists.
@@ -147,7 +153,9 @@ The path names a regular file: if it exists it is one, and nothing can be joined
 ## Listable
 
 ```python
-Listable = Condition('Listable')
+Listable: Final[Condition[Literal["list"], Literal["post_list"]]] = Condition(
+    "Listable"
+)
 ```
 
 The path is an existing directory the process may list.
@@ -155,7 +163,9 @@ The path is an existing directory the process may list.
 ## Readable
 
 ```python
-Readable = Condition('Readable')
+Readable: Final[Condition[Literal["read"], Literal["post_read"]]] = Condition(
+    "Readable"
+)
 ```
 
 The path exists and the process may read it.
@@ -255,7 +265,9 @@ name: str
 ## Writable
 
 ```python
-Writable = Condition('Writable')
+Writable: Final[Condition[Literal["write"], Literal["post_write"]]] = Condition(
+    "Writable"
+)
 ```
 
 The process may write the path: it exists and is writable, or it is `Creatable`.

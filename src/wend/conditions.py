@@ -50,6 +50,7 @@ __all__ = [
     "Absent",
     "Condition",
     "Creatable",
+    "Declarations",
     "Dir",
     "Effect",
     "Exists",
@@ -134,8 +135,6 @@ Listable = Condition("Listable")
 _SIMPLE = (Exists, Absent, File, Dir, Readable, Writable, Creatable, Listable)
 
 # The effect each capability declares, for `Step.effects`.
-_EFFECTS = {Readable: "read", Writable: "write", Creatable: "create", Listable: "list"}
-
 # Pairs that cannot hold together in one phase.
 _CONTRADICTIONS = (
     (Exists, Absent),
@@ -185,6 +184,77 @@ class Conditions(NamedTuple):
         return tuple(
             c.base for c in (*self.requires, *self.ensures) if isinstance(c, Under)
         )
+
+
+# The atom each condition other than ``Under`` declares (§10.1).
+ATOMS: dict[Condition, str] = {
+    Exists: "exists",
+    Absent: "absent",
+    File: "file",
+    Dir: "dir",
+    Readable: "read",
+    Writable: "write",
+    Creatable: "create",
+    Listable: "list",
+}
+_PERMISSIONS = ("read", "write", "create", "list")
+
+
+class Declarations(NamedTuple):
+    """What an expression declares (docs/SEMANTICS.md §10.1): the atoms it
+    requires before it is used, the atoms it ensures after it is produced,
+    and the bases it is declared `Under`.
+
+    A declaration is an obligation, not a fact about the filesystem. Only
+    containment holds of every path the expression renders (`render` checks
+    it); every other atom holds when a check finds it, at that moment.
+    """
+
+    requires: frozenset[str]
+    ensures: frozenset[str]
+    under: tuple[PathExpr, ...]
+
+    @property
+    def verbs(self) -> frozenset[str]:
+        """The effects declared (what `Step.effects` reports): each permission
+        in either phase, ``create`` for ``exists`` ensured but not required,
+        and ``delete`` for ``absent`` ensured but not required."""
+        pre, post = self.requires, self.ensures
+        out = {v for v in _PERMISSIONS if v in pre or v in post}
+        if "exists" in post and "exists" not in pre:
+            out.add("create")
+        if "absent" in post and "absent" not in pre:
+            out.add("delete")
+        return frozenset(out)
+
+    def __and__(self, other: object) -> Declarations:
+        """What both declare: the atoms of each phase in both, and the bases
+        both are declared under."""
+        if not isinstance(other, Declarations):
+            return NotImplemented
+        return Declarations(
+            self.requires & other.requires,
+            self.ensures & other.ensures,
+            tuple(b for b in self.under if b in other.under),
+        )
+
+
+NONE = Declarations(frozenset(), frozenset(), ())
+
+
+def declarations(conds: Conditions | None) -> Declarations:
+    """The `Declarations` of an expression carrying ``conds``."""
+    if conds is None:
+        return NONE
+    under: list[PathExpr] = []
+    for c in (*conds.requires, *conds.ensures):
+        if isinstance(c, Under) and c.base not in under:
+            under.append(c.base)
+    return Declarations(
+        frozenset(ATOMS[c] for c in conds.requires if c in ATOMS),
+        frozenset(ATOMS[c] for c in conds.ensures if c in ATOMS),
+        tuple(under),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -611,18 +681,6 @@ class Effect(NamedTuple):
         return f"<{self.name}: {verbs} {self.expr.pattern}>"
 
 
-def _verbs(conds: Conditions | None) -> frozenset[str]:
-    if conds is None:
-        return frozenset()
-    pre, post = conds.requires, conds.ensures
-    verbs = {_EFFECTS[c] for c in (*pre, *post) if c in _EFFECTS}
-    if Exists in post and Exists not in pre:
-        verbs.add("create")
-    if Absent in post and Absent not in pre:
-        verbs.add("delete")
-    return frozenset(verbs)
-
-
 class Step:
     """The paths one step of a pipeline uses, with their conditions.
 
@@ -693,4 +751,4 @@ class Step:
         must exist afterwards but need not before, and ``delete`` for one that
         must be absent afterwards but need not be before. Paths declaring none
         are listed with no verbs. This reports declarations, not behaviour."""
-        return [Effect(k, e, _verbs(e.conditions)) for k, e in self.paths.items()]
+        return [Effect(k, e, e.declares.verbs) for k, e in self.paths.items()]

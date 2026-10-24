@@ -52,7 +52,7 @@ from .errors import (
 
 if TYPE_CHECKING:
     from ._union import PathUnion
-    from .conditions import Conditions
+    from .conditions import Conditions, Declarations
     from .query import Query
 
 
@@ -612,6 +612,15 @@ class PathExpr(_Cached):
         from .conditions import declare
 
         return declare(self, (), conditions)
+
+    @property
+    def declares(self) -> Declarations:
+        """What this expression declares, as atoms per phase and the bases it
+        is declared `Under` (docs/SEMANTICS.md §10.1): an obligation the
+        runtime checks, not a fact about the filesystem."""
+        from .conditions import declarations
+
+        return declarations(self.conditions)
 
     def tag(self, **tags: Any) -> PathExpr:
         """This path, tagged with metadata (``source="upload"``): what it is

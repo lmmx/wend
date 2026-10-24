@@ -16,7 +16,9 @@ explicit, effectful fallback: the first alternative that exists.
 
 from __future__ import annotations
 
+import functools
 import itertools
+import operator
 from collections import defaultdict
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
@@ -39,6 +41,7 @@ from .errors import (
 
 
 if TYPE_CHECKING:
+    from .conditions import Declarations
     from .fs import FileSystem
     from .query import Query
 
@@ -242,6 +245,12 @@ class PathUnion:
 
     def ensures(self, *conditions: Any) -> PathUnion:
         return self._map(lambda a: a.ensures(*conditions))
+
+    @property
+    def declares(self) -> Declarations:
+        """What every alternative declares: a path the union describes comes
+        from one of them, so only their common declarations hold of it."""
+        return functools.reduce(operator.and_, (a.declares for a in self.alternatives))
 
     # -- introspection --------------------------------------------------------
 

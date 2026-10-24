@@ -240,7 +240,7 @@ https://lmmx.github.io/wend/.
 ]
 "Optional" = [
   {"maintainers/development.md" = "The repository's layout, how to set up and test wend, the semantic contract and the tests that check it, and the conventions for commits and journal entries."},
-  {"maintainers/releasing.md" = "How a wend release is made: the Deploy Release workflow bumps the version and tags it, and CI publishes the package to PyPI with Trusted Publishing."},
+  {"maintainers/releasing.md" = "How a wend release is made: the Deploy Release workflow bumps the version, tags it and starts CI on the tag, and CI publishes the package to PyPI with Trusted Publishing."},
   {"background/history.md" = "wend's development journal: how the dated entries are written and labelled, what each one records, and where to start reading."},
   {"maintainers/documentation.md" = "How wend's documentation site is built, checked, tested and published to GitHub Pages."},
 ]

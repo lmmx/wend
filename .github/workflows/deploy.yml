@@ -2,12 +2,19 @@ name: Deploy Release
 
 on:
   workflow_dispatch:
+    inputs:
+      bump:
+        description: "The version bump, or none to release the version pyproject.toml has, untagged"
+        type: choice
+        options: [patch, minor, major, none]
+        default: patch
 
 jobs:
   deploy-release:
     name: Run just release
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: write
 
     steps:
@@ -30,7 +37,13 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      # Bump version, commit changes, tag as the version, and push both
-      # commit and tag (pushing the latter triggers package release)
+      # Bump the version, commit the change, tag the version, and push both
       - name: Run just release
-        run: just release
+        run: just release ${{ inputs.bump }}
+
+      # CI on the release's tag publishes the package to PyPI. A tag pushed with this
+      # workflow's token starts no workflow, so the run is started here (workflow_dispatch)
+      - name: Start CI on the release tag
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run CI.yml --ref "$(uv version --short)"

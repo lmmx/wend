@@ -9,7 +9,11 @@ A path expression records how a path is built (which parts are literal, which ar
 ### wend.P
 
 ```python
-P(x: Any = '.') -> PathExpr
+P(arg: PathExpr[CA, KA]) -> PathExpr[CA, KA]
+```
+
+```python
+P(arg: str | PathLike[str] | Param | Template) -> PathExpr
 ```
 
 Make a path expression from a str, PathLike, Param, t-string, Text or PathExpr.
@@ -28,9 +32,11 @@ Make a path expression from a t-string.
 PathExpr(head: Head, parts: tuple[Part, ...] = ())
 ```
 
-Bases: `_Cached`
+Bases: `_Cached`, `Generic[C, K, Q]`
 
 A symbolic path. Build with `P`, `T`, or `Param / ...`.
+
+For a type checker, `C` is what it requires, `K` whether it is declared a File, and `Q` what it ensures (`wend._kinds`).
 
 #### head
 
@@ -65,19 +71,23 @@ tags: Mapping[str, Any] = MappingProxyType({})
 #### \_\_truediv\_\_
 
 ```python
+__truediv__(other: Any) -> JoinBelowFile
+```
+
+```python
 __truediv__(other: PathUnion) -> PathUnion
 ```
 
 ```python
 __truediv__(
-    other: str | PathLike[str] | Param | PathExpr | Text | Template,
+    other: str | PathLike[str] | Param | PathExpr[Any, Any] | Template,
 ) -> PathExpr
 ```
 
 #### \_\_rtruediv\_\_
 
 ```python
-__rtruediv__(other: Any) -> PathExpr
+__rtruediv__(other: str | PathLike[str] | Param) -> PathExpr
 ```
 
 #### joinpath
@@ -183,7 +193,103 @@ Whether `other` is among the expressions this one was built from.
 #### requires
 
 ```python
-requires(*conditions: Any) -> PathExpr
+requires() -> PathExpr[C, K]
+```
+
+```python
+requires(file: FileCondition) -> PathExpr[C | Literal['file'], IsFile]
+```
+
+```python
+requires(
+    file: FileCondition, c1: Condition[X1, Any]
+) -> PathExpr[C | Literal["file"] | X1, IsFile]
+```
+
+```python
+requires(
+    file: FileCondition, c1: Condition[X1, Any], c2: Condition[X2, Any]
+) -> PathExpr[C | Literal["file"] | X1 | X2, IsFile]
+```
+
+```python
+requires(
+    file: FileCondition,
+    c1: Condition[X1, Any],
+    c2: Condition[X2, Any],
+    c3: Condition[X3, Any],
+) -> PathExpr[C | Literal["file"] | X1 | X2 | X3, IsFile]
+```
+
+```python
+requires(
+    file: FileCondition,
+    c1: Condition[X1, Any],
+    c2: Condition[X2, Any],
+    c3: Condition[X3, Any],
+    c4: Condition[X4, Any],
+) -> PathExpr[C | Literal["file"] | X1 | X2 | X3 | X4, IsFile]
+```
+
+```python
+requires(
+    file: FileCondition,
+    c1: Condition[X1, Any],
+    c2: Condition[X2, Any],
+    c3: Condition[X3, Any],
+    c4: Condition[X4, Any],
+    c5: Condition[X5, Any],
+) -> PathExpr[C | Literal["file"] | X1 | X2 | X3 | X4 | X5, IsFile]
+```
+
+```python
+requires(c1: Condition[X1, Any]) -> PathExpr[C | X1, K]
+```
+
+```python
+requires(
+    c1: Condition[X1, Any], c2: Condition[X2, Any]
+) -> PathExpr[C | X1 | X2, K]
+```
+
+```python
+requires(
+    c1: Condition[X1, Any], c2: Condition[X2, Any], c3: Condition[X3, Any]
+) -> PathExpr[C | X1 | X2 | X3, K]
+```
+
+```python
+requires(
+    c1: Condition[X1, Any],
+    c2: Condition[X2, Any],
+    c3: Condition[X3, Any],
+    c4: Condition[X4, Any],
+) -> PathExpr[C | X1 | X2 | X3 | X4, K]
+```
+
+```python
+requires(
+    c1: Condition[X1, Any],
+    c2: Condition[X2, Any],
+    c3: Condition[X3, Any],
+    c4: Condition[X4, Any],
+    c5: Condition[X5, Any],
+) -> PathExpr[C | X1 | X2 | X3 | X4 | X5, K]
+```
+
+```python
+requires(
+    c1: Condition[X1, Any],
+    c2: Condition[X2, Any],
+    c3: Condition[X3, Any],
+    c4: Condition[X4, Any],
+    c5: Condition[X5, Any],
+    c6: Condition[X6, Any],
+) -> PathExpr[C | X1 | X2 | X3 | X4 | X5 | X6, K]
+```
+
+```python
+requires(*conds: Condition[Any, Any]) -> PathExpr[C, K]
 ```
 
 This path, declaring conditions that must hold before it is used (checked by `check`): `e.requires(File, Exists, Readable)`. See `wend.conditions`. The path, its equality and its derivation are unchanged.
@@ -191,15 +297,119 @@ This path, declaring conditions that must hold before it is used (checked by `ch
 #### ensures
 
 ```python
-ensures(*conditions: Any) -> PathExpr
+ensures() -> PathExpr[C, K]
+```
+
+```python
+ensures(file: FileCondition) -> PathExpr[C | Literal['post_file'], IsFile]
+```
+
+```python
+ensures(
+    file: FileCondition, c1: Condition[Any, X1]
+) -> PathExpr[C | Literal["post_file"] | X1, IsFile]
+```
+
+```python
+ensures(
+    file: FileCondition, c1: Condition[Any, X1], c2: Condition[Any, X2]
+) -> PathExpr[C | Literal["post_file"] | X1 | X2, IsFile]
+```
+
+```python
+ensures(
+    file: FileCondition,
+    c1: Condition[Any, X1],
+    c2: Condition[Any, X2],
+    c3: Condition[Any, X3],
+) -> PathExpr[C | Literal["post_file"] | X1 | X2 | X3, IsFile]
+```
+
+```python
+ensures(
+    file: FileCondition,
+    c1: Condition[Any, X1],
+    c2: Condition[Any, X2],
+    c3: Condition[Any, X3],
+    c4: Condition[Any, X4],
+) -> PathExpr[C | Literal["post_file"] | X1 | X2 | X3 | X4, IsFile]
+```
+
+```python
+ensures(
+    file: FileCondition,
+    c1: Condition[Any, X1],
+    c2: Condition[Any, X2],
+    c3: Condition[Any, X3],
+    c4: Condition[Any, X4],
+    c5: Condition[Any, X5],
+) -> PathExpr[C | Literal["post_file"] | X1 | X2 | X3 | X4 | X5, IsFile]
+```
+
+```python
+ensures(c1: Condition[Any, X1]) -> PathExpr[C | X1, K]
+```
+
+```python
+ensures(
+    c1: Condition[Any, X1], c2: Condition[Any, X2]
+) -> PathExpr[C | X1 | X2, K]
+```
+
+```python
+ensures(
+    c1: Condition[Any, X1], c2: Condition[Any, X2], c3: Condition[Any, X3]
+) -> PathExpr[C | X1 | X2 | X3, K]
+```
+
+```python
+ensures(
+    c1: Condition[Any, X1],
+    c2: Condition[Any, X2],
+    c3: Condition[Any, X3],
+    c4: Condition[Any, X4],
+) -> PathExpr[C | X1 | X2 | X3 | X4, K]
+```
+
+```python
+ensures(
+    c1: Condition[Any, X1],
+    c2: Condition[Any, X2],
+    c3: Condition[Any, X3],
+    c4: Condition[Any, X4],
+    c5: Condition[Any, X5],
+) -> PathExpr[C | X1 | X2 | X3 | X4 | X5, K]
+```
+
+```python
+ensures(
+    c1: Condition[Any, X1],
+    c2: Condition[Any, X2],
+    c3: Condition[Any, X3],
+    c4: Condition[Any, X4],
+    c5: Condition[Any, X5],
+    c6: Condition[Any, X6],
+) -> PathExpr[C | X1 | X2 | X3 | X4 | X5 | X6, K]
+```
+
+```python
+ensures(*conds: Condition[Any, Any]) -> PathExpr[C, K]
 ```
 
 This path, declaring conditions that must hold after it has been produced (checked by `confirm`): `e.ensures(File, Exists)`.
 
+#### declares
+
+```python
+declares: Declarations
+```
+
+What this expression declares, as atoms per phase and the bases it is declared `Under` (docs/SEMANTICS.md §10.1): an obligation the runtime checks, not a fact about the filesystem.
+
 #### tag
 
 ```python
-tag(**tags: Any) -> PathExpr
+tag(**tags: Any) -> PathExpr[C, K]
 ```
 
 This path, tagged with metadata (`source="upload"`): what it is for or where it came from. Tags take no part in equality; `bind` and `rebase` keep them, other operations do not, and `wend.lineage` collects them through a path's derivation (§13).
@@ -207,10 +417,10 @@ This path, tagged with metadata (`source="upload"`): what it is for or where it 
 #### check
 
 ```python
-check(mapping: Any = None, /, *, fs: Any = None, **kw: Any) -> Path
+check(mapping: Any = None, /, *, fs: Any = None, **kw: Any) -> Checked[C, K]
 ```
 
-Render, check every precondition against the filesystem now, and return the path. Raises a `ConditionError` for the first that fails: `IndeterminateError` when the filesystem cannot say. `fs` is a `wend.fs` filesystem (the local disk by default).
+Render, check every precondition against the filesystem now, and return the path. Raises a `ConditionError` for the first that fails: `IndeterminateError` when the filesystem cannot say. `fs` is a `wend.fs` filesystem (the local disk by default). The path carries no evidence of the check; `checked` returns the evidence.
 
 #### confirm
 
@@ -218,7 +428,23 @@ Render, check every precondition against the filesystem now, and return the path
 confirm(mapping: Any = None, /, *, fs: Any = None, **kw: Any) -> Path
 ```
 
-Render, check every postcondition against the filesystem now, and return the path. Raises a `ConditionError` for the first that fails, as `check` does.
+Render, check every postcondition against the filesystem now, and return the path. Raises a `ConditionError` for the first that fails, as `check` does; `confirmed` returns the evidence.
+
+#### checked
+
+```python
+checked(mapping: Any = None, /, *, fs: Any = None, **kw: Any) -> Checked[C, K]
+```
+
+`check`, returning the evidence instead of the path (SEMANTICS.md §10.2): a `Checked` recording the path, the atoms this expression requires and the bases it was found under, each found true by a lookup of the path during this call. Raises as `check` does, so there is no evidence of a check that failed. Its type carries what this expression requires and nothing it ensures. It records the past: a later change does not update it.
+
+#### confirmed
+
+```python
+confirmed(mapping: Any = None, /, *, fs: Any = None, **kw: Any) -> Confirmed[Q, K]
+```
+
+`confirm`, returning the evidence (SEMANTICS.md §10.2): a `Confirmed` recording the path and the atoms this expression ensures, found true during this call. Its type carries what it ensures and nothing it requires.
 
 #### param\_names
 
@@ -229,7 +455,7 @@ param_names: frozenset[str]
 #### params
 
 ```python
-params: dict[str, Param]
+params: Mapping[str, Param]
 ```
 
 Free parameters by name. Raises ParamConflictError on clashing declarations.
@@ -319,7 +545,7 @@ with_name(name: Any) -> PathExpr
 #### with\_suffix
 
 ```python
-with_suffix(suffix: str) -> PathExpr
+with_suffix(suffix: Any) -> PathExpr
 ```
 
 #### with\_stem
@@ -349,7 +575,7 @@ True if structurally a prefix; raises NotStaticError if it depends on bindings.
 #### bind
 
 ```python
-bind(mapping: Any = None, /, **kw: Any) -> PathExpr
+bind(mapping: Any = None, /, **kw: Any) -> PathExpr[C, K]
 ```
 
 Substitute some parameters, folding whatever becomes static.
@@ -359,7 +585,11 @@ Values may be concrete (str, PathLike, ints for fields...) or symbolic: another 
 #### rebase
 
 ```python
-rebase(*args: Any) -> PathExpr
+rebase(*args: Any) -> PathExpr[Under[str], K]
+```
+
+```python
+rebase(*args: Any) -> PathExpr[C, K]
 ```
 
 Move this path to a new base (§9).
@@ -379,7 +609,7 @@ Bindings come from a mapping (keyed by name or `Param`), an object's fields (see
 #### resolve
 
 ```python
-resolve(mapping: Any = None, /, *, cls: type = Path, **kw: Any) -> Any
+resolve(mapping: Any = None, /, *, cls: type = Path, **kw: Any) -> Resolved[C, K]
 ```
 
 Resolve to a concrete path (`pathlib.Path` unless `cls` is given).
@@ -781,6 +1011,14 @@ requires(*conditions: Any) -> PathUnion
 ensures(*conditions: Any) -> PathUnion
 ```
 
+#### declares
+
+```python
+declares: Declarations
+```
+
+What every alternative declares: a path the union describes comes from one of them, so only their common declarations hold of it.
+
 #### param\_names
 
 ```python
@@ -1109,6 +1347,60 @@ many(rows: Iterable[Any]) -> list[tuple[str, ...]]
 ```
 
 Render every expression for each mapping (or object) in `rows`, as tuples.
+
+## Kinds and evidence
+
+The type parameters that track what an expression declares (see `PathExpr`), and the evidence that `checked` and `confirmed` return: a record of what one check found of one rendered path, at the moment it ran, which is not a path and carries nothing to paths derived from it.
+
+### wend.IsFile
+
+Bases: `Unspecified`
+
+`File` declared, in `requires` or `ensures`: nothing can be joined below the path (the runtime raises).
+
+### wend.NotFile
+
+Bases: `Unspecified`
+
+`File` known not to be declared: disjoint from `IsFile`.
+
+### wend.Unspecified
+
+`File` not declared, or not known to be.
+
+### wend.JoinBelowFile
+
+What joining below a declared File gives, for a type checker: not a path (the runtime raises `PathOperationError`).
+
+### wend.Checked
+
+```python
+Checked(
+    path: Path,
+    atoms: frozenset[str] = frozenset(),
+    epoch: int | None = None,
+    bases: tuple[Path, ...] = (),
+)
+```
+
+Bases: `_Evidence`, `Generic[C, K]`
+
+Evidence that a path's preconditions held when it was checked (a step's entry): `C` is what was required, and so what was checked.
+
+### wend.Confirmed
+
+```python
+Confirmed(
+    path: Path,
+    atoms: frozenset[str] = frozenset(),
+    epoch: int | None = None,
+    bases: tuple[Path, ...] = (),
+)
+```
+
+Bases: `_Evidence`, `Generic[Q, K]`
+
+Evidence that a path's postconditions held when it was confirmed (a step's exit): `Q` is what was ensured. Not a `Checked`.
 
 ## Also exported from `wend`
 

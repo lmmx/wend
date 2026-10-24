@@ -17,7 +17,9 @@ Checks are point in time. A path that exists when it is checked may be gone when
 ## Absent
 
 ```python
-Absent = Condition('Absent')
+Absent: Final[Condition[Literal["absent"], Literal["post_absent"]]] = Condition(
+    "Absent"
+)
 ```
 
 Nothing occupies the path's name, not even a broken symlink.
@@ -28,7 +30,9 @@ Nothing occupies the path's name, not even a broken symlink.
 Condition(name: str)
 ```
 
-A property of a path, checked when the path is realised.
+Bases: `Generic[Pre, Post]`
+
+A property of a path, checked when the path is realised. For a type checker it adds its atom `Pre` to what an expression requires, and `Post` to what it ensures (the same atom, for every condition).
 
 ### name
 
@@ -49,15 +53,59 @@ __call__(
 ## Creatable
 
 ```python
-Creatable = Condition('Creatable')
+Creatable: Final[Condition[Literal["create"], Literal["post_create"]]] = Condition(
+    "Creatable"
+)
 ```
 
 The path exists, or could be created now: no broken symlink occupies its name or a name above it, and its nearest existing ancestor is a directory the process may write to and search.
 
+## Declarations
+
+Bases: `NamedTuple`
+
+What an expression declares (docs/SEMANTICS.md §10.1): the atoms it requires before it is used, the atoms it ensures after it is produced, and the bases it is declared `Under`.
+
+A declaration is an obligation, not a fact about the filesystem. Only containment holds of every path the expression renders (`render` checks it); every other atom holds when a check finds it, at that moment.
+
+### requires
+
+```python
+requires: frozenset[str]
+```
+
+### ensures
+
+```python
+ensures: frozenset[str]
+```
+
+### under
+
+```python
+under: tuple[PathExpr, ...]
+```
+
+### verbs
+
+```python
+verbs: frozenset[str]
+```
+
+The effects declared (what `Step.effects` reports): each permission in either phase, `create` for `exists` ensured but not required, and `delete` for `absent` ensured but not required.
+
+### \_\_and\_\_
+
+```python
+__and__(other: object) -> Declarations
+```
+
+What both declare: the atoms of each phase in both, and the bases both are declared under.
+
 ## Dir
 
 ```python
-Dir = Condition('Dir')
+Dir: Final[Condition[Literal['dir'], Literal['post_dir']]] = Condition('Dir')
 ```
 
 The path names a directory: if it exists it is one.
@@ -89,7 +137,9 @@ verbs: frozenset[str]
 ## Exists
 
 ```python
-Exists = Condition('Exists')
+Exists: Final[Condition[Literal["exists"], Literal["post_exists"]]] = Condition(
+    "Exists"
+)
 ```
 
 Something exists at the path (symlinks are followed).
@@ -97,7 +147,7 @@ Something exists at the path (symlinks are followed).
 ## File
 
 ```python
-File = Condition('File')
+File: Final[FileCondition] = FileCondition('File')
 ```
 
 The path names a regular file: if it exists it is one, and nothing can be joined below it. Add `Exists` to require that it exists.
@@ -105,7 +155,9 @@ The path names a regular file: if it exists it is one, and nothing can be joined
 ## Listable
 
 ```python
-Listable = Condition('Listable')
+Listable: Final[Condition[Literal["list"], Literal["post_list"]]] = Condition(
+    "Listable"
+)
 ```
 
 The path is an existing directory the process may list.
@@ -113,7 +165,9 @@ The path is an existing directory the process may list.
 ## Readable
 
 ```python
-Readable = Condition('Readable')
+Readable: Final[Condition[Literal["read"], Literal["post_read"]]] = Condition(
+    "Readable"
+)
 ```
 
 The path exists and the process may read it.
@@ -189,14 +243,20 @@ The filesystem effects each path declares: `read`, `write`, `create`, `list` (ca
 ## Under
 
 ```python
-Under(base: Any)
+Under(base: L)
 ```
 
-Bases: `Condition`
+```python
+Under(base: str | PathLike[str] | Param | PathExpr[Any, Any, Any])
+```
+
+Bases: `Condition['Under[B] | Under[str]', 'Under[B] | Under[str]']`, `Generic[B]`
 
 The path stays under `base`: lexically when it is rendered, and after resolving symlinks when it is checked.
 
 `base` is rendered with the same bindings as the path, so its parameters must be among the path's. Lexically, the path must start with the base's components and have no `..` after them.
+
+For a type checker, a literal string base gives the atom its identity (`Under[Literal["/srv/static"]]`); every base, literal or not, also declares `Under[str]`, "under its own base".
 
 ### base
 
@@ -213,7 +273,9 @@ name: str
 ## Writable
 
 ```python
-Writable = Condition('Writable')
+Writable: Final[Condition[Literal["write"], Literal["post_write"]]] = Condition(
+    "Writable"
+)
 ```
 
 The process may write the path: it exists and is writable, or it is `Creatable`.

@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="How a wend release is made: the Deploy Release workflow bumps the version, tags it and starts CI on the tag, and CI publishes the package to PyPI with Trusted Publishing.">
+        <meta name="description" content="How a wend release is made: the Deploy Release workflow bumps the version and tags it, CI publishes the package to PyPI with Trusted Publishing, and the GitHub Release workflow makes its GitHub Release.">
       
       
         <meta name="author" content="Louis Maddox">
@@ -1738,6 +1738,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#a-tag-with-no-github-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A tag with no GitHub Release
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#after-a-release" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1817,6 +1828,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#a-tag-with-no-github-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        A tag with no GitHub Release
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#after-a-release" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1858,42 +1880,61 @@
 
 
 <h1 id="releasing">Releasing<a class="headerlink" href="#releasing" title="Permanent link">&para;</a></h1>
-<p>A release bumps the version in <code>pyproject.toml</code>, commits and tags it, and publishes the
-built package to <a href="https://pypi.org/project/wend/">PyPI</a>.</p>
+<p>A release bumps the version in <code>pyproject.toml</code>, commits and tags it, publishes the built
+package to <a href="https://pypi.org/project/wend/">PyPI</a>, and makes its GitHub Release. Every
+step after the first runs in CI.</p>
 <h2 id="steps">Steps<a class="headerlink" href="#steps" title="Permanent link">&para;</a></h2>
 <ol>
+<li><strong>Write the release's notes</strong> under "Unreleased" in
+   <a href="https://github.com/lmmx/wend/blob/master/docs/CHANGELOG.md"><code>docs/CHANGELOG.md</code></a>, and
+   any change in behaviour in
+   <a href="https://github.com/lmmx/wend/blob/master/docs/MIGRATING.md"><code>docs/MIGRATING.md</code></a>, in
+   a pull request merged before the release.</li>
 <li><strong>Run the "Deploy Release" workflow</strong> (<code>.github/workflows/deploy.yml</code>) on master,
    choosing its <code>bump</code>: <code>patch</code>, <code>minor</code>, <code>major</code> or <code>none</code>. It runs
    <code>just release &lt;bump&gt;</code>, which:</li>
 <li>bumps the version with <code>uv version --frozen --bump &lt;bump&gt;</code>. <code>--frozen</code> leaves
      <code>uv.lock</code> as it is, so the lock's own entry for wend can lag the version;</li>
-<li>commits it as <code>chore(release): bump 🐍 -&gt; v&lt;version&gt;</code>;</li>
+<li>titles the changelog's "Unreleased" notes with the new version;</li>
+<li>commits both as <code>chore(release): bump 🐍 -&gt; v&lt;version&gt;</code>;</li>
 <li>tags the commit with the version;</li>
 <li>pushes the commit and the tag.</li>
 </ol>
 <p><code>none</code> releases the version <code>pyproject.toml</code> already has, for a release commit whose
    tag was never pushed. It makes no commit, and refuses if that version's tag exists or
-   PyPI has it.
-2. <strong>CI publishes it</strong> (<code>.github/workflows/CI.yml</code>). A tag pushed with a workflow's token
-   starts no workflow, so Deploy Release starts CI on the new tag itself
-   (<code>gh workflow run CI.yml --ref &lt;version&gt;</code>). CI builds the wheel and the sdist,
+   PyPI has it.</p>
+<p>A commit or tag pushed with a workflow's token starts no workflow, so Deploy Release
+   then starts the tests and CI on the new tag itself (<code>gh workflow run ... --ref
+   &lt;version&gt;</code>).
+3. <strong>CI publishes it</strong> (<code>.github/workflows/CI.yml</code>). It builds the wheel and the sdist,
    generates artifact attestations, and publishes to PyPI with
    <a href="https://docs.pypi.org/trusted-publishers/">Trusted Publishing</a>, so no token is
    stored in the repository. Only a run on a tag publishes: CI started on a branch builds
-   and attests, and stops there.</p>
+   and attests, and stops there.
+4. <strong>The GitHub Release follows</strong> (<code>.github/workflows/github-release.yml</code>), which CI
+   calls once the package is published. On the existing tag, once PyPI has the version
+   and the tagged commit's tests have passed, it makes the GitHub Release. Its notes are
+   the version's section of the changelog, then the pull requests since the last
+   release, as GitHub lists them. A tag that has a GitHub Release keeps it as it is, so a
+   re-run makes no second release.</p>
 <p>Deploy Release can be started from the repository's Actions tab, with
 <code>gh workflow run deploy.yml --ref master -f bump=minor</code>, or through the GitHub API. The
 API is how an agent session, such as a Claude Code cloud session, makes a release: it
-may push branches but not tags, and the workflow pushes the tag itself.</p>
+may push branches but not tags, nor make releases, and the workflows do both.</p>
 <p><code>just release &lt;bump&gt;</code> also runs locally on master. It pushes from your machine, and a tag
-pushed from your machine starts CI, which publishes. <code>just release --help</code> shows the
-options of <code>uv version --bump</code>.</p>
+pushed from your machine starts CI, which publishes and makes the GitHub Release.
+<code>just release --help</code> shows the options of <code>uv version --bump</code>.</p>
+<h2 id="a-tag-with-no-github-release">A tag with no GitHub Release<a class="headerlink" href="#a-tag-with-no-github-release" title="Permanent link">&para;</a></h2>
+<p>If the GitHub Release was not made (say the tag's tests were cancelled), run the
+"GitHub Release" workflow on master with the tag. Its <code>dry_run</code>, on by default, checks
+the tag, PyPI and the tests and shows the notes in the run's summary, and makes nothing;
+run it again with <code>dry_run</code> off to make the release. It publishes nothing to PyPI. When
+the tests did not pass, start them on the tag first (<code>gh workflow run test.yml --ref
+&lt;version&gt;</code>).</p>
 <h2 id="after-a-release">After a release<a class="headerlink" href="#after-a-release" title="Permanent link">&para;</a></h2>
 <ul>
 <li>The documentation site is published from master on every push, so it already describes
   the released code.</li>
-<li>Add the release's changes to <a href="https://github.com/lmmx/wend/blob/master/docs/MIGRATING.md"><code>docs/MIGRATING.md</code></a>
-  where they change behaviour.</li>
 </ul>
 
 

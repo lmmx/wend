@@ -9,7 +9,8 @@
 | `examples/` | runnable scripts, each run by `tests/examples_test.py` |
 | `bench/bench.py` | the benchmarks |
 | `docs/SEMANTICS.md` | the contract: what every operation must compute |
-| `docs/MIGRATING.md` | the changes from 0.1 |
+| `docs/MIGRATING.md` | the changes between releases |
+| `docs/CHANGELOG.md` | each release's notes, which its GitHub Release takes |
 | `docs/journal/` | the development journal ([Project history](<https://lmmx.github.io/wend/background/history/index.md>)) |
 | `docs/site/`, `zensical.toml` | this site ([Documentation](<https://lmmx.github.io/wend/maintainers/documentation/index.md>)) |
 

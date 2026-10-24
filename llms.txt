@@ -65,6 +65,6 @@ https://lmmx.github.io/wend/.
 ## Optional
 
 - [Development](<https://lmmx.github.io/wend/maintainers/development/index.md>): The repository's layout, how to set up and test wend, the semantic contract and the tests that check it, and the conventions for commits and journal entries.
-- [Releasing](<https://lmmx.github.io/wend/maintainers/releasing/index.md>): How a wend release is made: the Deploy Release workflow bumps the version, tags it and starts CI on the tag, and CI publishes the package to PyPI with Trusted Publishing.
+- [Releasing](<https://lmmx.github.io/wend/maintainers/releasing/index.md>): How a wend release is made: the Deploy Release workflow bumps the version and tags it, CI publishes the package to PyPI with Trusted Publishing, and the GitHub Release workflow makes its GitHub Release.
 - [Project history](<https://lmmx.github.io/wend/background/history/index.md>): wend's development journal: how the dated entries are written and labelled, what each one records, and where to start reading.
 - [Documentation](<https://lmmx.github.io/wend/maintainers/documentation/index.md>): How wend's documentation site is built, checked, tested and published to GitHub Pages.

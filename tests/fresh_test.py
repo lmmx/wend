@@ -13,6 +13,9 @@ from wend._experimental.confined import Confined
 from wend._experimental.fresh import Watch, fingerprint, observe, revalidate
 
 
+pytestmark = pytest.mark.linux
+
+
 SIZE = 4096  # one page
 
 

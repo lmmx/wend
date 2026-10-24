@@ -26,12 +26,16 @@ def _ok(*cmd: str) -> bool:
     return subprocess.run(cmd, capture_output=True).returncode == 0
 
 
-pytestmark = pytest.mark.skipif(
-    os.geteuid() != 0
-    or not shutil.which("mkfs.ext4")
-    or not Path("/dev/loop-control").exists(),
-    reason="needs root, mkfs.ext4 and loop devices",
-)
+pytestmark = [
+    pytest.mark.linux,
+    pytest.mark.privileged,
+    pytest.mark.skipif(
+        os.geteuid() != 0
+        or not shutil.which("mkfs.ext4")
+        or not Path("/dev/loop-control").exists(),
+        reason="needs root, mkfs.ext4 and loop devices",
+    ),
+]
 
 
 def direct(mnt: Path) -> None:

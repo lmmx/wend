@@ -19,8 +19,11 @@ from pathlib import Path
 import pytest
 
 from wend._experimental.confined import Confined
-from wend._experimental.fresh import collect, observe
+from wend._experimental.fresh import Busy, collect, observe
 from wend._experimental.publish import Derivation, Draft, Generation, hold_dir, read_in
+
+
+pytestmark = pytest.mark.linux
 
 
 SIZE = 4096
@@ -93,6 +96,47 @@ def test_which_observer_accepts_a_snapshot_that_never_existed(
     # mapped pages, nothing sees it.
     fooled = mapped or observer == "digest"
     assert coherent is fooled
+
+
+def test_a_read_lease_excludes_the_writer_no_observer_sees(tmp_path):
+    # The writer every observer misses holds dirty pages of a shared
+    # mapping. It cannot be seen changing a file, but the kernel knows it
+    # can: no read lease is granted while it exists.
+    files = Files(tmp_path, mapped=True)
+    io = Confined(str(tmp_path))
+    try:
+        with pytest.raises(Busy):
+            collect(io, ["a", "b"], observer="lease")
+        files.close()  # once it is gone, the copies are made with no writer
+        copies, coherent = collect(io, ["a", "b"], observer="lease")
+        assert coherent and (copies["a"].read(), copies["b"].read()) == (A0, B0)
+    finally:
+        io.close()
+
+
+def test_a_writer_that_arrives_during_a_leased_collect_is_held_off_and_seen(
+    tmp_path,
+):
+    files = Files(tmp_path, mapped=False)
+    tried = []
+
+    def between(phase, i):
+        if (phase, i) == ("first", 0):
+            # another writer opens b for writing: it must wait, and asking
+            # breaks the lease (here it does not wait: O_NONBLOCK)
+            try:
+                os.open(tmp_path / "b", os.O_WRONLY | os.O_NONBLOCK)
+            except BlockingIOError:
+                tried.append("held off")
+
+    io = Confined(str(tmp_path))
+    try:
+        copies, coherent = collect(io, ["a", "b"], observer="lease", between=between)
+    finally:
+        io.close()
+        files.close()
+    assert tried == ["held off"] and coherent is False  # conservative: retry
+    assert (copies["a"].read(), copies["b"].read()) == (A0, B0)
 
 
 def test_holding_a_generation_reads_one_generation_and_names_can_read_two(tmp_path):

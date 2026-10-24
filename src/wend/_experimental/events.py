@@ -14,8 +14,8 @@ docs/journal/2026-10-22-typed-core.md).
 - **It remains true.** `Sealed` is a copy of a held file's contents in a
   sealed memfd: no holder can change it, the kernel refuses (``EPERM``).
 
-`Run` executes steps declared as classes (`Spec`, with `Uses` and `Holds`
-attributes), confined to a root, and keeps knowledge keyed by rendered
+`Run` executes steps declared as classes (`Spec`, with `Uses`, `Holds`,
+`Makes` and `Commits` attributes), confined to a root, and keeps knowledge keyed by rendered
 strings (`knowledge.Knowledge`). Confinement removes one source of error,
 aliasing (docs/journal/2026-10-22-aliasing.md §5), and nothing else: another
 writer can still change, create or delete an ordinary file inside the root.
@@ -27,6 +27,7 @@ filesystem now.
 from __future__ import annotations
 
 import fcntl
+import hashlib
 import os
 from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
@@ -41,7 +42,17 @@ from .identity import Held as _Held
 from .knowledge import CONDITION, MUTATING, Knowledge
 
 
-__all__ = ["Held", "Holds", "Makes", "Run", "Sealed", "Spec", "Uses", "seal"]
+__all__ = [
+    "Commits",
+    "Held",
+    "Holds",
+    "Makes",
+    "Run",
+    "Sealed",
+    "Spec",
+    "Uses",
+    "seal",
+]
 
 
 class Held(_Held, Generic[C, K]):  # noqa: UP046 (variance is declared, not inferred)
@@ -54,6 +65,12 @@ class Held(_Held, Generic[C, K]):  # noqa: UP046 (variance is declared, not infe
     def __init__(self, path: str, fd: int, access: frozenset[str]) -> None:
         super().__init__(path, fd)
         self.access = access
+        self.used: list[str] = []  # a digest of what each read returned
+
+    def read(self) -> bytes:
+        data = super().read()
+        self.used.append(hashlib.sha256(data).hexdigest())
+        return data
 
     @property
     def ident(self) -> tuple[int, int]:
@@ -159,9 +176,36 @@ class Makes(Generic[C, K]):  # noqa: UP046
         return obj._entered(self.name).draft
 
 
+class Commits(Generic[C, K]):  # noqa: UP046
+    """A new version of a `publish.Store` (several outputs published as
+    one): on an entered instance, a `publish.VersionDraft` that no reader
+    can see. When the step finishes the run claims it as the version after
+    the latest one seen at entry, or fails the step if another writer
+    claimed that version first; if the step fails it is abandoned. The
+    expression must declare a directory, made if missing."""
+
+    def __init__(self, expr: Any, *, immutable: bool = False) -> None:
+        d = expr.declares
+        if not ("dir" in d.requires and {"dir", "exists"} <= d.ensures):
+            raise TypeError(
+                f"{expr.pattern!r} must require Dir and ensure Dir, Exists to hold versions"
+            )
+        self.expr = expr
+        self.immutable = immutable
+        self.name = ""
+
+    def __set_name__(self, owner: type, name: str) -> None:
+        self.name = name
+
+    def __get__(self, obj: Any, owner: type | None = None) -> Any:
+        if obj is None:
+            return self.expr
+        return obj._entered(self.name).draft
+
+
 class Spec:
-    """A step declared as a class of `Uses`, `Holds` and `Makes` attributes,
-    entered with `Run.enter`."""
+    """A step declared as a class of `Uses`, `Holds`, `Makes` and `Commits`
+    attributes, entered with `Run.enter`."""
 
     def __init__(self, entered: Mapping[str, _Port]) -> None:
         self.__dict__["_ports"] = entered
@@ -177,7 +221,7 @@ class Spec:
         out: dict[str, Any] = {}
         for klass in reversed(cls.__mro__):
             for n, v in vars(klass).items():
-                if isinstance(v, (Uses, Holds, Makes)):
+                if isinstance(v, (Uses, Holds, Makes, Commits)):
                     out[n] = v
         return out
 
@@ -200,12 +244,20 @@ class Run:
     is an event stamped with an epoch, and an event is `known` while no
     mutation of this run has invalidated its atoms."""
 
-    def __init__(self, root: str) -> None:
+    def __init__(self, root: str, *, lease: bool = False) -> None:
         self.io = Confined(root)
+        # Lease the held inputs, all together (`fresh.Leases`): while a step
+        # runs, no process can open one for writing unseen. Needs the
+        # inputs' owner or CAP_LEASE; a step whose input has a writer fails
+        # at entry (`Busy`), and one whose input was asked for, for writing,
+        # or emptied, during the step fails at exit (`Inconsistent`).
+        self.lease = lease
         self.knowledge = Knowledge()
         self.epoch = 0
+        # by path below the root: a port name recurs across steps
         self.confirmed: dict[str, Confirmed[Any, Any]] = {}
-        self.published: dict[str, Any] = {}  # publish.Published, by output path
+        # publish.Published by output path, publish.Version by store path
+        self.published: dict[str, Any] = {}
         self.derivations: list[Any] = []  # publish.Derivation, in order
 
     def known(self, event: Checked[Any, Any] | Confirmed[Any, Any]) -> bool:
@@ -222,14 +274,30 @@ class Run:
     @contextmanager
     def enter[S: Spec](self, spec: type[S], env: Mapping[str, Any]) -> Iterator[S]:
         """Check each port's preconditions beneath the root, hold each `Holds`
-        input, run the body, forget what its mutations may change, check the
-        postconditions and learn them, as `Confirmed` events in
-        ``self.confirmed``."""
-        from .fresh import fingerprint
-        from .publish import Derivation, Draft
+        input, run the body, forget what its mutations may change, publish
+        its outputs, check the postconditions and learn them, as `Confirmed`
+        events in ``self.confirmed``.
+
+        Two checks keep a derivation true to what the step did. An input this
+        run published must still be that object with those contents when a
+        later step holds it; and every read of an input during the step must
+        return what was observed at entry. Otherwise the step's outputs are
+        abandoned and `publish.Inconsistent` raised."""
+        from .fresh import Leases, fingerprint
+        from .publish import (
+            Derivation,
+            Draft,
+            Inconsistent,
+            Published,
+            Store,
+            VersionDraft,
+        )
 
         self.epoch += 1
-        ports, held, drafts = spec.ports(), [], {}
+        ports = spec.ports()
+        held: dict[str, Held[Any, Any]] = {}
+        leases: Leases | None = None
+        drafts: dict[str, Draft | VersionDraft] = {}
         observed = {}
         paths = {n: p.expr.render(env) for n, p in ports.items()}
         rels = {n: self.io.rel(paths[n]) for n in ports}
@@ -239,26 +307,45 @@ class Run:
                 req = p.expr.declares.requires
                 self.io.check(rels[n], req)
             for n, p in ports.items():
+                if isinstance(p, Holds):
+                    fd = self.io._open(rels[n], os.O_RDONLY)
+                    held[n] = Held(paths[n], fd, frozenset({"read"}))
+                    # Judged on the descriptor, like confinement: the check of
+                    # File was of whatever the name led to then.
+                    if not held[n].is_file:
+                        raise WrongKindError(
+                            rels[n], CONDITION["file"], "is not a regular file"
+                        )
+            if self.lease and held:  # before observing: frozen from here on
+                leases = Leases([h.fd for h in held.values()])
+            for n, p in ports.items():
                 req = p.expr.declares.requires
                 self.knowledge.learn(req, paths[n])
                 h = d = None
                 if isinstance(p, Holds):
-                    fd = self.io._open(rels[n], os.O_RDONLY)
-                    h = Held(paths[n], fd, frozenset({"read"}))
-                    held.append(h)
-                    # Judged on the descriptor, like confinement: the check of
-                    # File was of whatever the name led to then.
-                    if not h.is_file:
-                        raise WrongKindError(
-                            rels[n], CONDITION["file"], "is not a regular file"
+                    h = held[n]
+                    fp = observed[rels[n]] = fingerprint(h.fd, content=True)
+                    mine = self.published.get(rels[n])
+                    if isinstance(mine, Published) and (
+                        (mine.fingerprint.ident, mine.fingerprint.digest)
+                        != (fp.ident, fp.digest)
+                    ):
+                        raise Inconsistent(
+                            f"{rels[n]} is not the file this run published there"
                         )
-                    observed[rels[n]] = fingerprint(fd, content=True)
                 elif isinstance(p, Makes):
                     # the output's directory, made if missing (directories
                     # become visible early; the file does not)
                     pfd, _ = self.io._parent(rels[n], make=True)
                     os.close(pfd)
                     d = drafts[n] = Draft(self.io, rels[n].rpartition("/")[0])
+                elif isinstance(p, Commits):
+                    try:
+                        self.io.mkdir(rels[n])
+                    except FileExistsError:
+                        pass
+                    store = Store(self.io, rels[n])
+                    d = drafts[n] = store.begin(store.latest())
                 entered[n] = _Port(
                     self._event(Checked, paths[n], req, p.expr._bases(env, {}, 0)),
                     h,
@@ -266,6 +353,17 @@ class Run:
                 )
             try:
                 yield cast("S", spec(entered))
+                if leases is not None and not leases.unbroken():
+                    raise Inconsistent(
+                        "an input was asked for, for writing, or emptied, "
+                        "during the step"
+                    )
+                for n, h in held.items():
+                    if any(u != observed[rels[n]].digest for u in h.used):
+                        raise Inconsistent(
+                            f"{rels[n]} changed while the step read it: what it "
+                            "used is not what was observed at entry"
+                        )
             except BaseException:
                 for d in drafts.values():
                     d.abandon()
@@ -275,13 +373,16 @@ class Run:
                     if p.expr.declares.verbs & MUTATING:
                         self.knowledge.forget(paths[n])
             # Each output is published whole, one after another: a failure
-            # here leaves the earlier ones published (a Generation publishes
-            # several together).
+            # here leaves the earlier ones published (a `Commits` output
+            # publishes several together).
             try:
                 for n, d in drafts.items():
-                    pub = d.publish(rels[n].rpartition("/")[2], policy="create")
-                    self.published[rels[n]] = pub
-                    self.derivations.append(Derivation(pub, dict(observed)))
+                    if isinstance(d, VersionDraft):
+                        out = d.commit(immutable=ports[n].immutable)
+                    else:
+                        out = d.publish(rels[n].rpartition("/")[2], policy="create")
+                    self.published[rels[n]] = out
+                    self.derivations.append(Derivation(out, dict(observed)))
             finally:
                 for d in drafts.values():
                     d.abandon()
@@ -290,9 +391,11 @@ class Run:
                 post = p.expr.declares.ensures
                 self.io.check(rels[n], post)
                 self.knowledge.learn(post, paths[n])
-                self.confirmed[n] = self._event(
+                self.confirmed[rels[n]] = self._event(
                     Confirmed, paths[n], post, p.expr._bases(env, {}, 1)
                 )
         finally:
-            for h in held:
+            if leases is not None:
+                leases.release()
+            for h in held.values():
                 h.close()

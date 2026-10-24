@@ -1,8 +1,8 @@
 """Run Pyright and ty on the typed core and its three guarantees (this
-directory) and on the encodings compared before it (``prepost/``), and
-compare their errors with the ``# E:`` markers: each file must have an
-error on exactly its marked lines (none, for a file without markers), in
-both checkers.
+directory), on the encodings compared before it (``prepost/``) and on the
+synthesis pipeline (experiments/synthesis), and compare their errors with the
+``# E:`` markers: each file must have an error on exactly its marked lines
+(none, for a file without markers), in both checkers.
 
     uv run python experiments/typed_core/check.py
 
@@ -33,6 +33,7 @@ SUITES = {
         "uses_c.py",
         "tygap.py",
     ],
+    HERE.parent / "synthesis": ["pipeline.py", "misuse.py"],
 }
 
 

@@ -697,6 +697,14 @@ superseded by the next.
    above is done in a final commit of its own.
 4. #111 after #110's test is rebuilt.
 
+**[Fact] How the stack landed.** The owner delegated the merging. Each PR was
+squash-merged into master, one commit each, in the order #105, #107, #106, #108, #109,
+#110, #112, #113, #114, #115, #111, not as one branch of history. The PR branches, which
+carry the commits these entries name, are kept. #110's test had been rebuilt to hold
+either way (aliasing addendum A.2), so #111 landed last, with the harness's creation
+mutant moved to "survives". The consolidation above is not done; its commits would now
+go on master.
+
 ## References
 
 - M. Herlihy, *Wait-free synchronization*, ACM TOPLAS 13(1):124–149, 1991: consensus

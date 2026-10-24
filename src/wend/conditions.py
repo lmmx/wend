@@ -139,8 +139,9 @@ Writable: Final[Condition[Literal["write"], Literal["write"]]] = Condition("Writ
 Creatable: Final[Condition[Literal["create"], Literal["create"]]] = Condition(
     "Creatable"
 )
-"""The path exists, or could be created now: its nearest existing ancestor is
-a directory the process may write to and search."""
+"""The path exists, or could be created now: no broken symlink occupies its
+name or a name above it, and its nearest existing ancestor is a directory
+the process may write to and search."""
 
 Listable: Final[Condition[Literal["list"], Literal["list"]]] = Condition("Listable")
 """The path is an existing directory the process may list."""
@@ -451,11 +452,12 @@ class _Probe:
 
 
 def _ancestor(path: str) -> str:
-    """The nearest existing ancestor of ``path``."""
+    """The nearest existing ancestor of ``path``, or the nearest name above it
+    that a broken symlink occupies (nothing can be made below one)."""
     d = path
     while True:
         parent = os.path.dirname(d) or "."
-        if parent == d or os.path.exists(parent):
+        if parent == d or os.path.lexists(parent):
             return parent
         d = parent
 
@@ -463,7 +465,15 @@ def _ancestor(path: str) -> str:
 def _creatable(p: _Probe, c: Condition) -> None:
     if p.st is not None:
         return
+    # A broken symlink at the name: making the path would mean writing
+    # through it, to wherever it points.
+    if p.lst is not None:
+        raise CapabilityError(p.path, c, "cannot be created: it is a broken symlink")
     anc = _ancestor(p.path)
+    if not os.path.exists(anc):
+        raise CapabilityError(
+            p.path, c, f"cannot be created: {anc!r} is a broken symlink"
+        )
     if not os.path.isdir(anc):
         raise CapabilityError(
             p.path, c, f"cannot be created: {anc!r} is not a directory"

@@ -177,7 +177,7 @@ executors. ✗ means the run read, wrote or deleted something outside the root.
 | `out/mon.csv` becomes a dangling link out, between `copy`'s checks and bodies | | ✗ | | ✗ | refused |
 | `out/` becomes a link out, between `copy`'s checks and bodies | ✗ | ✗ | ✗ | ✗ | refused |
 | a bind mount over `out/`, between `drop`'s checks and bodies | ✗ | ✗ | ✗ | ✗ | refused |
-| `out/mon.csv` becomes a dangling link out, before `remake` (whose `Absent` the plan knows) | | | | ✗ | refused |
+| `out/mon.csv` becomes a dangling link out, before `remake` (whose `Absent` the plan knows) | | | | ✗ before #111; refused since | refused |
 
 **[Interpretation]** Read by rows:
 
@@ -186,10 +186,15 @@ executors. ✗ means the run read, wrote or deleted something outside the root.
    target.
 2. **Checking cannot win a race between check and use** (rows 3 and 4).
 3. **Exclusive creation defends the name, not the way to it** (rows 2 and 3).
-4. **The last row is the only one where elision is to blame.** A check would refuse the
-   link, since `lstat` sees it; elided, the run writes through it. This is the aliasing
+4. **The last row is the only one where elision was to blame.** A check would refuse the
+   link, since `lstat` sees it; elided, the run wrote through it. This is the aliasing
    entry's first counterexample, in a pipeline: the plan's knowledge was true of a name,
-   until another writer changed what the name was.
+   until another writer changed what the name was. Since #111 the row has no escape:
+   `Creatable`, which the plan does not elide, refuses a name a dangling link occupies,
+   and `tests/confined_test.py` asserts that no executor reaches outside.
+
+   > *Before #111:* the last row's plan-`"w"` cell was ✗, and this reading said
+   > "elided, the run writes through it".
 
 In every row the confined run touches nothing outside the root and fails instead.
 
@@ -258,7 +263,8 @@ Over 1,000 pipelines and 2,997 steps:
   which runs was not compared (addendum A.3). The writer's moves are swaps
   that checks follow, or races that come after the checks. Elision is not what makes a
   plain run unsafe; the elision-only escape of §4 needs a dangling link at a name whose
-  absence is known, which random schedules rarely build.
+  absence is known, which random schedules rarely build. Since #111 that escape is
+  closed (§4). Both tables were measured before #111 and are not re-measured.
 - **Confinement costs completion, by design.** 238 steps that complete without the
   writer fail under it, where the plain runs went on through the writer's links.
 - **The plan elided 623 of 9,634 required atoms.** That is fewer than in the modelled

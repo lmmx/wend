@@ -509,7 +509,7 @@ before anything is looked up, and raises the first condition that fails:
 | `Readable` | `p` exists and `access(p, R_OK)` | missing-path or capability error |
 | `Listable` | `p` is a directory and `access(p, R_OK \| X_OK)` | missing-path, wrong-kind or capability error |
 | `Writable` | `p` exists and `access(p, W_OK)` (with `X_OK` for a directory), or `p` is `Creatable` | capability error |
-| `Creatable` | `p` exists, or its nearest existing ancestor is a directory with `access(·, W_OK \| X_OK)` | capability error |
+| `Creatable` | `p` exists, or no broken symlink occupies `p` or a name above it, and its nearest existing ancestor is a directory with `access(·, W_OK \| X_OK)` | capability error |
 
 A check has three outcomes: the condition holds, it is known not to (the
 errors above), or it *cannot be determined*. The last is an indeterminate

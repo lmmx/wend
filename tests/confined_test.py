@@ -395,9 +395,11 @@ PLAIN = {"checked", "checked-w", "plain", "plain-w"}
         (("use", 2, "out", "link_dir"), PLAIN),
         (("use", 3, "out", "mount"), PLAIN),  # drop deletes through it
         # Before "remake", whose Absent the plan knows (drop ensured it): a
-        # check would refuse the link (lstat sees it); elided, it is written
-        # through. The identity model's first counterexample, in a pipeline.
-        (("step", 4, "out/mon.csv", "dangle"), {"plain-w"}),
+        # check would refuse the link (lstat sees it); elided, it was written
+        # through by plain-w. The identity model's first counterexample, in a
+        # pipeline. Creatable, which the plan does not elide, refuses the
+        # link itself since #111, and nothing escapes.
+        (("step", 4, "out/mon.csv", "dangle"), set()),
     ],
 )
 @pytest.mark.privileged

@@ -85,12 +85,15 @@ so each object opened is judged on its descriptor, which no later rename can red
 | another writer's move | ordinary operations | confined |
 |---|---|---|
 | a file swapped for a symlink out, after its check | read the outside file; checking everything did not help, since checks follow links | refused (`ELOOP`) |
-| a dangling link at a name whose absence the plan knows | wrote through it, only when the check was elided | refused |
+| a dangling link at a name whose absence the plan knows | before #111, wrote through it when the check was elided; since #111, `Creatable` refuses it | refused |
 | a stage directory replaced by a link, between check and use | wrote, read or deleted outside | refused |
 | a bind mount over a stage, between check and use | deleted outside files through it | refused (`EXDEV`) |
 | a stage relinked to another stage *inside* the root | deleted the source while the plan believed it exists; nothing escaped | refused |
 | **a file replaced by a hard link to an outside file** | read it | **first version: read and overwrote it**; now refused (two names) |
 | **a FIFO planted at an input's name** | blocked indefinitely | **first version: blocked**; now refused at once |
+
+> *Before #111:* the second row's ordinary operations "wrote through it, only when the
+> check was elided".
 
 **[Fact]** The last two rows are counterexamples to the first confined executor, found
 in testing the owner's caution that confinement is not identity. The hard link passed

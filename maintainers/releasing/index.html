@@ -6,7 +6,7 @@
       <meta charset="utf-8">
       <meta name="viewport" content="width=device-width,initial-scale=1">
       
-        <meta name="description" content="How a wend release is made: the Deploy Release workflow bumps the version and tags it, and CI publishes the package to PyPI with Trusted Publishing.">
+        <meta name="description" content="How a wend release is made: the Deploy Release workflow bumps the version, tags it and starts CI on the tag, and CI publishes the package to PyPI with Trusted Publishing.">
       
       
         <meta name="author" content="Louis Maddox">
@@ -1862,22 +1862,32 @@
 built package to <a href="https://pypi.org/project/wend/">PyPI</a>.</p>
 <h2 id="steps">Steps<a class="headerlink" href="#steps" title="Permanent link">&para;</a></h2>
 <ol>
-<li><strong>Run the "Deploy Release" workflow</strong> (<code>.github/workflows/deploy.yml</code>) from the
-   repository's Actions tab. It runs <code>just release</code> on master, which:</li>
-<li>bumps the patch version with <code>uv version --bump patch</code>;</li>
+<li><strong>Run the "Deploy Release" workflow</strong> (<code>.github/workflows/deploy.yml</code>) on master,
+   choosing its <code>bump</code>: <code>patch</code>, <code>minor</code>, <code>major</code> or <code>none</code>. It runs
+   <code>just release &lt;bump&gt;</code>, which:</li>
+<li>bumps the version with <code>uv version --frozen --bump &lt;bump&gt;</code>. <code>--frozen</code> leaves
+     <code>uv.lock</code> as it is, so the lock's own entry for wend can lag the version;</li>
 <li>commits it as <code>chore(release): bump 🐍 -&gt; v&lt;version&gt;</code>;</li>
 <li>tags the commit with the version;</li>
 <li>pushes the commit and the tag.</li>
-<li><strong>CI publishes it</strong> (<code>.github/workflows/CI.yml</code>). It builds the wheel and the sdist,
+</ol>
+<p><code>none</code> releases the version <code>pyproject.toml</code> already has, for a release commit whose
+   tag was never pushed. It makes no commit, and refuses if that version's tag exists or
+   PyPI has it.
+2. <strong>CI publishes it</strong> (<code>.github/workflows/CI.yml</code>). A tag pushed with a workflow's token
+   starts no workflow, so Deploy Release starts CI on the new tag itself
+   (<code>gh workflow run CI.yml --ref &lt;version&gt;</code>). CI builds the wheel and the sdist,
    generates artifact attestations, and publishes to PyPI with
    <a href="https://docs.pypi.org/trusted-publishers/">Trusted Publishing</a>, so no token is
-   stored in the repository. A tag pushed by a workflow starts no other workflow, so
-   <code>CI.yml</code> runs when "Deploy Release" completes, or when a tag is pushed from a
-   person's machine.</li>
-</ol>
-<p>For a minor or major release, run <code>just release minor</code> (or <code>major</code>) locally on master
-instead. It does the same steps and pushes from your machine. <code>just release --help</code> shows
-the options of <code>uv version --bump</code>.</p>
+   stored in the repository. Only a run on a tag publishes: CI started on a branch builds
+   and attests, and stops there.</p>
+<p>Deploy Release can be started from the repository's Actions tab, with
+<code>gh workflow run deploy.yml --ref master -f bump=minor</code>, or through the GitHub API. The
+API is how an agent session, such as a Claude Code cloud session, makes a release: it
+may push branches but not tags, and the workflow pushes the tag itself.</p>
+<p><code>just release &lt;bump&gt;</code> also runs locally on master. It pushes from your machine, and a tag
+pushed from your machine starts CI, which publishes. <code>just release --help</code> shows the
+options of <code>uv version --bump</code>.</p>
 <h2 id="after-a-release">After a release<a class="headerlink" href="#after-a-release" title="Permanent link">&para;</a></h2>
 <ul>
 <li>The documentation site is published from master on every push, so it already describes

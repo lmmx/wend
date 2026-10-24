@@ -28,8 +28,9 @@ from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, NamedTuple
+from typing import TYPE_CHECKING, Any, Final, Generic, Literal, NamedTuple, overload
 
+from ._kinds import B, L, Post, Pre
 from .errors import (
     CapabilityError,
     ContainmentError,
@@ -43,6 +44,7 @@ from .errors import (
 
 if TYPE_CHECKING:
     from ._expr import PathExpr
+    from ._params import Param
     from .schema import Entry
 
 
@@ -50,6 +52,7 @@ __all__ = [
     "Absent",
     "Condition",
     "Creatable",
+    "Declarations",
     "Dir",
     "Effect",
     "Exists",
@@ -62,8 +65,10 @@ __all__ = [
 ]
 
 
-class Condition:
-    """A property of a path, checked when the path is realised."""
+class Condition(Generic[Pre, Post]):  # noqa: UP046 (variance is declared, not inferred)
+    """A property of a path, checked when the path is realised. For a type
+    checker it adds its atom ``Pre`` to what an expression requires, and
+    ``Post`` to what it ensures (the same atom, for every condition)."""
 
     __slots__ = ("name",)
 
@@ -104,39 +109,46 @@ class Condition:
         return condition_schema(self, source, handler)
 
 
-Exists = Condition("Exists")
+class FileCondition(Condition[Literal["file"], Literal["file"]]):
+    """``File``: adds its atom and, for a type checker, the kind `IsFile`, below
+    which nothing can be joined."""
+
+    __slots__ = ()
+
+
+Exists: Final[Condition[Literal["exists"], Literal["exists"]]] = Condition("Exists")
 """Something exists at the path (symlinks are followed)."""
 
-Absent = Condition("Absent")
+Absent: Final[Condition[Literal["absent"], Literal["absent"]]] = Condition("Absent")
 """Nothing occupies the path's name, not even a broken symlink."""
 
-File = Condition("File")
+File: Final[FileCondition] = FileCondition("File")
 """The path names a regular file: if it exists it is one, and nothing can be
 joined below it. Add ``Exists`` to require that it exists."""
 
-Dir = Condition("Dir")
+Dir: Final[Condition[Literal["dir"], Literal["dir"]]] = Condition("Dir")
 """The path names a directory: if it exists it is one."""
 
-Readable = Condition("Readable")
+Readable: Final[Condition[Literal["read"], Literal["read"]]] = Condition("Readable")
 """The path exists and the process may read it."""
 
-Writable = Condition("Writable")
+Writable: Final[Condition[Literal["write"], Literal["write"]]] = Condition("Writable")
 """The process may write the path: it exists and is writable, or it is
 `Creatable`."""
 
-Creatable = Condition("Creatable")
+Creatable: Final[Condition[Literal["create"], Literal["create"]]] = Condition(
+    "Creatable"
+)
 """The path exists, or could be created now: no broken symlink occupies its
 name or a name above it, and its nearest existing ancestor is a directory
 the process may write to and search."""
 
-Listable = Condition("Listable")
+Listable: Final[Condition[Literal["list"], Literal["list"]]] = Condition("Listable")
 """The path is an existing directory the process may list."""
 
 _SIMPLE = (Exists, Absent, File, Dir, Readable, Writable, Creatable, Listable)
 
 # The effect each capability declares, for `Step.effects`.
-_EFFECTS = {Readable: "read", Writable: "write", Creatable: "create", Listable: "list"}
-
 # Pairs that cannot hold together in one phase.
 _CONTRADICTIONS = (
     (Exists, Absent),
@@ -148,17 +160,27 @@ _CONTRADICTIONS = (
 
 
 @dataclass(frozen=True)
-class Under(Condition):
+class Under(Condition["Under[B] | Under[str]", "Under[B] | Under[str]"], Generic[B]):  # noqa: UP046
     """The path stays under ``base``: lexically when it is rendered, and after
     resolving symlinks when it is checked.
 
     ``base`` is rendered with the same bindings as the path, so its parameters
     must be among the path's. Lexically, the path must start with the base's
     components and have no ``..`` after them.
+
+    For a type checker, a literal string base gives the atom its identity
+    (``Under[Literal["/srv/static"]]``); every base, literal or not, also
+    declares ``Under[str]``, "under its own base".
     """
 
     base: PathExpr
 
+    @overload
+    def __init__(self: Under[L], base: L) -> None: ...
+    @overload
+    def __init__(
+        self: Under[str], base: str | os.PathLike[str] | Param | PathExpr[Any, Any, Any]
+    ) -> None: ...
     def __init__(self, base: Any) -> None:
         from ._expr import _coerce
 
@@ -186,6 +208,77 @@ class Conditions(NamedTuple):
         return tuple(
             c.base for c in (*self.requires, *self.ensures) if isinstance(c, Under)
         )
+
+
+# The atom each condition other than ``Under`` declares (§10.1).
+ATOMS: dict[Condition, str] = {
+    Exists: "exists",
+    Absent: "absent",
+    File: "file",
+    Dir: "dir",
+    Readable: "read",
+    Writable: "write",
+    Creatable: "create",
+    Listable: "list",
+}
+_PERMISSIONS = ("read", "write", "create", "list")
+
+
+class Declarations(NamedTuple):
+    """What an expression declares (docs/SEMANTICS.md §10.1): the atoms it
+    requires before it is used, the atoms it ensures after it is produced,
+    and the bases it is declared `Under`.
+
+    A declaration is an obligation, not a fact about the filesystem. Only
+    containment holds of every path the expression renders (`render` checks
+    it); every other atom holds when a check finds it, at that moment.
+    """
+
+    requires: frozenset[str]
+    ensures: frozenset[str]
+    under: tuple[PathExpr, ...]
+
+    @property
+    def verbs(self) -> frozenset[str]:
+        """The effects declared (what `Step.effects` reports): each permission
+        in either phase, ``create`` for ``exists`` ensured but not required,
+        and ``delete`` for ``absent`` ensured but not required."""
+        pre, post = self.requires, self.ensures
+        out = {v for v in _PERMISSIONS if v in pre or v in post}
+        if "exists" in post and "exists" not in pre:
+            out.add("create")
+        if "absent" in post and "absent" not in pre:
+            out.add("delete")
+        return frozenset(out)
+
+    def __and__(self, other: object) -> Declarations:
+        """What both declare: the atoms of each phase in both, and the bases
+        both are declared under."""
+        if not isinstance(other, Declarations):
+            return NotImplemented
+        return Declarations(
+            self.requires & other.requires,
+            self.ensures & other.ensures,
+            tuple(b for b in self.under if b in other.under),
+        )
+
+
+NONE = Declarations(frozenset(), frozenset(), ())
+
+
+def declarations(conds: Conditions | None) -> Declarations:
+    """The `Declarations` of an expression carrying ``conds``."""
+    if conds is None:
+        return NONE
+    under: list[PathExpr] = []
+    for c in (*conds.requires, *conds.ensures):
+        if isinstance(c, Under) and c.base not in under:
+            under.append(c.base)
+    return Declarations(
+        frozenset(ATOMS[c] for c in conds.requires if c in ATOMS),
+        frozenset(ATOMS[c] for c in conds.ensures if c in ATOMS),
+        tuple(under),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -621,18 +714,6 @@ class Effect(NamedTuple):
         return f"<{self.name}: {verbs} {self.expr.pattern}>"
 
 
-def _verbs(conds: Conditions | None) -> frozenset[str]:
-    if conds is None:
-        return frozenset()
-    pre, post = conds.requires, conds.ensures
-    verbs = {_EFFECTS[c] for c in (*pre, *post) if c in _EFFECTS}
-    if Exists in post and Exists not in pre:
-        verbs.add("create")
-    if Absent in post and Absent not in pre:
-        verbs.add("delete")
-    return frozenset(verbs)
-
-
 class Step:
     """The paths one step of a pipeline uses, with their conditions.
 
@@ -703,4 +784,4 @@ class Step:
         must exist afterwards but need not before, and ``delete`` for one that
         must be absent afterwards but need not be before. Paths declaring none
         are listed with no verbs. This reports declarations, not behaviour."""
-        return [Effect(k, e, _verbs(e.conditions)) for k, e in self.paths.items()]
+        return [Effect(k, e, e.declares.verbs) for k, e in self.paths.items()]

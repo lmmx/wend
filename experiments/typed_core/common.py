@@ -1,0 +1,63 @@
+"""Declarations shared by positive.py and negative.py: a step whose input is
+held and whose output is checked, and functions that each demand one of the
+three guarantees."""
+
+from typing import Literal
+
+from wend import (
+    Absent,
+    Checked,
+    Confirmed,
+    Creatable,
+    Exists,
+    File,
+    IsFile,
+    P,
+    Param,
+    Readable,
+    T,
+)
+from wend._experimental.events import Held, Holds, Makes, Sealed, Spec, Uses
+from wend._experimental.publish import Draft
+
+
+root, name = Param("root"), Param("name")
+raw = (P(root) / "raw" / T(t"{name}.csv")).requires(File, Exists, Readable)
+out = (
+    (P(root) / "out" / T(t"{name}.parquet"))
+    .requires(Absent, Creatable)
+    .ensures(File, Exists)
+)
+
+
+class Convert(Spec):
+    src = Holds(raw)
+    dst = Uses(out)
+
+
+class Produce(Spec):
+    src = Holds(raw)
+    dst = Makes(out)
+
+
+# It was true: evidence of a step's entry (what it requires) or exit (what
+# it ensures).
+def was_readable(p: Checked[Literal["read"], IsFile]) -> None: ...
+def was_present(p: Checked[Literal["exists"], IsFile]) -> None: ...
+def was_made(p: Confirmed[Literal["exists"], IsFile]) -> None: ...
+def stayed_readable(p: Confirmed[Literal["read"]]) -> None: ...
+
+
+# Which object: an open file, held for reading.
+def reads_object(h: Held[Literal["read"], IsFile]) -> bytes:
+    return h.read()
+
+
+# It remains true: contents no holder can change.
+def trusts(s: Sealed) -> bytes:
+    return s.read()
+
+
+# A write capability for an output no one can see yet.
+def drafts(d: Draft) -> None:
+    d.write(b"")

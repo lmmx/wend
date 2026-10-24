@@ -13,6 +13,7 @@ from ._bindings import bindings
 from ._compile import CompiledSet, compile_many
 from ._expr import P, PathExpr, T, Text
 from ._fs import glob
+from ._kinds import Checked, Confirmed, IsFile, JoinBelowFile, NotFile, Unspecified
 from ._lens import Lens, NoMatchError
 from ._match import Match
 from ._params import Absolute, AnyPath, Kind, Param, Segment, SubPath
@@ -59,9 +60,11 @@ __all__ = [
     "AmbiguousMatchError",
     "AnyPath",
     "CapabilityError",
+    "Checked",
     "CompiledSet",
     "Condition",
     "ConditionError",
+    "Confirmed",
     "ContainmentError",
     "Creatable",
     "Dir",
@@ -69,6 +72,8 @@ __all__ = [
     "File",
     "IndeterminateError",
     "InvalidBindingError",
+    "IsFile",
+    "JoinBelowFile",
     "Kind",
     "Lens",
     "Listable",
@@ -77,6 +82,7 @@ __all__ = [
     "MissingPathError",
     "NoAlternativeError",
     "NoMatchError",
+    "NotFile",
     "NotInvertibleError",
     "NotStaticError",
     "P",
@@ -95,6 +101,7 @@ __all__ = [
     "Text",
     "U",
     "Under",
+    "Unspecified",
     "WendError",
     "Writable",
     "WrongKindError",

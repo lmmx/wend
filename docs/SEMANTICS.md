@@ -33,6 +33,8 @@ Decisions this version adopts, provisional until ratification:
 contract. This version adds parameter defaults (§3.1), connectivity (§9),
 conditions (§10), unions and queries (§11), schemas (§12) and lineage (§13).
 A later version is expected to extend the contract for Windows path flavours.
+§14 describes the experimental run model of `wend._experimental` on the research
+branches. It is not part of the contract.
 
 ## 1. Terms
 
@@ -364,6 +366,8 @@ wend's obligations, for every expression `e` and environment `env`:
 | `rebase(old, new)` equals building the expression afresh with `new` in place of `old` (§9) | **tested** (Hypothesis, random terms and substitutions) |
 | a join equals its `base` joined with its `base_rel` | **tested** |
 | a path rendered with `Under(b)` declared is contained in `b`, and every contained rendering is returned unchanged (§10) | **by construction** (each render checks the rendered strings) and **tested** (Hypothesis, random terms and bases, interpreted and compiled) |
+| `declares` names the declared conditions, follows `bind`, `rebase` and the other operations as §10 says, and a union declares what all its alternatives declare (§10.1) | **tested** (Hypothesis, random terms, declarations and operations) |
+| `Step.effects` is `declares.verbs` (§10.1) | **by construction** |
 | a union's readings of a path are exactly its alternatives' verified readings, and `match` reports one, none, or ambiguity accordingly (§11) | **by construction** (readings are the alternatives' `match_all`) and **tested** (Hypothesis, random pairs of terms) |
 | an inferred schema, declared with `from_inferred` or written out with `source()`, validates the tree it was inferred from (§12) | **tested** (Hypothesis, random trees with and without empty directories; real trees in the journal) |
 | matching completeness, outside the limits of §7 | **tested** (Hypothesis round trips; exhaustive enumeration over small domains, which also checks that the limits return only verified bindings) |
@@ -533,6 +537,131 @@ Checks describe the filesystem at the moment they run. They are not atomic
 with any later use of the path, and `access` reports the real user's
 permissions. Like `glob`'s symlink policy, they catch mistakes and state
 intent; they are not a sandbox.
+
+### 10.1 Declarations
+
+`e.declares` names what an expression declares as a value, `Declarations`, with
+three parts:
+
+- `requires`: the *atoms* declared by `requires`;
+- `ensures`: the atoms declared by `ensures`;
+- `under`: the bases of the `Under` conditions of either phase, in declaration
+  order, each once.
+
+Each condition other than `Under` declares one atom:
+
+| condition | `Exists` | `Absent` | `File` | `Dir` | `Readable` | `Writable` | `Creatable` | `Listable` |
+|---|---|---|---|---|---|---|---|---|
+| atom | `exists` | `absent` | `file` | `dir` | `read` | `write` | `create` | `list` |
+
+A declaration is an obligation that the expression states. It is not a fact about
+the filesystem. Atoms are grouped by what makes them true, and so by when they hold:
+
+| group | atoms | made true by | holds |
+|---|---|---|---|
+| containment, lexical | `under` | `render`, which checks every rendered path (§10) | for every path the expression renders |
+| containment, physical | `under` | the filesystem: `realpath(p)` at or below `realpath(b)` (§10) | when a check finds it, like a state |
+| state | `exists`, `absent`, `file`, `dir` | the filesystem | when a check finds it: `check` for `requires`, `confirm` for `ensures`, a `Step` on entry and exit |
+| permission | `read`, `write`, `create`, `list` | the filesystem's permissions for the real user | when a check finds it |
+
+Only the lexical half of containment is a fact about every rendered path. The
+physical half can be ended by a symlink made after the check, like any checked
+state.
+
+A checked state or permission is true at the moment of the check and no later.
+The contract does not say how long it lasts: any effect on the path may end it,
+whether by a later step of the same program or by another process. Checking a
+declaration certifies it once. Nothing in wend certifies that a checked fact still
+holds.
+
+`declares` follows the conditions (§10):
+
+- `requires` and `ensures` add their atoms and bases;
+- `bind` and `rebase` keep the atoms, and pass each base through the same binding
+  or rebasing (a base not built from a rebasing's `old` is kept);
+- every other operation's result declares nothing.
+
+A union declares what every alternative declares (`&` of their declarations: the
+atoms of each phase common to all, and the bases common to all). A path the union
+describes comes from one alternative, so only the common declarations hold of it.
+A union's effects are not those of its declaration: the verbs below are not
+monotone, so the verbs of `&` can name an effect no alternative has (an
+alternative that reads and ensures `exists`, and one that creates, have a meet
+whose verbs are `create`). `Step` does not accept unions.
+
+The effects of §10's `Step` are a function of the declaration (`Declarations.verbs`):
+
+- each permission atom of either phase is a verb of the same name;
+- `create` is also a verb when `exists` is ensured but not required;
+- `delete` is a verb when `absent` is ensured but not required.
+
+Declaring more never removes a permission verb, but it can remove `create` or
+`delete`, because those two depend on an atom being *absent* from `requires`. This
+matters to any representation that orders declarations by inclusion. Such an
+ordering can certify every property that persists when atoms are added, and only
+those.
+
+### 10.2 Evidence
+
+`check` and `confirm` return the path they checked: a path, which claims
+nothing about it. `checked` and `confirmed` perform the same checks and return
+*evidence* instead. Precisely, `e.checked(env)`:
+
+1. renders `e` with `env`, and fails with a containment error unless each
+   `Under` base of `e.requires` contains it lexically (§10);
+2. checks each condition of `e.requires` against the filesystem (`fs=`, or the
+   local disk), containment first, then state, then permissions, and raises
+   the first that fails, as `check` does. Locally, the state atoms (`exists`,
+   `absent`, `file`, `dir`) are read from one `stat` and one `lstat` of the
+   rendered path; each permission atom is its own `access` call, and physical
+   containment its own resolution;
+3. returns a `Checked` recording the rendered path, the atoms of `e.requires`
+   and the rendered `Under` bases it was found under (lexically, and after
+   resolving symlinks).
+
+`e.confirmed(env)` is the same for `e.ensures`, returning a `Confirmed`. There
+is no evidence of a check that failed: either call raises instead.
+
+What the evidence states, and what it does not:
+
+- **Which conditions.** Exactly those of one phase: an entry check
+  (`checked`) certifies what the expression requires and none of what it
+  ensures; a confirmation (`confirmed`) the reverse.
+- **Which path.** The rendered path, a name. Not an object: the state atoms,
+  each permission and containment are separate lookups of the name, so they
+  may have been found true of different objects if another process changed
+  the name between them.
+- **Which moment.** Each condition held at some instant during the call, not
+  necessarily all at the same instant. Outside a step the evidence has no
+  epoch; a step (`Run`, research) stamps its own.
+- **Containment, relative to the base as it is.** Physical containment
+  compares `realpath(p)` with `realpath(b)`, both at that moment. If the base
+  itself is redirected (replaced by a symlink), what lies below it moves with
+  it and containment still holds: `Under` confines a path to its base, not
+  the base to where it was. Fixing the base needs it held (a directory
+  opened once, and every path resolved beneath it).
+- **After.** Nothing. Evidence is a record of the past: a later change to the
+  filesystem does not update it, and nothing about it says that the conditions
+  still hold. Whether they are still believed is knowledge (§10.1, and the
+  research analyses), conditional on what else may have written.
+- **One subject.** Evidence is not a path and has none of a path's
+  operations. `.path` gives the path it is about, as an ordinary path;
+  anything derived from that path carries no evidence. `os.fspath` gives the
+  same path, unchanged, and nothing else does. Evidence cannot be altered
+  once made. It can be constructed directly, as any value can be cast; such a
+  value certifies nothing.
+
+The rule these state: *evidence does not survive an operation that changes its
+subject*, whether a different path, a later moment or the other phase.
+
+For a type checker, `PathExpr` has three parameters, a Hoare triple's
+{C} e {Q}: `C` what it requires, `K` whether it is declared a File, `Q` what
+it ensures. `checked` returns `Checked[C, K]` and `confirmed` returns
+`Confirmed[Q, K]`. The operations carry them as §10 and §10.1 carry the
+declarations themselves: `requires` adds to `C` and `ensures` to `Q`; `bind`,
+`tag` and `P` keep all three; `rebase` keeps each phase's `Under` only as
+`Under[str]`, since it moves the bases; every other operation's result, a
+union included, declares nothing.
 
 ## 11. Unions and queries
 
@@ -704,3 +833,217 @@ declares it reads.
 A key is bound to an ordinary parameter, so `render` stays pure and `match`
 reads the key back. Whether a keyed path still names its inputs is a check
 done now: recompute the key and compare.
+
+## 14. Runs (experimental)
+
+This section states the run model of `wend._experimental` as it stands. Nothing in it
+is public API, and nothing in it is promised beyond what each statement says. The
+journals hold how it was found (`docs/journal/2026-10-22-research-index.md`); this is the
+result, stated once.
+
+Each guarantee below is one of three kinds:
+- **by construction**: it follows from the mechanism, on Linux, for every other process;
+- **under named assumptions**: it holds if they do, and the assumptions are listed;
+- **detected, not prevented**: the run notices the violation and refuses or reports it.
+
+The test that pins each statement is named with it.
+
+### 14.1 A run and its steps
+
+A `Run(root)` executes steps confined to `root`. Every path a step names is resolved by
+`openat2` beneath the root, with no symlinks and no mount crossings
+(`RESOLVE_BENEATH | RESOLVE_NO_SYMLINKS | RESOLVE_NO_XDEV`).
+
+A step is a `Spec` whose ports are expressions (§10), each one of four kinds:
+- `Uses`: checked only;
+- `Holds`: an input, held open for reading;
+- `Makes`: one output, written as a draft and published on exit;
+- `Commits`: a version of a store.
+
+`Run.enter(spec, env)` does the following, in order:
+1. Renders every port with `env`, and checks every port's `requires` beneath the root.
+   A failure refuses the step, and nothing is held, written or learned.
+2. Opens every `Holds` input. The open is non-blocking and the object is judged on its
+   descriptor, not by the earlier check: it must be a regular file with one name
+   (`events_test::test_a_swap_between_the_check_and_the_hold_is_judged_at_the_hold`).
+   With `lease=True`, it then takes read leases on all of them together (§14.5).
+3. Observes each held input (its identity and a digest of its contents), and refuses an
+   input that this run published unless it is still that object with those contents.
+4. Gives the body each port: evidence (§10.2), a `Held` input, a `Draft`, or a
+   `VersionDraft`. A `Makes` output's missing directories, and a `Commits` port's store
+   directory, are made here. They are visible at once, and stay if the step fails.
+5. On exit, it forgets what the step's declared mutations may change, and refuses the
+   step (`Inconsistent`, nothing published) in either of two cases:
+   - a read of a held input returned bytes other than those observed at entry;
+   - with `lease=True`, the leases are broken.
+6. Publishes each draft (policy `create`, durable) and commits each version, then
+   checks every port's `ensures` and records it as `Confirmed` evidence. Each output is
+   published whole, one after another, not all together: a failure part-way leaves the
+   earlier outputs published. A failed postcondition raises after publication, and the
+   outputs stay published. A `Commits` port publishes several members together.
+
+Confinement is **by construction**. A step's paths and its held objects never reach
+outside the root, whatever another writer does to names inside it. It is a property of
+`Confined`, through which `Run`, its drafts and its store resolve every path. It is
+tested on #112's executor, which uses the same `Confined`
+(`confined_test::test_a_confined_run_never_reaches_outside_the_root`, the moves
+table), and on `Run` under ten scheduled moves
+(`synthesis_test::test_the_pipeline_under_interference`).
+Confinement is of resolution and of objects. It is not of contents or of time: another
+process may change a held object's contents, and names change between steps.
+
+### 14.2 What the run knows
+
+`Run.known(event)` says whether no step of this run has invalidated `event`'s atoms
+since it was checked. It is knowledge *under the closed world*: true if no process
+outside the run writes below the root. It is not a statement about the filesystem now
+(`events_test::test_known_is_blind_to_another_writer`).
+
+Facts are keyed by rendered path. That is sound when distinct strings name distinct
+entries, which the aliasing entry's uniqueness lemma gives under its conditions
+(aliasing §5). Within `Run` those conditions hold:
+- rendering gives strings with no `.` or empty component (§3, §4);
+- rendering can give a `..` component (§4), and `Run` refuses a path with one, by
+  lexical containment;
+- resolution follows no symlink and crosses no mount.
+
+The lemma's remaining assumption belongs to the filesystem: different names in one
+directory are different entries. Case folding breaks it. So `known()` is sound, under
+the closed world, on case-sensitive filesystems. Hard links need not be excluded: a
+mutation through one name changes no atom of another (aliasing §5).
+
+### 14.3 Held inputs and sealed copies
+
+A `Held` input is the object its descriptor refers to, `(device, inode)`, judged on
+that descriptor at open: confined, a regular file, one name.
+- **Durable while it is held:** which object it is, its kind, its access mode.
+- **Not durable:** its contents, size and names.
+
+A `Sealed` copy is a memfd with every write, shrink and grow sealed. It is **by
+construction** immutable.
+
+Whether it is a version the input ever had is a separate question.
+- **With a lease** it is, **under the assumptions** of §14.5.
+- **Without one** it need not be. A concurrent writer can tear it: 244 of 300 reads of
+  a 64-page file mixed two versions (synthesis §4.3).
+  `leases_test::test_a_leased_copy_is_one_version_and_an_unleased_one_need_not_be`
+  repeats it as the control of the leased case.
+
+What the step used is recorded: `Held.used` holds a digest of every `read()`. At exit
+the run refuses a step whose reads differ from the entry observation. **Detected.** A
+body that reads the descriptor directly is not recorded.
+
+### 14.4 Drafts and publication
+
+A `Draft` is a new object with no name: `O_TMPFILE` in a directory held beneath the
+root. `publish(name, policy)` changes the target name in one system call. For
+`replace` and `exchange` the draft is first linked under a hidden fresh name
+(`.<name>.<random>`), visible in a listing until the call.
+- **`create`** (`linkat`) never replaces a name. **By construction**
+  (`publish_test::test_create_never_clobbers_where_checking_first_does`).
+- **`replace`** links under a fresh name and renames over the target. Readers see the
+  old object or the new, whole. **By construction.**
+- **`exchange` with `expect`** detects another writer's publication and undoes its own
+  swap. It is not a compare-and-swap:
+  - a reader can see the withdrawn version;
+  - with three or more writers it can lose an update and report the survivor as the
+    failure (`synthesis_test::test_exchange_and_validate_over_every_schedule`).
+
+A draft's file is synced, then published, then its directory synced (`durable=True`).
+A crash then leaves the new version, in the one crash model tested.
+- **The model.** ext4 on a loop device. The image is copied unsynced while it is
+  mounted, and its journal is replayed. That is not a power failure: a real device can
+  reorder or lose writes it acknowledged.
+- **Other syncs.** With only the directory synced, a crash *can* leave the name with 0
+  bytes. On ext4, `auto_da_alloc` hides this when the draft replaces a file.
+- **What the tests assert** (`durability_test`): the full protocol's outcome strictly;
+  every other protocol's outcome as one its syncs permit; and each counterexample as
+  possible (seen at least once in five attempts). An absent sync permits loss; it does
+  not promise it.
+
+**Under assumptions:** that crash model.
+
+**A draft is nameless, not private.** Every process that passes `ptrace`'s read check
+on the writer can reach it through `/proc/<pid>/fd`: the writer's uid while it is
+dumpable, and root. Each such process can read it, write into it and name it
+(`drafts_test`). Taking its descriptor with `pidfd_getfd` needs `ptrace` attach, which
+Yama can narrow. Without Yama, or with `ptrace_scope` 0, the same processes can. With
+`ptrace_scope` 1 the writer's uid can only from an ancestor of the writer, and root
+still can (measured on CI's kernel; the tests expect what the scope they find
+implies). Other unprivileged uids can do none of these.
+
+### 14.5 Leases
+
+`Leases(fds)` takes read leases on open files, all or none.
+- A helper process takes them and exits. The leases stay on the descriptions the host
+  holds, owned by no living process, so no break signals the host
+  (`leases_test::test_no_signal_of_a_break_reaches_the_host`).
+- It refuses filesystems not in `LEASABLE` (ext2/3/4, tmpfs), the ones tested. From
+  Linux 7.0 the kernel itself refuses leases on a filesystem that does not opt in;
+  procfs does not, ext4 and tmpfs do. Before 7.0 the kernel leases `/proc` files,
+  whose contents change with no writer
+  (`leases_test::test_a_proc_file_is_refused_a_lease_or_changes_under_it`).
+- It records each file's size.
+- `unbroken()` holds when every lease is still a read lease and every size is unchanged.
+
+**Proposition L, under assumptions** (leases §4). Suppose read leases on read-only
+descriptions of files in `LEASABLE` were all granted by `t₀`, and each size was recorded
+at `t₁ ≥ t₀`. Suppose that at `t₂ ≥ t₁` every lease still reads as a read lease and every
+size is the one recorded: `unbroken()` holds. Then every file's contents were constant
+on `[t₁, t₂]`, and the copies are the state of all the files at the one instant `t₁`.
+The assumptions:
+- **L1, grant:** a read lease is granted only with no writer.
+- **L2, break:** an open for writing, and `truncate(2)`, break it.
+- **L3, the ways contents change:** contents change only through a writable
+  description, by `truncate(2)`, or by an `open` with `O_TRUNC`. An `O_RDONLY` open with
+  `O_TRUNC` empties a file without breaking its lease, and the recorded size detects it.
+  Each call listed is tested; that the list is complete is a conjecture (leases §4).
+- **L4:** nothing changes the storage beneath the filesystem.
+- **L5:** the holder takes no lease again in between.
+
+Leases need the files' owner or `CAP_LEASE`. They exclude writers; they do not ask for
+their cooperation. A writer is delayed until the leases are given up, or for at most
+`lease-break-time`.
+
+### 14.6 Versions
+
+A `Store` holds versions `v000001`, `v000002`, … of a set of outputs.
+- **Claiming.** A version is claimed by renaming a filled hidden directory with
+  `RENAME_NOREPLACE`. **By construction**, each version name holds one directory, and a
+  claim either installs it or fails.
+- **What the claim relies on.** That the directory claimed is the writer's, complete and
+  unwritten, rests on every process that may rename in the store's directory following
+  the store protocol. Those are the writer's uid, root, and other uids with write
+  permission on a directory that is not sticky. The writer holds its hidden directory
+  by descriptor, and checks its identity before and after the claim. A move, a
+  replacement or an early claim by another process is **detected** (`Inconsistent`, no
+  `Version` returned), never prevented (`drafts_test`).
+- **Privacy while filled.** The hidden directory is private (mode 0700) from other
+  users. Its name is listed to anyone who can read the store's directory.
+- **Pinned reads.** A `Pinned` reader holds the version's directory with a shared
+  `flock`, and checks every member against the manifest. Given the digest the commit
+  returned, it never returns bytes the version did not commit. **Under assumptions:**
+  SHA-256's collision resistance; and that the reader has the writer's digest, not
+  merely the `MANIFEST` on disk.
+- **Immutable members.** With `CAP_LINUX_IMMUTABLE`, members are made immutable. On
+  ext4 they refuse every write tried
+  (`synthesis_test::test_immutable_members_refuse_every_writer_tried`). That includes
+  a descriptor opened for writing before the flag, and a shared mapping made before it,
+  its page clean or dirty: setting the flag writes the pages back and write-protects
+  them, and ext4 refuses the next write fault with `SIGBUS`. A member could still be
+  changed between being drafted and being flagged, which the manifest detects. An
+  ordinary user cannot set the flag. For them the manifest only detects a change.
+
+### 14.7 What needs privilege
+
+| guarantee | an ordinary user | needs |
+|---|---|---|
+| confinement of paths and objects | yes | nothing |
+| drafts private from other uids | yes | nothing |
+| drafts private from the writer's own uid | only by running non-dumpable (process-wide) | nothing more |
+| a leased, single-version copy | for files the user owns | `CAP_LEASE` for others' |
+| a committed member that cannot change | no; detection only | `CAP_LINUX_IMMUTABLE` |
+| the crash model's evidence | no (loop devices, mounts) | root, in tests |
+
+The tests that need privilege are marked `privileged`. CI runs them as root, in a job
+where one that skips fails (`tests/conftest.py`).

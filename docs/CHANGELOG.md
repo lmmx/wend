@@ -1,0 +1,92 @@
+# Changelog
+
+Each release's notes, newest first. A release's GitHub Release takes its notes from here,
+followed by the pull requests it includes, which GitHub lists. Write the next release's
+notes under "Unreleased": `just release` titles them with the new version in the release
+commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
+
+## Unreleased
+
+## 0.3.0
+
+wend 0.3.0 adds typed declarations and evidence to `PathExpr`, and makes `Creatable` refuse
+a path that a broken symlink blocks. The research behind them lands in the repository as
+experimental code and journals, and is not in the wheel.
+
+```sh
+pip install -U wend   # Python 3.14+
+```
+
+Documentation: https://lmmx.github.io/wend/
+
+### Upgrading from 0.2
+
+[MIGRATING.md](https://github.com/lmmx/wend/blob/master/docs/MIGRATING.md#from-02-to-03)
+lists the changes in behaviour. In short:
+
+- **`Creatable`, and `Writable` for a missing path, fail when a broken symlink occupies the
+  path's name or a name above it** (#111). Before, the check passed, and then no way of
+  creating the path worked: `mkdir -p` failed with `EEXIST`, and `open(path, "w")` wrote
+  through the link to wherever it pointed. The check now raises a `CapabilityError` saying
+  the name "is a broken symlink". A symlink loop stays indeterminate.
+- **`PathExpr` is generic** (#113). Its type parameters have defaults that accept any
+  expression, so an unparameterised `PathExpr` annotation means what it did, and `check()`
+  and `confirm()` still return a plain `Path`.
+- **A `Param`'s repr and its `choices` error** show the members as one set,
+  `{'test', 'train'}`, instead of a list of quoted reprs (#102).
+
+### New
+
+- **What an expression declares** (#107). `PathExpr.declares` and `PathUnion.declares`
+  return a `Declarations`: the atoms the expression requires, the atoms it ensures, and the
+  bases it is declared `Under`. `Step.effects` is now computed from it, with unchanged
+  output. [SEMANTICS.md §10.1](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md)
+  states that a declaration is an obligation the runtime checks, not a fact about the
+  filesystem.
+- **Typed declarations** (#113). `PathExpr` is generic, `PathExpr[C, K, Q]`:
+  - `C` is what `requires` declares and `Q` what `ensures` declares, as literal atoms such
+    as `Literal["read", "exists"]` and `Under` markers;
+  - `K` is `IsFile` once `File` is declared, and `Unspecified` otherwise.
+
+  A function can ask for an expression that declares what it needs, and Pyright and ty both
+  reject one that does not, with no plugin. Joining below a declared `File` gives
+  `JoinBelowFile`, which is not a path. One known gap: ty 0.0.90 can reject an inline
+  declaration of several atoms passed where a multi-atom type is expected. Binding the
+  expression to a name first avoids it.
+- **Evidence** (#113). `checked()` and `confirmed()` run the same checks as `check()` and
+  `confirm()`, and return evidence instead of the path: `Checked[C, K]` and
+  `Confirmed[Q, K]`, which record the rendered path and the atoms found true of it at that
+  moment.
+  - Evidence is not a path: `.path` holds the path, and nothing derived from it inherits
+    the evidence.
+  - A later change to the filesystem leaves it as it was.
+  - [SEMANTICS.md §10.2](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md) says
+    what it establishes, and what it does not.
+- New names: `Checked`, `Confirmed`, `IsFile`, `NotFile`, `Unspecified`, `JoinBelowFile`.
+
+### Research, in the repository but not the wheel
+
+The research programme from path algebra to typed knowledge of program state is in
+`wend._experimental`, with its tests and journals; the
+[research index](https://github.com/lmmx/wend/blob/master/docs/journal/2026-10-22-research-index.md)
+orders them. It covers:
+- what a program knows about a path before and after each step (#108, #109);
+- when two strings name one file, and confinement with `openat2` (#110, #112);
+- freshness, atomic publication and consistency (#114);
+- a synthesis with read leases, an experimental run model (SEMANTICS.md §14), a privileged
+  CI job and a mutation harness (#115).
+
+`wend._experimental` ships in the sdist but not the wheel, and none of it is a supported
+API.
+
+### Releasing
+
+A release is made in CI from start to finish. "Deploy Release" bumps and tags the version
+and CI publishes it to PyPI (#116), then the GitHub Release workflow makes its GitHub
+Release from these notes.
+
+## 0.2.0
+
+The first release of the rebuilt library: see its
+[GitHub Release](https://github.com/lmmx/wend/releases/tag/0.2.0) and
+[MIGRATING.md](https://github.com/lmmx/wend/blob/master/docs/MIGRATING.md#from-01x-to-02).

@@ -1,0 +1,131 @@
+name: GitHub Release
+
+# A release's GitHub Release, made on its existing tag once PyPI has its version and its
+# tests have passed. CI calls this after publishing. Dispatch it to make the release of a
+# tag that has none, without publishing again (dry_run checks everything and shows the
+# notes, and makes nothing). A tag that has a GitHub Release keeps it as it is, so running
+# this again makes no second release and changes no notes.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: "The release's tag, which is its version"
+        type: string
+        required: true
+      dry_run:
+        description: "Check everything and show the notes, but make no release"
+        type: boolean
+        default: false
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "The release's tag, which is its version"
+        type: string
+        required: true
+      dry_run:
+        description: "Check everything and show the notes, but make no release"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  github-release:
+    name: Make the GitHub Release
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: github-release-${{ inputs.tag }}
+    permissions:
+      # To read the tests' runs; to generate the notes and make the release
+      actions: read
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ inputs.tag }}
+
+    steps:
+      # The notes come from docs/CHANGELOG.md as this run's commit has it: the tag's on a
+      # release, master's when dispatched there
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check that the tag exists and names its commit's version
+        id: tag
+        run: |
+          sha=$(git rev-parse --verify --quiet "refs/tags/$TAG^{commit}") || {
+            echo "::error::There is no tag $TAG"
+            exit 1
+          }
+          version=$(git show "$sha:pyproject.toml" | python3 -c 'import sys, tomllib; print(tomllib.load(sys.stdin.buffer)["project"]["version"])')
+          if [ "$version" != "$TAG" ]; then
+            echo "::error::The tag $TAG is on a commit whose version is $version"
+            exit 1
+          fi
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+
+      - name: Leave an existing release as it is
+        id: existing
+        run: |
+          if url=$(gh release view "$TAG" --json url --jq .url 2>/dev/null); then
+            echo "$TAG already has a GitHub Release, left as it is: $url" | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Wait for PyPI to have the version
+        if: steps.existing.outputs.exists == 'false'
+        run: |
+          for _ in $(seq 40); do
+            curl -sfo /dev/null "https://pypi.org/pypi/wend/$TAG/json" && exit 0
+            sleep 15
+          done
+          echo "::error::PyPI has no wend $TAG"
+          exit 1
+
+      # Deploy Release starts the tests on the tag; a tag pushed from a person's machine
+      # was tested when its commit reached master
+      - name: Wait for the tagged commit's tests to pass
+        if: steps.existing.outputs.exists == 'false'
+        env:
+          SHA: ${{ steps.tag.outputs.sha }}
+        run: |
+          for _ in $(seq 80); do
+            runs=$(gh run list --workflow test.yml --commit "$SHA" --json status,conclusion)
+            passed=$(jq '[.[] | select(.conclusion == "success")] | length' <<< "$runs")
+            running=$(jq '[.[] | select(.status != "completed")] | length' <<< "$runs")
+            if [ "$passed" -gt 0 ]; then
+              exit 0
+            fi
+            if [ "$(jq length <<< "$runs")" -gt 0 ] && [ "$running" -eq 0 ]; then
+              echo "::error::No Test run on $SHA passed. Start one on the tag (gh workflow run test.yml --ref $TAG), then run this workflow again"
+              exit 1
+            fi
+            sleep 30
+          done
+          echo "::error::No Test run on $SHA passed in time"
+          exit 1
+
+      # The version's notes from the changelog, then the pull requests since the last
+      # release, as GitHub lists them
+      - name: Write the notes
+        if: steps.existing.outputs.exists == 'false'
+        run: |
+          python3 docs/scripts/changelog.py notes "$TAG" > notes.md
+          echo >> notes.md
+          gh api -X POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" -f tag_name="$TAG" --jq .body >> notes.md
+          {
+            echo "## The notes for $TAG"
+            echo
+            cat notes.md
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Make the release
+        if: steps.existing.outputs.exists == 'false' && !inputs.dry_run
+        run: |
+          gh release create "$TAG" --verify-tag --title "$TAG" --notes-file notes.md
+          echo "Made $(gh release view "$TAG" --json url --jq .url)" | tee -a "$GITHUB_STEP_SUMMARY"

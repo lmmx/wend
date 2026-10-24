@@ -13,7 +13,8 @@ description: "The repository's layout, how to set up and test wend, the semantic
 | `examples/` | runnable scripts, each run by `tests/examples_test.py` |
 | `bench/bench.py` | the benchmarks |
 | `docs/SEMANTICS.md` | the contract: what every operation must compute |
-| `docs/MIGRATING.md` | the changes from 0.1 |
+| `docs/MIGRATING.md` | the changes between releases |
+| `docs/CHANGELOG.md` | each release's notes, which its GitHub Release takes |
 | `docs/journal/` | the development journal ([Project history](../background/history.md)) |
 | `docs/site/`, `zensical.toml` | this site ([Documentation](documentation.md)) |
 

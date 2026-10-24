@@ -652,8 +652,9 @@ A path given without a kind (no trailing `/`, not a pair) matches layouts of eit
 - The Rust backend sketched in the blog series is not implemented; see the journal for
   what the measurements say a native backend would need to beat.
 
-Changes from 0.1 (removed names and changed behaviour) are listed in
-[docs/MIGRATING.md](https://github.com/lmmx/wend/blob/master/docs/MIGRATING.md).
+Changes between releases (removed names and changed behaviour) are listed in
+[docs/MIGRATING.md](https://github.com/lmmx/wend/blob/master/docs/MIGRATING.md), and each
+release's notes in [docs/CHANGELOG.md](https://github.com/lmmx/wend/blob/master/docs/CHANGELOG.md).
 
 ## Contributing
 

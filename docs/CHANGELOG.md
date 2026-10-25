@@ -7,6 +7,48 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
 
 ## Unreleased
 
+### New
+
+- **Relations between families** (#118). `wend.relate(a, b)` says, before any binding,
+  whether two expressions, unions or strings name the same path, one inside the other, or
+  neither. Each of its three answers, `same`, `inside` and `contains`, is `"always"`,
+  `"sometimes"` (with an example of the bindings and the paths), `"never"` or
+  `"unknown"`. A parameter name means one value on both sides unless `shared=False`.
+  `Relation.kind` sums it up in one word: `"same"`, `"inside"`, `"contains"`,
+  `"disjoint"`, `"overlapping"` or `"unknown"`.
+  [SEMANTICS.md §15](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md) says how
+  each answer is proved, and that identity is lexical: a symlink, `..` resolved on disk
+  or case folding are not seen.
+- **Effects across a pipeline** (#118). `wend.effects.EffectGraph(steps)` relates what a
+  set of `Step`s declare they read, list, write and delete, with every link as sure as its
+  relation:
+  - dependencies, hazards (a step that reads or lists a path another deletes) and
+    conflicts (two steps that write, or delete, or write and delete one path, or a path
+    declared with no verbs and another). A declared path covers what lies below it, so
+    a step that writes `{root}/raw` and one that reads `{root}/raw/{day}.csv` are linked;
+  - `order()`, `stages()` (the groups that may run at once), `independent(x, y)`,
+    `cycles()`, `dependencies(certain=True)` (the links that hold on every run) and
+    `explain()`, one sentence per link with an example.
+
+  Every query counts every link, whatever its certainty, so a possible interference is
+  never taken for independence; `cycles(certain=True)` lists the cycles no binding
+  avoids. Parents a creation may make are part of its effect: a port requiring a
+  directory to exist follows the steps that may make it, and a `Creatable` or `Writable`
+  check is kept apart from a creation below a directory that may be missing.
+  `existing=[...]` names the directories that exist before the run. The guarantees hold
+  for the effects the steps declare, with paths compared as rendered strings, not as
+  files.
+
+  Under one shared `{root}`, a six-step pipeline that the experimental graph could not
+  order (four "maybe" edges and a false cycle) gets five certain dependencies, an order and
+  stages, in about 0.2 ms where the experimental graph took 27 to 40 ms.
+
+### Changed
+
+- The overlap analysis behind `relate` moved from `wend._experimental.overlap` into the
+  wheel as the private `wend._overlap`. The experimental name is an alias for it, and
+  `wend._experimental.effects` stays, superseded by `wend.effects`.
+
 ## 0.3.0
 
 wend 0.3.0 adds typed declarations and evidence to `PathExpr`, and makes `Creatable` refuse

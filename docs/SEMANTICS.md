@@ -34,7 +34,8 @@ contract. This version adds parameter defaults (§3.1), connectivity (§9),
 conditions (§10), unions and queries (§11), schemas (§12) and lineage (§13).
 A later version is expected to extend the contract for Windows path flavours.
 §14 describes the experimental run model of `wend._experimental` on the research
-branches. It is not part of the contract.
+branches. It is not part of the contract. §15 adds relations between families
+(`wend.relate`) and effects across a pipeline (`wend.effects`).
 
 ## 1. Terms
 
@@ -1047,3 +1048,174 @@ A `Store` holds versions `v000001`, `v000002`, … of a set of outputs.
 
 The tests that need privilege are marked `privileged`. CI runs them as root, in a job
 where one that skips fails (`tests/conftest.py`).
+
+## 15. Relations between families
+
+`relate(a, b)` says how the paths two expressions render relate, before any binding.
+Paths are compared as strings (lexical identity), not as filesystem objects: rendered,
+then split into an anchor (`""`, `"/"` or `"//"`) and segments as `PurePosixPath` splits
+them. Nothing here looks at a filesystem, so "never the same" means never the same
+string, and two strings can still name one file (§15.4). Two paths are:
+- **the same**, when anchor and segments are equal;
+- one **inside** the other, when they share the anchor and its segments are the
+  other's followed by one or more segments (a `..` segment is a segment like any
+  other);
+- one **containing** the other, the reverse;
+- otherwise neither.
+
+### 15.1 The bindings considered
+
+With `shared=True` (the default) a parameter name takes one value on both sides, as
+the paths of one run of a pipeline do. The bindings considered are those under which
+**both** expressions render (§3.1: an unbound parameter with a default renders its
+default). With `shared=False`, every binding of `a` is paired with every binding of
+`b`.
+
+### 15.2 The answers
+
+Each of `same`, `inside` (`a` inside `b`) and `contains` (`a` containing `b`) is one
+of:
+
+| answer | meaning |
+|---|---|
+| `"always"` | it holds for every binding considered |
+| `"sometimes"` | it holds for at least one, shown by an `Example` whose bindings render both paths |
+| `"never"` | it holds for none |
+| `"unknown"` | neither was established |
+
+`"always"` is vacuous if no binding renders both; the `Example`, when one is found,
+shows that one does. `Relation.kind` summarises: `"same"`, `"inside"` or `"contains"`
+when that is always; `"disjoint"` when all three are never; `"overlapping"` when one is
+sometimes; `"unknown"` otherwise. A union relates as its alternatives do: never when
+every pair is never, sometimes when one pair shows it, and never always.
+
+### 15.3 How each answer is proved
+
+1. **Rendering is a function of structure.** Two pieces of normal form with equal
+   structure, comparing parameters by name, render equal text for one binding. A
+   parameter's declaration (type, choices, kind) decides which bindings are accepted,
+   never what an accepted one renders. Defaults are the exception: a name both sides
+   give different defaults renders differently when unbound, and is not compared
+   equal.
+2. **Prefix cancellation.** Under shared bindings, a head and leading parts that are
+   equal by (1) render one string `s` wherever both expressions render. Joining `s`
+   onto a relative remainder is injective and keeps "inside", so `a` and `b` relate
+   exactly as their remainders do. Under independent bindings only literal heads and
+   literal segments cancel. Deferred heads never do.
+3. **Structure decides** when the remainders are both empty (the same, always), or
+   one is empty and the other holds a segment (inside or containing, always; a
+   `SubPath` may be empty, so alone it decides nothing), or their first parts are
+   different literal segments (never, all three).
+4. **Otherwise the overlap analysis decides** (`wend._overlap`, §15.5): `same` asks
+   whether the remainders can render one path; `inside` whether `a`'s can render one
+   strictly below `b`'s, built as `b`'s remainder, a segment parameter and a `SubPath`;
+   `contains` the reverse. Its NO is `"never"`, except for `inside` and `contains` when
+   the inner side may render a `..` segment (a literal one, a head parameter or a
+   deferred head), which a segment parameter and a `SubPath` cannot spell: that is
+   `"unknown"`. Its YES is `"sometimes"` only once a binding of the whole expressions
+   confirms it; its MAYBE is `"unknown"`.
+
+`builtin_values=True` assumes bound values are of builtin types, as the overlap
+analysis does, which proves more answers `"never"`; `Relation.assumptions` names it
+when an answer relied on it.
+
+### 15.4 Effects across steps
+
+`wend.effects.EffectGraph(steps)` relates the paths named steps declare (`Step.effects`,
+§10.1), shared bindings by default. A port supplies its path if it declares `create`
+or `write`, deletes it if it declares `delete`, and is an input if it declares `read`
+or `list`. A port that requires `Exists` observes its path's existence. A port that
+declares none of these has no known effect. `unassigned` lists the ports that declare
+no verbs.
+
+**What it promises, and on what.** The graph's guarantees are about declared effects.
+They hold for a run only if every step's declarations describe what its code does to
+the filesystem, and only for the paths as strings (below). Two steps in one stage of
+`stages()` cannot interfere *through the effects they declare*. That is no promise that
+two arbitrary step bodies may run at once: a body that opens, makes or removes a path
+it does not declare (an undeclared side effect) is outside the graph.
+
+**A declared path covers what lies below it.** A path may name a directory, unless
+nothing says otherwise, so a step that writes it may write anything inside it, one that
+reads it may read anything inside it, and one that deletes it deletes everything inside
+it. Two ports *touch* when their paths are the same, or one is inside the other (§15,
+lexically), and every link asks all three. Its certainty is that of the three taken
+together: `"always"` if one holds always, `"never"` if all three are never, `"sometimes"`
+if one is shown on some binding, and `"unknown"` otherwise.
+
+| link | between ports of two steps | when |
+|---|---|---|
+| dependency, `via="read"` or `"list"` | a supplier and a reader or lister | they touch: the reader runs after |
+| dependency, `via="exists"` | a supplier and a port that requires `Exists` | they touch: the requirer runs after (see parents, below) |
+| hazard | a reader, lister or `Exists` requirer, and a deleter | they touch: the reader runs before |
+| conflict, `via="path"` | two suppliers; a supplier and a deleter; two deleters | they touch: never at once |
+| conflict, `via="path"` | a port with no known effect, and any other | they touch: never at once |
+| conflict, `via="parent"` | two suppliers, one checking `Creatable` or `Writable` | a directory above both may be missing (below): never at once |
+
+Two deletions conflict because a step that deletes a path its neighbour already deleted
+may fail. A port with no known effect may write: it is kept apart from every port it
+touches, and orders nothing, since nothing says which way.
+
+**Parents a creation may make.** Creating a path whose parent is missing needs the
+parent made first. What a step does about that is part of its effect, and the graph
+reads it from the declarations as follows:
+
+| what a step does | how it is declared | what the graph does |
+|---|---|---|
+| requires its parent directory to exist | the parent as a port: `requires(Exists, Dir)` | the step runs after every step that may make the parent: one that creates it (as sure as their paths' relation), or that creates a path below it (`"unknown"`: only if the parent was missing); and before every step that may delete it |
+| makes missing parents idempotently (`os.makedirs(..., exist_ok=True)`) | nothing: assumed for every parent a step does not declare | two such creations below one missing directory do not conflict |
+| makes a directory exclusively (plain `mkdir`), or requires it absent | the directory as a port: `requires(Absent)`, `ensures(Exists, Dir)` | the directory's port touches every path below it, so every step that touches them is linked to it |
+| checks it may create or write a path (`Creatable`, `Writable`) | the check | it conflicts (`"unknown"`, `via="parent"`) with a creation in another step below a directory above both that may be missing: making that directory changes which ancestor the check finds |
+| has effects it does not declare | cannot be | outside the graph: nothing is promised |
+
+A directory *may be missing* unless it is the anchor (`/`, or the working directory for a
+relative path), or lies at or above a path given in `EffectGraph(..., existing=[...])`:
+paths that exist before the pipeline runs and that no step deletes. A step that may
+delete one of them, or a directory above it, makes the graph raise `ValueError`. Without
+`existing`, any directory above a created path may be missing, `{root}` included: every
+creation check under `{root}` then conflicts with every other creation there. With
+`existing=[P(root)]`, only creations below one directory under the root, which may be
+missing, conflict with creation checks below it. The bound is exact where the two paths
+part at a literal segment or are siblings, and conservative (a conflict) where their
+structure does not say which directory they share.
+
+A pair whose relation is `"never"` has no link, and nothing else is dropped: `"always"`,
+`"sometimes"` and `"unknown"` links are all kept, and every query but those given
+`certain=True` counts them all, which is the only safe reading for deciding what may run
+at once or in which order:
+- `order()` puts each step after every step it may depend on, and each deleter after the
+  readers of what it deletes. It is None when these links form a cycle.
+- `stages()` groups steps no link joins, whatever its certainty.
+- `independent(x, y)` holds when no link joins `x` and `y`.
+- `cycles()` lists the cycles of the links `order()` follows. `cycles(certain=True)`
+  keeps the links that hold on every run: a cycle among them is unavoidable. A cycle
+  found only without it is possible, not proved: it rests on a link that holds on some
+  runs, or is not ruled out, and may depend on the bindings.
+- `dependencies(certain=True)` keeps the `"always"` dependencies: a lower bound, for
+  reports, never for scheduling.
+
+`tests/effects_test.py`'s oracle renders every port of generated pipelines under
+hundreds of bindings and checks, path against path:
+- a step reading or requiring what another writes comes after it, in `order()` and
+  `stages()`;
+- a step reading what another deletes comes before it;
+- two steps whose paths touch, where either changes its path or has no known effect,
+  never share a stage;
+- nor do two that create paths below a directory other than the anchor, where either
+  checks it may create its own.
+
+Identity is lexical: rendered paths are compared as strings, not as filesystem objects,
+so two spellings of one file (a symlink, a relative and an absolute path, `..`, case on a
+case-insensitive filesystem, a hard link) are two paths here. A missing link is only as
+good as the convention that every step spells a file one way.
+
+### 15.5 The overlap analysis
+
+The engine behind §15.3 (4), private as `wend._overlap`: it asks whether two
+expressions can render one path, answering YES with a witness both render, NO when no
+*shape* of one meets a shape of the other, or MAYBE. A shape over-approximates the
+paths an expression renders: an anchor and a sequence of segments drawn from regular
+languages, or runs of them, built from the expression's literals, fields, finite
+domains, `SubPath`s and heads. Every rule keeps every path the contract lets the
+expression render, so disjoint shapes are disjoint paths. Its derivation, measurements
+and limits are in `docs/journal/2026-10-20-overlap-research-89.md`.

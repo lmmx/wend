@@ -1,5 +1,9 @@
 """Declared filesystem-effect graphs (experimental; see `wend._experimental`).
 
+Superseded by `wend.effects`, which relates each pair of paths by
+`wend.relate`: certain links, prefix cancellation under shared bindings, and
+hazards from deleting a directory. This module stays for its tests.
+
 ``EffectGraph(steps)`` relates the paths a set of steps (`wend.Step`)
 *declare*, through `Step.effects`:
 

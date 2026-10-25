@@ -338,6 +338,42 @@ upload.render(root="/srv", rel="../etc/passwd")  # ContainmentError
 be a file. Checks are point-in-time, not a sandbox: a path can change between
 `check` and `open`. The rules are in [SEMANTICS.md §10](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#10-conditions).
 
+### Relations and effects
+
+`relate` says whether two families of paths name the same path, one inside the other, or
+neither, before anything is bound: each answer is `always`, `sometimes` (with an
+example), `never` or `unknown`. A parameter name means one value on both sides.
+
+```py
+from wend import relate
+from wend.effects import EffectGraph
+
+relate(src, P(root) / "raw").kind  # 'inside': for every root and name
+relate(src, dst).kind  # 'disjoint'
+relate(src, P(root) / "raw" / T(t"{Param('other')}.csv"))
+# Relation(overlapping: same='sometimes', inside='never', contains='never')
+
+parquet = (P(root) / "out" / T(t"{name}.parquet")).requires(Readable)
+html = (P(root) / "site" / T(t"{name}.html")).requires(Creatable)
+publish = Step(src=parquet, html=html)
+graph = EffectGraph({"publish": publish, "convert": convert})
+graph.order()  # ['convert', 'publish']
+graph.explain("publish")
+# ["publish.src reads what convert.dst writes, on every run: {root}/out/{name}.parquet
+#   (e.g. name='data', root='work': work/out/data.parquet)"]
+```
+
+`EffectGraph` relates what each step declares it reads, lists, writes and deletes: its
+dependencies, hazards (a deletion a reader must precede) and conflicts, a safe `order()`,
+the `stages()` that may run at once, and the links that hold on every run. A declared
+path covers what lies below it, and every link counts whatever its certainty, so a
+possible conflict is never taken for independence. A creation is assumed to make
+missing parents idempotently unless the directory is declared, and `existing=[...]` names
+the directories that exist before the run. The graph promises only what the steps
+declare, and compares paths as strings, not files, so a symlink or a `..` resolved on disk
+is not seen. The rules are in
+[SEMANTICS.md §15](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#15-relations-between-families).
+
 ### Unions and queries
 
 Layouts have variants. A union is an ordered set of expressions (`a | b`, or
@@ -616,6 +652,7 @@ A path given without a kind (no trailing `/`, not a pair) matches layouts of eit
 - a project layout bound per environment;
 - untrusted input;
 - pipeline pre- and postconditions;
+- how a pipeline's steps depend on one another, before any binding;
 - log rotation and config fallbacks with unions;
 - a declared project schema, inferred, validated and scaffolded;
 - lineage, invalidation and a content-addressed cache;

@@ -17,6 +17,7 @@ from ._kinds import Checked, Confirmed, IsFile, JoinBelowFile, NotFile, Unspecif
 from ._lens import Lens, NoMatchError
 from ._match import Match
 from ._params import Absolute, AnyPath, Kind, Param, Segment, SubPath
+from ._relate import Relation, relate
 from ._union import Alt, PathUnion, U
 from .conditions import (
     Absent,
@@ -94,6 +95,7 @@ __all__ = [
     "PathUnion",
     "Query",
     "Readable",
+    "Relation",
     "Segment",
     "Step",
     "SubPath",
@@ -109,4 +111,5 @@ __all__ = [
     "compile_many",
     "counter",
     "glob",
+    "relate",
 ]

@@ -14,14 +14,14 @@ default (§15.3, 1). Two reproducers:
 xa, xb = Param("x", default="a"), Param("x", default="b")
 a = (P("data") / xa).with_suffix(".q") / "y"
 b = (P("data") / xb).with_suffix(".q") / "y"
-relate(a, b).same            # "always" in 0.4.0 and on master
-a.render({}), b.render({})   # "data/a.q/y", "data/b.q/y"
+relate(a, b).same  # "always" in 0.4.0 and on master
+a.render({}), b.render({})  # "data/a.q/y", "data/b.q/y"
 
 rel_a, rel_b = SubPath("rel", default="x/z"), SubPath("rel", default="x")
 a = (P("data") / rel_a).parent / "a"
 b = (P("data") / rel_b).parent / "x" / T(t"{z}")
-relate(a, b).same            # "never" on master (since #123)
-a.render({}), b.render({"z": "a"})   # both "data/x/a"
+relate(a, b).same  # "never" on master (since #123)
+a.render({}), b.render({"z": "a"})  # both "data/x/a"
 ```
 
 **Found** while #127's prototype was being checked. That change makes fresh

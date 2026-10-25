@@ -4,11 +4,13 @@ Effects across a pipeline, before any binding (docs/SEMANTICS.md §15).
 
 `EffectGraph` takes named steps (`wend.Step`) and relates what each declares it reads, lists, writes and deletes (`Step.effects`), with `wend.relate`:
 
-- a *dependency* runs from a step that writes a path to one that reads it, or lists the directory it is in;
-- a *hazard* runs from a step that reads a path to one that deletes it, or a directory above it: the reader has to run first;
-- a *conflict* is two steps that write one path, or one that writes a path another deletes.
+- a *dependency* runs from a step that writes a path to one that reads or lists it;
+- a *hazard* runs from a step that reads or lists a path to one that deletes it: the reader has to run first;
+- a *conflict* is two steps that write one path, or delete it, or one that writes and one that deletes it, or a path declared with no verbs (whose effect is unknown) and another: they must not run at once.
 
-Each carries a certainty: `"always"` (on every run), `"sometimes"` (on some runs, with an example), or `"unknown"` (not ruled out). Pairs the analysis proves apart are not links at all. By default a parameter name means one value across every step, as when the pipeline runs with one set of bindings (`shared=True`)::
+A declared path covers what lies below it, since it may be a directory: each link holds when the two paths are one, or one is inside the other.
+
+Each carries a certainty: `"always"` (on every run), `"sometimes"` (on some runs, with an example), or `"unknown"` (not ruled out). Pairs the analysis proves apart are not links at all, and every query but those given `certain=True` counts every other link, so a possible conflict is never taken for independence. By default a parameter name means one value across every step, as when the pipeline runs with one set of bindings (`shared=True`)::
 
 ```text
 from wend import Creatable, Exists, P, Param, Readable, Step, T
@@ -24,7 +26,7 @@ graph = EffectGraph({
 graph.order()  # ['ingest', 'clean']
 ```
 
-What the graph knows is what the steps declare: a step's code can read or write anything, and a path read without `Readable` declared is not an input here. Paths are compared as strings, so two spellings of one file (a symlink, a relative and an absolute path, a `..`) are two paths.
+What the graph knows is what the steps declare: a step's code can read or write anything, and a path read without `Readable` declared is not an input here. Parents a creation may make (as `mkdir -p` does) are not counted: two steps that create siblings in a missing directory may share a stage, which is safe when parents are made idempotently (docs/SEMANTICS.md §15.4). Paths are compared as rendered strings, not as filesystem objects, so two spellings of one file (a symlink, a relative and an absolute path, a `..`, a hard link) are two paths.
 
 ## Certainty
 
@@ -47,7 +49,7 @@ Conflict(
 
 Bases: `_Link`
 
-Two ports that write one path, or a write and a deletion of it (or of a directory above it): the steps must not run at once, and which one wins depends on their order.
+Two ports that may change what the other touches: two writes, a write and a deletion, or two deletions of one path or of paths one inside the other, or a port that declares no verbs (so its effect is unknown) and any port it touches. The steps must not run at once; for writes, which one wins depends on their order, which the graph does not choose.
 
 ### first
 
@@ -77,7 +79,7 @@ Dependency(
 
 Bases: `_Link`
 
-`consumer` reads the path `producer` writes (`via="read"`), or lists the directory it is in (`via="list"`).
+`consumer` reads (`via="read"`) or lists (`via="list"`) a path that is, holds, or lies inside one `producer` writes.
 
 ### producer
 
@@ -167,7 +169,7 @@ conflicts: list[Conflict] = []
 dependencies(*, certain: bool = False) -> dict[str, set[str]]
 ```
 
-For each step, the steps whose writes it may read.
+For each step, the steps whose writes it may read or list.
 
 `certain=True` keeps the dependencies that hold on every run (under which both steps' paths render). Use the default, which also counts those that hold on some runs or are not ruled out, to decide what may run independently.
 
@@ -177,7 +179,9 @@ For each step, the steps whose writes it may read.
 order() -> list[str] | None
 ```
 
-The steps in an order where each follows every step it may depend on, and every deleter follows the readers of what it deletes; ties keep the order the steps were given in. None if they form a cycle (`cycles`). Conflicts do not order steps: which writer wins is the caller's choice.
+The steps in an order where each follows every step it may depend on, and every deleter follows the readers of what it deletes; ties keep the order the steps were given in.
+
+Every link counts, whatever its certainty: a dependency that holds on some runs, or that is only not ruled out, orders the steps as one that holds on every run does. None if these links form a cycle: `cycles` lists the cycles, and `cycles(certain=True)` those made of links that hold on every run, which no binding avoids. Conflicts do not order steps: which writer wins is the caller's choice, and a port that declares no verbs is kept apart from others (`stages`) but not ordered.
 
 ### stages
 
@@ -185,7 +189,7 @@ The steps in an order where each follows every step it may depend on, and every 
 stages() -> list[list[str]] | None
 ```
 
-The steps in groups that may run at the same time: each group follows every step it may depend on, and no two steps in a group conflict. None if the steps form a cycle.
+The steps in groups that may run at the same time: each group follows every step it may depend on, and no two steps in a group are joined by any link, whatever its certainty. None if the steps form a cycle (see `order`).
 
 ### independent
 
@@ -193,7 +197,7 @@ The steps in groups that may run at the same time: each group follows every step
 independent(x: str, y: str) -> bool
 ```
 
-Whether steps `x` and `y` cannot interact: neither may read what the other writes, nor delete what it reads, nor write what it writes or deletes. Independent steps may run in either order, or at once.
+Whether no link joins steps `x` and `y`: no dependency, hazard or conflict between them holds always, sometimes, or is even not ruled out. Their declared paths, compared as strings, then never meet nor nest where either one writes, deletes, or declares no verbs. Independent steps may run in either order, or at once, so far as their declarations go: a step's code may touch paths it does not declare, and two spellings of one file are two paths here.
 
 ### links
 
@@ -217,7 +221,9 @@ One sentence per link between `x` and `y` (or involving `x`): which port relates
 cycles(*, certain: bool = False) -> list[list[str]]
 ```
 
-Groups of two or more steps that each depend, through the others, on themselves. A cycle among declarations need not be a cycle on a run: with `shared=False`, a step that reads `{day}` and writes `{day}` of another is one.
+Groups of two or more steps that must each run, through the others, before themselves, by the dependencies and hazards `order` follows. When there is one, `order` and `stages` are None.
+
+`certain=True` keeps the links that hold on every run (under which their paths render): a cycle among them is unavoidable. A cycle found only without it is possible, not proved: it rests on a link that holds on some runs, or is only not ruled out, so it may depend on the bindings, as with `shared=False`, where a step that reads `{day}` and writes `{day}` of another run is one.
 
 ### self\_loops
 
@@ -312,7 +318,7 @@ Hazard(
 
 Bases: `_Link`
 
-`deleter` deletes the path `reader` reads or lists, or a directory above it: `reader` has to run first.
+`deleter` deletes the path `reader` reads or lists, a directory above it, or a path inside it: `reader` has to run first.
 
 ### reader
 
@@ -397,7 +403,7 @@ Relation(
 
 How two path families relate (docs/SEMANTICS.md §15).
 
-`same`, `inside` and `contains` are each `"always"` (for every binding under which both render), `"sometimes"` (for one at least: see `examples`), `"never"`, or `"unknown"` (neither was proved). `inside` is `a` strictly below `b`; `contains`, strictly above.
+`same`, `inside` and `contains` are each `"always"` (for every binding under which both render), `"sometimes"` (for one at least: see `examples`), `"never"`, or `"unknown"` (neither was proved). `inside` is `a` strictly below `b`; `contains`, strictly above. Each compares the rendered strings, not the files they may name.
 
 ### same
 
@@ -455,7 +461,7 @@ The relation in one word: `"same"`, `"inside"` or `"contains"` when that holds a
 disjoint: bool
 ```
 
-Whether the two paths never meet nor nest: they cannot interact.
+Whether the two rendered paths never meet nor nest, as strings: no path is both, nor one inside the other. Two spellings of one file (a symlink, `..`, a relative and an absolute path) are not seen.
 
 ## relate
 
@@ -466,6 +472,8 @@ relate(
 ```
 
 How the paths `a` and `b` render relate, before any binding.
+
+The paths are compared as strings (lexically), not as filesystem objects: `"never"` means never the same string, and a symlink or a `..` can still make two strings name one file.
 
 `a` and `b` are expressions, unions or path strings. With `shared=True` (the default) a parameter name common to both takes one value, as the paths of one run of a pipeline do; `shared=False` relates every binding of `a` to every binding of `b`. `builtin_values=True` assumes bound values are of builtin types, which proves more paths apart (docs/SEMANTICS.md §15).
 

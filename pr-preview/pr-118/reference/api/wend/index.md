@@ -742,6 +742,8 @@ relate(
 
 How the paths `a` and `b` render relate, before any binding.
 
+The paths are compared as strings (lexically), not as filesystem objects: `"never"` means never the same string, and a symlink or a `..` can still make two strings name one file.
+
 `a` and `b` are expressions, unions or path strings. With `shared=True` (the default) a parameter name common to both takes one value, as the paths of one run of a pipeline do; `shared=False` relates every binding of `a` to every binding of `b`. `builtin_values=True` assumes bound values are of builtin types, which proves more paths apart (docs/SEMANTICS.md §15).
 
 > > > from wend import P, Param, T root, day = Param("root"), Param("day") raw = P(root) / "raw" / T(t"{day}.csv") relate(raw, P(root) / "clean" / T(t"{day}.csv")).kind 'disjoint' relate(raw, P(root) / "raw").inside 'always'
@@ -761,7 +763,7 @@ Relation(
 
 How two path families relate (docs/SEMANTICS.md §15).
 
-`same`, `inside` and `contains` are each `"always"` (for every binding under which both render), `"sometimes"` (for one at least: see `examples`), `"never"`, or `"unknown"` (neither was proved). `inside` is `a` strictly below `b`; `contains`, strictly above.
+`same`, `inside` and `contains` are each `"always"` (for every binding under which both render), `"sometimes"` (for one at least: see `examples`), `"never"`, or `"unknown"` (neither was proved). `inside` is `a` strictly below `b`; `contains`, strictly above. Each compares the rendered strings, not the files they may name.
 
 #### same
 
@@ -819,7 +821,7 @@ The relation in one word: `"same"`, `"inside"` or `"contains"` when that holds a
 disjoint: bool
 ```
 
-Whether the two paths never meet nor nest: they cannot interact.
+Whether the two rendered paths never meet nor nest, as strings: no path is both, nor one inside the other. Two spellings of one file (a symlink, `..`, a relative and an absolute path) are not seen.
 
 ## Parameters
 

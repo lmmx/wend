@@ -2301,11 +2301,18 @@ write one path. From that it gives an order, the steps that may run at once, and
 <span class="gp">... </span>    <span class="nb">print</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
 <span class="go">purge.old deletes what convert.src reads, on every run, so convert runs first: {root}/raw/{day}.csv (e.g. day='data', root='out': out/raw/data.csv)</span>
 </code></pre></div>
-<p>Every link carries how sure it is. A dependency that is only <code>"sometimes"</code> or <code>"unknown"</code>
-still orders the steps, because only that reading is safe;
-<a class="autorefs autorefs-internal" title="            dependencies" href="../../reference/api/effects/#wend.effects.EffectGraph.dependencies"><code>dependencies(certain=True)</code></a> keeps those that hold
-on every run. Paths are compared as strings: a symlink, or a relative and an absolute
-spelling of one file, are two paths to the graph
+<p>Every link carries how sure it is, and every query counts every link, whatever its
+certainty. A dependency, hazard or conflict that is only <code>"sometimes"</code> or <code>"unknown"</code> still
+orders the steps and keeps them out of one stage: treating it as absent could run two
+interfering steps at once. <a class="autorefs autorefs-internal" title="            dependencies" href="../../reference/api/effects/#wend.effects.EffectGraph.dependencies"><code>dependencies(certain=True)</code></a>
+keeps the dependencies that hold on every run, and
+<a class="autorefs autorefs-internal" title="            cycles" href="../../reference/api/effects/#wend.effects.EffectGraph.cycles"><code>cycles(certain=True)</code></a> the cycles no binding avoids.</p>
+<p>A declared path covers what lies below it, since it may be a directory: a step that writes
+<code>{root}/raw</code> and one that reads <code>{root}/raw/{day}.csv</code> are linked, and so are two steps that
+delete a directory and a file in it. A path declared with no verbs (a check of <code>Exists</code>
+alone) is kept apart from every path it touches.</p>
+<p>Paths are compared as rendered strings, not as files: a symlink, a <code>..</code>, or a relative and
+an absolute spelling of one file are two paths to the graph
 (<a href="https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#15-relations-between-families">SEMANTICS.md §15</a>).</p>
 <h2 id="errors">Errors<a class="headerlink" href="#errors" title="Permanent link">&para;</a></h2>
 <p>Each failed condition raises a <a class="autorefs autorefs-internal" title="            ConditionError" href="../../reference/api/errors/#wend.errors.ConditionError"><code>ConditionError</code></a>. Its <code>path</code> is the

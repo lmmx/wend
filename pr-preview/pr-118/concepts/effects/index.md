@@ -172,7 +172,11 @@ True
 purge.old deletes what convert.src reads, on every run, so convert runs first: {root}/raw/{day}.csv (e.g. day='data', root='out': out/raw/data.csv)
 ```
 
-Every link carries how sure it is. A dependency that is only `"sometimes"` or `"unknown"` still orders the steps, because only that reading is safe; `dependencies(certain=True)` keeps those that hold on every run. Paths are compared as strings: a symlink, or a relative and an absolute spelling of one file, are two paths to the graph ([SEMANTICS.md §15](<https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#15-relations-between-families>)).
+Every link carries how sure it is, and every query counts every link, whatever its certainty. A dependency, hazard or conflict that is only `"sometimes"` or `"unknown"` still orders the steps and keeps them out of one stage: treating it as absent could run two interfering steps at once. `dependencies(certain=True)` keeps the dependencies that hold on every run, and `cycles(certain=True)` the cycles no binding avoids.
+
+A declared path covers what lies below it, since it may be a directory: a step that writes `{root}/raw` and one that reads `{root}/raw/{day}.csv` are linked, and so are two steps that delete a directory and a file in it. A path declared with no verbs (a check of `Exists` alone) is kept apart from every path it touches.
+
+Paths are compared as rendered strings, not as files: a symlink, a `..`, or a relative and an absolute spelling of one file are two paths to the graph ([SEMANTICS.md §15](<https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#15-relations-between-families>)).
 
 ## Errors
 

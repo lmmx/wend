@@ -8157,6 +8157,9 @@ are ignored where it is used.</p>
     <div class="doc doc-contents first">
 
         <p>How the paths <code>a</code> and <code>b</code> render relate, before any binding.</p>
+<p>The paths are compared as strings (lexically), not as filesystem
+objects: <code>"never"</code> means never the same string, and a symlink or a
+<code>..</code> can still make two strings name one file.</p>
 <p><code>a</code> and <code>b</code> are expressions, unions or path strings. With
 <code>shared=True</code> (the default) a parameter name common to both takes one
 value, as the paths of one run of a pipeline do; <code>shared=False</code> relates
@@ -8233,7 +8236,8 @@ relate(raw, P(root) / "raw").inside
 <p><code>same</code>, <code>inside</code> and <code>contains</code> are each <code>"always"</code> (for every
 binding under which both render), <code>"sometimes"</code> (for one at least: see
 <code>examples</code>), <code>"never"</code>, or <code>"unknown"</code> (neither was proved).
-<code>inside</code> is <code>a</code> strictly below <code>b</code>; <code>contains</code>, strictly above.</p>
+<code>inside</code> is <code>a</code> strictly below <code>b</code>; <code>contains</code>, strictly above.
+Each compares the rendered strings, not the files they may name.</p>
 
 
 
@@ -8516,7 +8520,9 @@ else <code>"unknown"</code>.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Whether the two paths never meet nor nest: they cannot interact.</p>
+        <p>Whether the two rendered paths never meet nor nest, as strings: no
+path is both, nor one inside the other. Two spellings of one file
+(a symlink, <code>..</code>, a relative and an absolute path) are not seen.</p>
 
     </div>
 

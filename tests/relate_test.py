@@ -5,16 +5,17 @@ Each "always" and "never" is checked against every binding of a pool of
 hostile values; each "sometimes" against its example."""
 
 import itertools
+import time
 from pathlib import PurePosixPath
 
 import pytest
 from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
-from overlap_test import PARTS, POOL, expressions, p, q, s, sc
+from overlap_test import PARTS, POOL, ab, expressions, n, p, q, s, sc
 
 from wend import Absolute, P, Param, PathExpr, Relation, SubPath, T, relate
 from wend._expr import Deferred
-from wend._relate import _cases, lexically
+from wend._relate import Memo, _cases, lexically
 from wend.errors import WendError
 
 
@@ -237,6 +238,51 @@ def test_segments_that_differ_on_every_run_never_meet():
     assert relate(R / T(t"{s}.json"), R / T(t"{s}")).same == "unknown"
 
 
+def test_a_field_renders_its_value_alike_in_a_segment_and_in_text():
+    # A shard directory and its manifest. Alone in a segment, `split` is a
+    # segment-valued parameter (os.fspath of a str); in text it is formatted.
+    split = Param("split")
+    shard, manifest = P(root) / split, P(root) / T(t"{split}.json")
+    for a, b in [(shard, manifest), (shard / "part.parquet", manifest)]:
+        trusting = relate(a, b, builtin_values=True)
+        assert trusting.kind == "disjoint", (a, b, trusting)
+        assert trusting.assumptions == {"builtin_values"}
+        assert relate(a, b).kind == "unknown"
+
+    # The assumption carries weight: a str whose __format__ drops its suffix
+    # renders one path in both places.
+    class Odd(str):
+        def __format__(self, spec):
+            return str.__format__(self.removesuffix(".json"), spec)
+
+    env = {"root": "r", "split": Odd("a.json")}
+    assert shard.render(env) == manifest.render(env) == "r/a.json"
+    # !s is str() itself, so plain too.
+    plain_s = P(root) / T(t"{split!s}.json")
+    assert relate(shard, plain_s, builtin_values=True).kind == "disjoint"
+    # A spec or a !r conversion is not plain, and does not cancel: "abc"
+    # renders alike either way, "a" does not.
+    for text in (T(t"{split:>3}"), T(t"{split!r}")):
+        r = relate(shard, P(root) / text, builtin_values=True)
+        assert r.same in ("sometimes", "unknown"), (text, r)
+    # Without a field in each role, no answer rests on the assumption.
+    assert relate(shard, P(root) / "x", builtin_values=True).assumptions == set()
+
+
+def test_finite_choices_that_multiply_shapes_stay_quick():
+    # With builtin_values the choices of `sc` are exhaustive, and each `sc`
+    # gives the overlap analysis three shapes: 54 for one side, 162 for the
+    # other. Pairing every one took minutes; once two shapes meet, the
+    # analysis now stops when it has candidates enough.
+    base = (P(ab) / sc / q / sc / s).with_suffix(".b")
+    a = base / s / n / sc
+    b = a / s / n / sc
+    start = time.monotonic()
+    for shared in (True, False):
+        relate(a, b, shared=shared, builtin_values=True)
+    assert time.monotonic() - start < 30
+
+
 def test_names_changed_from_one_base_are_written_out_by_its_split():
     raw = P(root) / "raw" / T(t"{day}.csv")
     parquet, summary = raw.with_suffix(".parquet"), raw.with_stem("summary")
@@ -352,9 +398,11 @@ def rendered(e, env):
 
 def assert_sound(a, b):
     """Every "always" and "never" of relate(a, b), in both modes, holds for
-    every pooled binding (up to 800 shared, 120 x 120 independent)."""
-    for shared in (True, False):
-        r = relate(a, b, shared=shared)
+    every pooled binding (up to 800 shared, 120 x 120 independent). The pool's
+    values are of builtin types, so the answers under builtin_values=True
+    must hold too."""
+    for shared, builtin in itertools.product((True, False), (False, True)):
+        r = relate(a, b, shared=shared, builtin_values=builtin)
         check_examples(a, b, r)
         if shared:
             names = sorted(a.param_names | b.param_names)
@@ -559,7 +607,7 @@ def split_names(draw):
         e = getattr(base, op)(arg())
     except WendError, ValueError, TypeError:
         assume(False)
-    assume(_cases(e, {}) is not None)
+    assume(_cases(e, Memo()) is not None)
     return e
 
 
@@ -568,7 +616,7 @@ def split_names(draw):
 def test_the_cases_of_a_changed_name_render_all_it_renders(e):
     # What the case split rests on (§15.3, 3): on every binding, the change
     # renders what one of its cases renders under the same binding.
-    cases = _cases(e, {})
+    cases = _cases(e, Memo())
     assert cases is not None
     names = sorted(e.param_names)
     for combo in itertools.islice(itertools.product(*(POOL[k] for k in names)), 400):
@@ -585,7 +633,7 @@ def parents(draw):
     e = e.parent
     if draw(st.booleans()):
         e = e / draw(st.sampled_from(["a", "x.txt", ".."]))
-    assume(_cases(e, {}) is not None)
+    assume(_cases(e, Memo()) is not None)
     return e
 
 
@@ -594,7 +642,7 @@ def parents(draw):
 def test_the_cases_of_a_parent_render_all_it_renders(e):
     # What the parent's cases rest on: on every binding, the parent renders
     # what one of its cases renders under the same binding.
-    cases = _cases(e, {})
+    cases = _cases(e, Memo())
     assert cases is not None
     names = sorted(e.param_names)
     for combo in itertools.islice(itertools.product(*(POOL[k] for k in names)), 400):

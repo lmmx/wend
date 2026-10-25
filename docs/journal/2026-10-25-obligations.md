@@ -173,7 +173,8 @@ families collide: `raw_name` is `raw_day` when `name` is `mon`, `up` is the root
 `rel` is `.`. Each pipeline runs in a real directory; by stages, each group's steps run
 in both orders. Wherever every earlier group completed, every discharged atom holds on
 disk as its step starts, and every step with a refuted atom fails. Both pass under seeds
-0 to 9 (150 examples each, plus the root-replacing example #109's audit found).
+0 to 9 before the changes to `relate` below, and under seeds 0 to 4 at the final head
+(150 examples each, plus the root-replacing example #109's audit found).
 
 **[Measured]** Mutants of the method, each against `tests/effects_test.py` under seeds 0
 and 1:

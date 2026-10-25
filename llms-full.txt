@@ -1225,9 +1225,17 @@ A `Creatable` or `Writable` check is kept apart from a creation in another step 
 
 ```pycon
 >>> stats = Step(out=(P(root) / "out" / "summary.json").requires(Creatable).ensures(File))
+>>> export = Step(out=(P(root) / "out" / T(t"{day}.csv")).requires(Creatable).ensures(File))
+>>> EffectGraph({"export": export, "stats": stats}).stages()
+[['export'], ['stats']]
+>>> EffectGraph({"export": export, "stats": stats}, existing=[P(root) / "out"]).stages()
+[['export', 'stats']]
+```
+
+A step that requires a path inside that directory to exist makes nothing there while it is missing, since its check fails first: `convert` reads a file below `{root}`, so it and `stats` may run at once even without `existing`.
+
+```pycon
 >>> EffectGraph({"convert": convert, "stats": stats}).stages()
-[['convert'], ['stats']]
->>> EffectGraph({"convert": convert, "stats": stats}, existing=[P(root) / "out"]).stages()
 [['convert', 'stats']]
 ```
 

@@ -113,10 +113,10 @@ seeds 0 to 4.
 pair whose relation did not finish: under seed 3, below one deferred head,
 
 ```python
-base = (P(ab) / sc / q / sc / s).with_suffix(".b")   # sc: choices {".", "a", "a/b"}
+base = (P(ab) / sc / q / sc / s).with_suffix(".b")  # sc: choices {".", "a", "a/b"}
 a = base / s / n / sc
 b = a / s / n / sc
-relate(a, b, shared=False, builtin_values=True)    # over 120 s on master
+relate(a, b, shared=False, builtin_values=True)  # over 120 s on master
 ```
 
 **[Fact]** With `builtin_values=True` a `SubPath`'s choices are exhaustive, and each

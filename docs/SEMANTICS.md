@@ -1100,8 +1100,11 @@ every pair is never, sometimes when one pair shows it, and never always.
 2. **Anchors.** Paths with different anchors are never the same, nor nested. A literal
    head has one anchor (`""` for a relative path, `/`, or `//`). An `Absolute`
    parameter renders `/` or `//`: POSIX keeps a leading `//` as an anchor of its own.
-   A name changed by `with_name`, `with_suffix` or `with_stem` keeps its base's anchor.
-   Other heads may render any.
+   A name changed by `with_name`, `with_suffix` or `with_stem`, and a parent, keep their
+   base's anchor. A path made relative (`relative_to`) has none: pathlib's
+   `relative_to` returns a relative path. A join keeps its left side's anchor where the
+   right side renders a relative path, and takes the right side's where it renders an
+   absolute one. Other heads may render any.
 3. **A changed name is its base's parent and one segment.** When the name is unknown
    until binding, `with_name`, `with_suffix` and `with_stem` are deferred (§9). Each
    renders its base's parent, then one segment:
@@ -1131,6 +1134,11 @@ every pair is never, sometimes when one pair shows it, and never always.
      same binding, and the cases keep the base's own fields, so `day` is still `day`:
      two changes of one base are `"never"` related where no case of one meets a case
      of the other, and `{day}.parquet` never meets `summary.csv` nor `summary`.
+   - A parent deferred because its base ends in a `SubPath` is written out the same way:
+     where the `SubPath` renders a segment or more, the parent is the base with a
+     `SubPath` of all but the last in its place; where it renders none, the parent of
+     what precedes it. `parent({root}/raw/{rel...})` is `{root}/raw/{rest...}` or
+     `{root}`, so it is never `{root}/out/x`.
    - A name of `..` has no suffix, so `with_suffix("")` keeps it: `{root}` with the
      suffix `""` renders `a/..` from `root="a/.."`. The overlap analysis (§15.5) allows
      `..` wherever a changed name may render it.

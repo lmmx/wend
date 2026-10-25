@@ -5,6 +5,7 @@ Each "always" and "never" is checked against every binding of a pool of
 hostile values; each "sometimes" against its example."""
 
 import itertools
+from pathlib import PurePosixPath
 
 import pytest
 from hypothesis import HealthCheck, assume, given, settings
@@ -139,6 +140,36 @@ def test_different_anchors_never_meet():
     assert relate(P(Absolute("ab")), P("//x")).same == "sometimes"
     # Only a changed name keeps its base's anchor: relative_to drops it.
     assert relate(P(Absolute("ab")).relative_to(P("/")), P("x")).same == "sometimes"
+
+
+def test_parents_relative_paths_and_joins_have_their_anchors():
+    rel = SubPath("rel")
+    up = (P("/srv") / rel).parent  # deferred: rel may be empty
+    assert isinstance(up.head, Deferred)
+    assert relate(up, P("data")).kind == "disjoint"
+    assert relate(up, P("/srv")).same == "sometimes"
+    # Made relative to anything, a path is relative.
+    made = (P(root) / "x").relative_to(P(Param("b")))
+    assert relate(made, P("/srv") / "x").kind == "disjoint"
+    # A join keeps its left side's anchor where the right side is relative.
+    joined = P("/srv") / (P("a") / rel).parent
+    assert isinstance(joined.head, Deferred) and joined.head.op == "join"
+    assert relate(joined, P("data")).kind == "disjoint"
+    assert relate(joined, P("/srv") / "a").same == "sometimes"
+    # An absolute right side replaces a relative left side's anchor.
+    reset = P("data") / (P("/x") / rel).parent
+    assert isinstance(reset.head, Deferred) and reset.head.op == "join"
+    assert relate(reset, P("/x")).same == "sometimes"
+    assert relate(reset, P("data")).kind == "disjoint"
+
+
+def test_a_deferred_parent_is_written_out_by_its_subpath():
+    name = Param("name", type=str)
+    up = (P(root) / "raw" / T(t"{name}") / SubPath("rel")).parent
+    # {root}/raw/{name}/{...}, or {root}/raw where rel is empty: never out/.
+    assert relate(up, P(root) / "out" / "x").kind == "disjoint"
+    assert relate(up, P(root) / "raw").same == "sometimes"
+    assert relate(up, P(root) / "raw" / T(t"{name}") / "x").kind != "disjoint"
 
 
 def test_paths_of_fixed_depth_nest_only_by_depth():
@@ -443,7 +474,7 @@ def split_names(draw):
         e = getattr(base, op)(arg())
     except WendError, ValueError, TypeError:
         assume(False)
-    assume(_cases(e) is not None)
+    assume(_cases(e, {}) is not None)
     return e
 
 
@@ -452,7 +483,7 @@ def split_names(draw):
 def test_the_cases_of_a_changed_name_render_all_it_renders(e):
     # What the case split rests on (§15.3, 3): on every binding, the change
     # renders what one of its cases renders under the same binding.
-    cases = _cases(e)
+    cases = _cases(e, {})
     assert cases is not None
     names = sorted(e.param_names)
     for combo in itertools.islice(itertools.product(*(POOL[k] for k in names)), 400):
@@ -460,6 +491,43 @@ def test_the_cases_of_a_changed_name_render_all_it_renders(e):
         path = rendered(e, env)
         if path is not None:
             assert path in {rendered(c, env) for c in cases}, (e.pattern, env, path)
+
+
+@st.composite
+def parents(draw):
+    """A parent deferred because its base ends in a SubPath."""
+    e = draw(expressions()) / draw(st.sampled_from([s, sc]))
+    e = e.parent
+    if draw(st.booleans()):
+        e = e / draw(st.sampled_from(["a", "x.txt", ".."]))
+    assume(_cases(e, {}) is not None)
+    return e
+
+
+@settings(max_examples=200, deadline=None, suppress_health_check=list(HealthCheck))
+@given(e=parents())
+def test_the_cases_of_a_parent_render_all_it_renders(e):
+    # What the parent's cases rest on: on every binding, the parent renders
+    # what one of its cases renders under the same binding.
+    cases = _cases(e, {})
+    assert cases is not None
+    names = sorted(e.param_names)
+    for combo in itertools.islice(itertools.product(*(POOL[k] for k in names)), 400):
+        env = dict(zip(names, combo, strict=True))
+        path = rendered(e, env)
+        if path is not None:
+            seen = {rendered(c, env | _rest(c, e, env)) for c in cases}
+            assert path in seen, (e.pattern, env, path)
+
+
+def _rest(case, e, env):
+    """The longer case's own SubPath, bound to the base's SubPath less its
+    last segment."""
+    fresh = sorted(case.param_names - e.param_names)
+    if not fresh:
+        return {}
+    value = str(env[e.head.base.parts[-1].param.name])
+    return {fresh[0]: str(PurePosixPath(value).parent)}
 
 
 @settings(max_examples=150, deadline=None, suppress_health_check=[HealthCheck.too_slow])

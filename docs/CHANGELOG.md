@@ -25,6 +25,13 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
     meet;
   - `EffectGraph` drops a parent conflict where either step requires a path inside the
     shared directory to exist: while it is missing, that step fails and makes nothing.
+- **Deferred operations keep what pathlib guarantees of them** (#123). A deferred
+  `parent` keeps its base's anchor, a deferred `relative_to` is relative, and a deferred
+  join keeps the anchors its sides allow, so `relate` rules out more paths by anchor
+  alone. A parent deferred because its base ends in a `SubPath` is written out by what
+  the `SubPath` renders: `parent({root}/raw/{rel...})` is `{root}/raw/{rest...}` or
+  `{root}`, so it never meets `{root}/out/x`. Below one deferred head, a third of the
+  answers `relate` left `"unknown"` on #119's sample are now `"never"`.
 
 ## 0.4.0
 

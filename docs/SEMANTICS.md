@@ -1156,6 +1156,16 @@ parameter of either expression.
      what precedes it. `parent({root}/raw/{rel...})` is `{root}/raw/{rest...}` or
      `{root}`, so it is never `{root}/out/x`. The new `SubPath` is one on both sides
      under the same condition as a view's text.
+   - A name changed while its base ends in a `SubPath` is written out the same way:
+     where the `SubPath` renders a segment or more, the change of the base with a
+     `SubPath` of all but the last and that last segment, which then has a view; where
+     it renders none, the change of what precedes it. Every parent and changed name of
+     one base split it with the same new parameters. Under shared bindings a path that
+     begins with that base is split alike, and only cases where the `SubPath` renders
+     alike on both sides are paired, since it renders one text there:
+     `({root}/raw/{rel...}).with_suffix(".csv")` is never `{root}/out/x`, and
+     `(data/{sc...}).with_suffix(".b")` is never strictly inside or above
+     `data/{sc...}`.
    - A name of `..` has no suffix, so `with_suffix("")` keeps it: `{root}` with the
      suffix `""` renders `a/..` from `root="a/.."`. The overlap analysis (§15.5) allows
      `..` wherever a changed name may render it.

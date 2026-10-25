@@ -401,21 +401,36 @@ def _view(e: PathExpr, memo: Memo) -> PathExpr:
     return PathExpr(base.head, base.parts[:-1] + (Seg(_norm(pieces)),) + e.parts)
 
 
-def _cases(e: PathExpr, memo: Memo) -> list[PathExpr] | None:
-    """``e``, a suffix or stem changed while its base's name is unknown, as the
-    ways pathlib may split that name, each written out with the base's own
-    pieces; None where the base's name does not end in literal text with a
-    dot.
+Case = tuple[str | None, PathExpr]
 
-    pathlib takes the suffix from the name less its leading dots. Where the
-    name ends in literal text ``L`` whose last dot is at ``k``, that dot
-    starts the suffix, ``L[k:]``, unless every character before it is a dot,
-    and then there is no suffix. On every binding the expression renders
-    what the case that holds renders under the same binding, so the cases,
-    with the base's parameters, render all it does."""
+
+def _cases(e: PathExpr, memo: Memo) -> list[PathExpr] | None:
+    """``e`` written out as cases (`_tagged_cases`), without their tags."""
+    tagged = _tagged_cases(e, memo)
+    return None if tagged is None else [x for _, x in tagged]
+
+
+def _tagged_cases(e: PathExpr, memo: Memo) -> list[Case] | None:
+    """``e`` written out as cases, each rendering under the same binding what
+    ``e`` renders where the case holds; None where there are none.
+
+    - A parent, or a changed name, of a base ending in a SubPath: the case
+      where the SubPath renders a segment or more (tagged ``"longer"``), and
+      the case where it renders none (``"shorter"``), by `_parents` and
+      `_renamed`.
+    - A suffix or stem changed while its base's name is unknown, as the ways
+      pathlib may split that name, each written out with the base's own
+      pieces (untagged). pathlib takes the suffix from the name less its
+      leading dots. Where the name ends in literal text ``L`` whose last dot
+      is at ``k``, that dot starts the suffix, ``L[k:]``, unless every
+      character before it is a dot, and then there is no suffix."""
     h = e.head
     if isinstance(h, Deferred) and h.op == "parent":
         return _parents(e, h, memo)
+    if isinstance(h, Deferred) and h.op in _NAME_OPS:
+        renamed = _renamed(e, h, memo)
+        if renamed is not None:
+            return renamed
     if not (isinstance(h, Deferred) and h.op in ("with_suffix", "with_stem")):
         return None
     base = h.base
@@ -440,26 +455,46 @@ def _cases(e: PathExpr, memo: Memo) -> list[PathExpr] | None:
     def written(pieces: list[Any]) -> PathExpr:
         return PathExpr(base.head, base.parts[:-1] + (Seg(_norm(pieces)),) + e.parts)
 
-    cases = [written(split)]
+    cases: list[Case] = [(None, written(split))]
     # No suffix only if every character before the dot is a dot: the fields
     # may render dots alone, so any literal character before it decides.
     literal = "".join(p for p in before if isinstance(p, str)) + tail[:k]
     if set(literal) <= {"."} and whole:
-        cases.append(written(whole))
+        cases.append((None, written(whole)))
     return cases
 
 
-def _parents(e: PathExpr, h: Deferred, memo: Memo) -> list[PathExpr] | None:
+def _split_base(e: PathExpr) -> PathExpr | None:
+    """The base whose last SubPath ``e``'s cases split, if they do: that of a
+    parent or a changed name."""
+    h = e.head
+    if not (isinstance(h, Deferred) and h.op in ("parent", *_NAME_OPS)):
+        return None
+    base = h.base
+    if isinstance(base.head, Deferred) or not base.parts:
+        return None
+    return base if isinstance(base.parts[-1], Splice) else None
+
+
+def _split(base: PathExpr, memo: Memo) -> tuple[Splice, Seg]:
+    """A base's last SubPath, where it renders a segment or more, as a SubPath
+    of all but the last segment, and that segment. The names are the base's
+    (`_fresh_key`), so every operation on one base splits it alike."""
+    key = _fresh_key(base, memo)
+    rest = Splice(Param(memo.name("_rest_", key), ParamKind.SUBPATH))
+    last = Seg((Field(Param(memo.name("_seg_", key)), role="segment"),))
+    return rest, last
+
+
+def _parents(e: PathExpr, h: Deferred, memo: Memo) -> list[Case] | None:
     """A parent deferred because its base ends in a SubPath, written out: the
     base with a SubPath of what precedes the last segment in place of its
     own, where that renders a segment or more; and the parent of what
     precedes it, where it renders none. Each keeps the base's prefix."""
-    base = h.base
-    if isinstance(base.head, Deferred) or not base.parts:
+    base = _split_base(e)
+    if base is None:
         return None
-    if not isinstance(base.parts[-1], Splice):
-        return None
-    rest = Splice(Param(memo.name("_rest_", _fresh_key(h, memo)), ParamKind.SUBPATH))
+    rest, _ = _split(base, memo)
     longer = PathExpr(base.head, base.parts[:-1] + (rest,) + e.parts)
     prefix = base.parts[:-1]
     if prefix and isinstance(prefix[-1], Seg):
@@ -468,7 +503,46 @@ def _parents(e: PathExpr, h: Deferred, memo: Memo) -> list[PathExpr] | None:
         shorter = PathExpr(base.head, e.parts)  # "/" and "." are their own parents
     else:
         shorter = PathExpr(Deferred("parent", PathExpr(base.head, prefix)), e.parts)
-    return [longer, shorter]
+    return [("longer", longer), ("shorter", shorter)]
+
+
+def _renamed(e: PathExpr, h: Deferred, memo: Memo) -> list[Case] | None:
+    """A name changed while its base ends in a SubPath, written out: the
+    change of the base's last segment, where the SubPath renders one or more
+    (the change then has a view, §15.3, 3); and the change of what precedes
+    the SubPath, where it renders none."""
+    base = _split_base(e)
+    if base is None:
+        return None
+    rest, last = _split(base, memo)
+    prefix = base.parts[:-1]
+    cases: list[Case] = []
+    for tag, parts in (("longer", prefix + (rest, last)), ("shorter", prefix)):
+        # Built as wend builds it: the change is made now where the name is
+        # known, and a change pathlib refuses (of "/", say) renders nothing.
+        try:
+            changed = getattr(PathExpr(base.head, parts), h.op)(h.arg)
+        except WendError, ValueError:
+            continue
+        cases.append((tag, PathExpr(changed.head, changed.parts + e.parts)))
+    return cases
+
+
+def _split_alike(y: PathExpr, base: PathExpr, memo: Memo) -> list[Case] | None:
+    """``y``, where it begins with ``base``, split as ``base``'s cases split
+    it: where its last SubPath renders a segment or more, and where it renders
+    none. None unless ``y`` begins with ``base``, defaults included, so that
+    under shared bindings the two render one text there."""
+    n = len(base.parts)
+    if isinstance(y.head, Deferred) or len(y.parts) < n:
+        return None
+    if _fresh_key(PathExpr(y.head, y.parts[:n]), memo) != _fresh_key(base, memo):
+        return None
+    rest, last = _split(base, memo)
+    return [
+        ("longer", PathExpr(y.head, base.parts[:-1] + (rest, last) + y.parts[n:])),
+        ("shorter", PathExpr(y.head, base.parts[:-1] + y.parts[n:])),
+    ]
 
 
 def _common(a: PathExpr, b: PathExpr, shared: bool, memo: Memo) -> int | None:
@@ -756,12 +830,41 @@ class Analysis:
         if answer == "unknown":
             # A changed suffix or stem, written out by how its base's name
             # splits: never if no case of one meets a case of the other.
-            ca, cb = _cases(a, self.memo), _cases(b, self.memo)
-            if ca is not None or cb is not None:
-                pairs = itertools.product(ca or [va], cb or [vb])
-                if all(self._decide(a, b, x, y, how) == "never" for x, y in pairs):
-                    return "never"
+            if self._cases_never(a, b, va, vb, how):
+                return "never"
         return answer
+
+    def _cases_never(
+        self, a: PathExpr, b: PathExpr, va: PathExpr, vb: PathExpr, how: How
+    ) -> bool:
+        """Whether no case of ``a`` meets a case of ``b`` (§15.3, 3). Under
+        shared bindings, where both split one base, or one splits a base the
+        other begins with, the base's SubPath renders one text on both
+        sides, so only cases of one branch are paired."""
+        ca, cb = _tagged_cases(a, self.memo), _tagged_cases(b, self.memo)
+        base = _split_base(a) or _split_base(b)
+        if self.shared and base is not None:
+            if ca is None:
+                ca = _split_alike(a, base, self.memo)
+            if cb is None:
+                cb = _split_alike(b, base, self.memo)
+        if ca is None and cb is None:
+            return False
+        xs = ca or [(None, va)]
+        ys = cb or [(None, vb)]
+        ba = _split_base(a) or (base if ca and _split_base(a) is None else None)
+        bb = _split_base(b) or (base if cb and _split_base(b) is None else None)
+        correlated = (
+            self.shared
+            and ba is not None
+            and bb is not None
+            and _fresh_key(ba, self.memo) == _fresh_key(bb, self.memo)
+        )
+        return all(
+            self._decide(a, b, _view(x, self.memo), _view(y, self.memo), how) == "never"
+            for (s, x), (t, y) in itertools.product(xs, ys)
+            if not (correlated and s is not None and t is not None and s != t)
+        )
 
     def _decide(
         self, a: PathExpr, b: PathExpr, va: PathExpr, vb: PathExpr, how: How

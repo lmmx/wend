@@ -79,7 +79,8 @@ its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #
 | 18 | [Deferred operations with known anchors, and parents written out](2026-10-25-deferred-operations.md): what pathlib guarantees of `parent`, `relative_to` and joins | #123 | 7266a22; corrected by #124 | `tests/relate_test.py` (anchors, the cases of a parent) |
 | 19 | [A name defaulted differently on each side is two texts](2026-10-25-defaults-in-views.md): a soundness fix to the names of views and of a parent's SubPath (0.4.0 affected) | #124 | 2c287b4 | `tests/relate_test.py` (both sides' defaults, bound and unbound), `tests/effects_test.py` |
 | 20 | [A field in either role, for builtin values](2026-10-25-builtin-roles.md): segment-valued and formatted fields cancel under `builtin_values=True` | #125 | bae21fb | `tests/relate_test.py` (both modes of `builtin_values`), `tests/effects_test.py` (the disk oracles with it), `bench/effects_corpus.py --builtin` |
-| 21 | [Answers that do not depend on string hashing](2026-10-25-determinism.md): choices in a fixed order, made-up names numbered and never a parameter's | #126 | on the PR's branch | `tests/relate_test.py` (under four hash seeds; a name clash), `tests/effects_test.py` |
+| 21 | [Answers that do not depend on string hashing](2026-10-25-determinism.md): choices in a fixed order, made-up names numbered and never a parameter's | #126 | daa6a93 | `tests/relate_test.py` (under four hash seeds; a name clash), `tests/effects_test.py` |
+| 22 | [Names changed below a SubPath, written out](2026-10-25-renamed-subpaths.md): the change of the last segment or of what precedes the SubPath, and correlated cases | #127 | on the PR's branch | `tests/relate_test.py` (the cases render all it renders) |
 
 ## How the discoveries build on one another
 

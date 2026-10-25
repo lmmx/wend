@@ -1,6 +1,6 @@
 """Precision of wend.effects.EffectGraph on realistic pipelines.
 
-Run with: uv run python bench/effects_corpus.py
+Run with: uv run python bench/effects_corpus.py [--builtin]
 
 Eight pipelines of the shapes data and build pipelines take: the example's
 seven steps, date-partitioned files compacted by month, training checkpoints
@@ -9,7 +9,8 @@ suffixes and stems, shards with manifests, work published from a scratch
 directory, and a mirror kept by SubPaths. For each: its links by certainty,
 its stages, its obligations by status, and every link that stays unknown.
 A link left unknown is one the graph could neither prove nor rule out: the
-count to bring down, where it can be, soundly.
+count to bring down, where it can be, soundly. ``--builtin`` builds each graph
+with builtin_values=True.
 """
 
 import collections
@@ -132,9 +133,15 @@ PIPES["subpaths"] = {
     "scan": Step(i=reads(R / "mirror" / SubPath("rel"))),
     "drop": Step(o=(R / "mirror" / SubPath("old")).requires(Exists).ensures(Absent)),
 }
+# --builtin assumes bound values are of builtin types (builtin_values=True).
+builtin = "--builtin" in sys.argv
 tot = collections.Counter()
 for k, steps in PIPES.items():
-    g = EffectGraph(steps, existing=[R] if k not in ("build", "checkpoints") else [])
+    g = EffectGraph(
+        steps,
+        existing=[R] if k not in ("build", "checkpoints") else [],
+        builtin_values=builtin,
+    )
     links = [*g.edges, *g.hazards, *g.conflicts]
     c = collections.Counter(l.certainty for l in links)
     tot.update(c)

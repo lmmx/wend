@@ -1096,7 +1096,12 @@ every pair is never, sometimes when one pair shows it, and never always.
    parameter's declaration (type, choices, kind) decides which bindings are accepted,
    never what an accepted one renders. Defaults are the exception: a name both sides
    give different defaults renders differently when unbound, and is not compared
-   equal.
+   equal. So are a parameter's two roles: alone in a segment it is segment-valued and
+   renders `os.fspath` of a `str` or path, `format(v, "")` of anything else; in text it
+   renders `format` of its value after its conversion, with its spec. A value of a
+   type of its own may render the two apart. With `builtin_values=True` (below) a
+   *plain* field, one with no spec and no conversion but `!s`, is compared equal in
+   either role: for a value of a builtin type each of these is `str(v)`.
 2. **Anchors.** Paths with different anchors are never the same, nor nested. A literal
    head has one anchor (`""` for a relative path, `/`, or `//`). An `Absolute`
    parameter renders `/` or `//`: POSIX keeps a leading `//` as an anchor of its own.
@@ -1167,7 +1172,8 @@ every pair is never, sometimes when one pair shows it, and never always.
      and the other holds one. `{day}.csv` and `{day}.csv.gz` never meet; `{day}.csv`
      and `{other}.csv` may. A field alone in a segment renders a segment-valued
      parameter, which a value of a type of its own may render apart from the same
-     value in text, so it does not cancel against one there;
+     value in text, so it does not cancel against one there unless
+     `builtin_values=True` and the one in text is plain (1);
    - both are segments alone, which decides by depth. A segment renders exactly one
      segment, never `""`, `.` or a separator (§3), so each remainder renders a fixed
      number of them. Paths of different depths are never the same, and paths of equal
@@ -1182,8 +1188,11 @@ every pair is never, sometimes when one pair shows it, and never always.
    confirms it; its MAYBE is `"unknown"`.
 
 `builtin_values=True` assumes bound values are of builtin types, as the overlap
-analysis does, which proves more answers `"never"`; `Relation.assumptions` names it
-when an answer relied on it.
+analysis does, which proves more answers `"never"`. It also compares a plain field
+equal in either role (1), so a shard directory `{split}` and its manifest
+`{split}.json` never meet. `Relation.assumptions` names it when an answer may rely on
+it: whenever the overlap analysis used it, and whenever a name is a plain field in both
+roles.
 
 ### 15.4 Effects across steps
 

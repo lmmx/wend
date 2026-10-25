@@ -32,6 +32,13 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   the `SubPath` renders: `parent({root}/raw/{rel...})` is `{root}/raw/{rest...}` or
   `{root}`, so it never meets `{root}/out/x`. Below one deferred head, a third of the
   answers `relate` left `"unknown"` on #119's sample are now `"never"`.
+- **`builtin_values=True` relates a field in either role** (#125). A parameter alone in
+  a segment (`P(root) / split`, or `T(t"{split}")`) and the same parameter plainly in
+  text (`T(t"{split}.json")`) render one text for a value of a builtin type. With
+  `builtin_values=True`, `relate` and `EffectGraph` now cancel them, so a shard
+  directory and its manifest never meet. `Relation.assumptions` names
+  `builtin_values` wherever such an answer may rest on it. Without the option nothing
+  changes: a `str` subclass may render the two apart.
 
 ### Fixed
 

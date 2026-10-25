@@ -67,6 +67,7 @@ from ._relate import (
     Certainty,
     Example,
     How,
+    Memo,
     Relation,
     _apart_segments,
     _common,
@@ -329,7 +330,7 @@ class EffectGraph:
         ]
         self.unassigned: list[Port] = [p for p in self.ports if not p.verbs]
         self._analyses: dict[tuple[int, int], Analysis] = {}
-        self._memo: dict[int, tuple[Any, Any]] = {}
+        self._memo = Memo(builtin_values)
         # A path given as existing, as a port of no step: what obligations
         # name as the fact that it exists.
         self._given = [Port("", "existing", e, frozenset()) for e in self.existing]

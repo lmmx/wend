@@ -571,6 +571,31 @@ def test_a_fact_does_not_pass_between_names_defaulted_apart():
     assert o.status == "discharged"
 
 
+def test_builtin_values_relates_a_shard_directory_and_its_manifest():
+    # `{split}` alone in a segment is segment-valued; in `{split}.json` it is
+    # formatted. Only for builtin values are the two known to render alike.
+    split, idx = Param("split"), Param("idx", type=int)
+    shards = R / "shards" / T(t"{split}")
+    steps = {
+        "shard": Step(
+            o=(shards / T(t"{idx:05d}.tar")).requires(Absent, Creatable).ensures(File)
+        ),
+        "manifest": Step(
+            i=shards.requires(Listable),
+            o=(R / "shards" / T(t"{split}.json")).requires(Writable).ensures(File),
+        ),
+    }
+    links = lambda g: [*g.edges, *g.hazards, *g.conflicts]  # noqa: E731
+    plain = EffectGraph(steps, existing=[R])
+    assert sorted(str(x) for x in links(plain) if x.certainty == "unknown") == [
+        "<manifest.o -> manifest.i (list): unknown>",
+        "<shard.o x manifest.o: unknown>",
+    ]
+    trusting = EffectGraph(steps, existing=[R], builtin_values=True)
+    assert all(x.certainty != "unknown" for x in links(trusting))
+    assert trusting.stages() == [["shard"], ["manifest"]]
+
+
 def test_a_step_that_needs_a_directory_makes_nothing_there():
     src = R / "raw" / T(t"{day}.csv")
 
@@ -1016,13 +1041,24 @@ ROLES_PLUS = {
 }
 
 
+# Families where `name` is alone in a segment (a segment-valued parameter),
+# against the families where it is formatted in text: `top` is `name_dir`, and
+# `name_dir` is the raw directory when name is "raw". Every pooled value is a
+# str, so graphs built with builtin_values=True must hold on disk too.
+FAMILIES_PLUS = {
+    **FAMILIES,
+    "name_dir": P(root) / Param("name"),
+    "raw_seg": P(root) / "raw" / Param("name"),
+}
+
+
 def build_plus(pipeline_):
     steps, bodies = [("survey", SURVEY)], [[]]
     for i, ps in enumerate(pipeline_):
         paths, b = {}, []
         for j, (role, fam) in enumerate(ps):
             pre, post, body = ROLES_PLUS[role]
-            e = FAMILIES[fam].requires(*pre)
+            e = FAMILIES_PLUS[fam].requires(*pre)
             if post:
                 e = e.ensures(*post)
             paths[f"p{j}"] = e
@@ -1035,7 +1071,7 @@ def build_plus(pipeline_):
 plus_pipelines = st.lists(
     st.lists(
         st.tuples(
-            st.sampled_from(sorted(ROLES_PLUS)), st.sampled_from(sorted(FAMILIES))
+            st.sampled_from(sorted(ROLES_PLUS)), st.sampled_from(sorted(FAMILIES_PLUS))
         ),
         min_size=1,
         max_size=2,
@@ -1044,16 +1080,17 @@ plus_pipelines = st.lists(
     min_size=1,
     max_size=6,
 )
-# A case, and what the graph is told exists: nothing, the root, or the raw
-# directory (where the tree has one; else the root).
+# A case, what the graph is told exists (nothing, the root, or the raw
+# directory where the tree has one, else the root), and builtin_values.
 oracle_cases = st.tuples(
     st.one_of(cases, st.tuples(plus_pipelines, trees)),
     st.sampled_from(["none", "root", "raw"]),
+    st.booleans(),
 )
 
 
 def _obligations_hold_on_disk(case, staged):
-    (pipeline_, tree), given = case
+    (pipeline_, tree), given, builtin = case
     steps, bodies = build_plus(pipeline_)
     names = [n for n, _ in steps]
     existing = {
@@ -1062,7 +1099,7 @@ def _obligations_hold_on_disk(case, staged):
         "raw": [P(root) / "raw" if tree["raw"] else P(root)],
     }[given]
     try:
-        g = EffectGraph(dict(steps), existing=existing)
+        g = EffectGraph(dict(steps), existing=existing, builtin_values=builtin)
     except ValueError:
         return  # a step may delete what was given as existing
     if staged:
@@ -1114,7 +1151,7 @@ def _obligations_hold_on_disk(case, staged):
 
 @settings(max_examples=150, deadline=None, suppress_health_check=list(HealthCheck))
 @given(case=oracle_cases)
-@example(case=(ROOT_REPLACED, "none"))
+@example(case=(ROOT_REPLACED, "none", False))
 def test_obligations_hold_on_disk_when_run_in_order(case):
     # The oracle: random pipelines over families whose bindings collide, run
     # in a real directory under several bindings. Wherever every earlier step
@@ -1125,14 +1162,14 @@ def test_obligations_hold_on_disk_when_run_in_order(case):
 
 @settings(max_examples=150, deadline=None, suppress_health_check=list(HealthCheck))
 @given(case=oracle_cases)
-@example(case=(ROOT_REPLACED, "none"))
+@example(case=(ROOT_REPLACED, "none", False))
 def test_obligations_hold_on_disk_when_run_by_stages(case):
     # The same, by stages(): a step's group-mates may run before or after it.
     _obligations_hold_on_disk(case, staged=True)
 
 
 def _stages_commute_on_disk(case):
-    (pipeline_, tree), given = case
+    (pipeline_, tree), given, builtin = case
     steps, bodies = build_plus(pipeline_)
     names = [n for n, _ in steps]
     existing = {
@@ -1141,7 +1178,7 @@ def _stages_commute_on_disk(case):
         "raw": [P(root) / "raw" if tree["raw"] else P(root)],
     }[given]
     try:
-        g = EffectGraph(dict(steps), existing=existing)
+        g = EffectGraph(dict(steps), existing=existing, builtin_values=builtin)
     except ValueError:
         return
     groups = g.stages()

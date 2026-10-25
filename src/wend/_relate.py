@@ -186,7 +186,26 @@ def _conflicting_defaults(a: PathExpr, b: PathExpr) -> frozenset[str]:
     )
 
 
-Memo = dict[int, tuple[Any, Any]]
+class Memo(dict[int, tuple[Any, Any]]):
+    """Keys already computed, by the identity of their piece. ``builtin`` keys
+    plain fields by their parameter alone (`_plain_field`)."""
+
+    def __init__(self, builtin: bool = False) -> None:
+        super().__init__()
+        self.builtin = builtin
+
+
+def _plain_field(f: Field) -> bool:
+    """Whether ``f`` renders its parameter's value as ``str`` does: a
+    segment-valued parameter, or a field with no format spec and no
+    conversion other than ``!s``. For a value of a builtin type the two agree:
+    ``os.fspath`` of a ``str`` or pathlib path is its ``str``, and
+    ``format(v, "")`` is ``str(v)``."""
+    return (
+        isinstance(f.source, Param)
+        and f.conversion in (None, "s")
+        and f.static_spec == ""
+    )
 
 
 def _key(x: Any, memo: Memo) -> Any:
@@ -197,6 +216,10 @@ def _key(x: Any, memo: Memo) -> Any:
         return hit[1]
     if isinstance(x, Param):
         key: Any = ("param", x.name)
+    elif isinstance(x, Field) and memo.builtin and _plain_field(x):
+        # Assuming builtin values, a plain field renders its value's str in
+        # either role, wherever it renders (§15.3, 1).
+        key = ("plain", _key(x.source, memo))
     elif isinstance(x, PathExpr):
         key = ("expr", _key(x.head, memo), tuple(_key(p, memo) for p in x.parts))
     elif isinstance(x, Const):
@@ -253,6 +276,25 @@ def _names(x: Any) -> frozenset[str]:
     if isinstance(x, Deferred):
         return PathExpr(x).param_names
     return frozenset()
+
+
+def _roles(*es: PathExpr) -> dict[str, set[str]]:
+    """The roles in which a plain field renders each name, over ``es``."""
+    found: dict[str, set[str]] = {}
+    stack: list[Any] = list(es)
+    seen: set[int] = set()
+    while stack:
+        x = stack.pop()
+        if id(x) in seen:
+            continue
+        seen.add(id(x))
+        if isinstance(x, Field) and isinstance(x.source, Param) and _plain_field(x):
+            found.setdefault(x.source.name, set()).add(x.role)
+        if isinstance(x, tuple):
+            stack.extend(x)
+        elif dataclasses.is_dataclass(x) and not isinstance(x, type):
+            stack.extend(getattr(x, f.name) for f in dataclasses.fields(x))
+    return found
 
 
 def _alike(x: Any, y: Any, bad: frozenset[str], memo: Memo) -> bool:
@@ -614,7 +656,7 @@ class Analysis:
     ) -> None:
         self.shared = shared
         self.builtin_values = builtin_values
-        self.memo: Memo = {} if memo is None else memo
+        self.memo: Memo = Memo(builtin_values) if memo is None else memo
         self.pairs = [
             (x, y) for x in _overlap._alternatives(a) for y in _overlap._alternatives(b)
         ]
@@ -622,6 +664,12 @@ class Analysis:
         self._answers: dict[How, Certainty] = {}
         self._examples: dict[How, Example | None] = {}
         self.assumptions: set[str] = set()
+        # A name a plain field renders in both roles: its keys agree only
+        # because of builtin_values, which an answer may then rely on.
+        if self.memo.builtin and any(
+            len(roles) > 1 for x, y in self.pairs for roles in _roles(x, y).values()
+        ):
+            self.assumptions.add("builtin_values")
 
     def __call__(self, how: How) -> Certainty:
         """The certainty of one relation (``same``, ``inside`` or
@@ -801,7 +849,7 @@ def _structurally(
     for fa, fb in zip(ra.parts, rb.parts, strict=False):
         if not (isinstance(fa, Seg) and isinstance(fb, Seg)):
             break
-        if _apart_segments(fa, fb, shared, bad, {} if memo is None else memo):
+        if _apart_segments(fa, fb, shared, bad, Memo() if memo is None else memo):
             return "never"
     # Depth: a segment renders exactly one segment (never "", "." or a
     # separator), so remainders of segments alone render a fixed count of

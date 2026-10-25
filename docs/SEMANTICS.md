@@ -1117,6 +1117,10 @@ every pair is never, sometimes when one pair shows it, and never always.
    The relation reasons on this *view* of the expression. The view renders what the
    expression renders, and more, since its text stands for any text. So the view
    proves `"never"`, nesting by depth (4), and that one operation is the same as itself.
+   The text is one parameter on both sides only where the operation renders one text
+   on both: its structure is equal, and so is each of its names' default, or its lack
+   of one. A name defaulted differently on each side renders each side's own default
+   when unbound (1), so its texts are two.
    It shows `"sometimes"` only through a binding of the expressions themselves. Where
    the view leaves an answer unknown, the expressions are asked as they are.
    - An empty stem is no stem: `.csv` has no suffix, so
@@ -1138,7 +1142,8 @@ every pair is never, sometimes when one pair shows it, and never always.
      where the `SubPath` renders a segment or more, the parent is the base with a
      `SubPath` of all but the last in its place; where it renders none, the parent of
      what precedes it. `parent({root}/raw/{rel...})` is `{root}/raw/{rest...}` or
-     `{root}`, so it is never `{root}/out/x`.
+     `{root}`, so it is never `{root}/out/x`. The new `SubPath` is one on both sides
+     under the same condition as a view's text.
    - A name of `..` has no suffix, so `with_suffix("")` keeps it: `{root}` with the
      suffix `""` renders `a/..` from `root="a/.."`. The overlap analysis (§15.5) allows
      `..` wherever a changed name may render it.

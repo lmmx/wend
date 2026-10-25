@@ -33,6 +33,19 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   `{root}`, so it never meets `{root}/out/x`. Below one deferred head, a third of the
   answers `relate` left `"unknown"` on #119's sample are now `"never"`.
 
+### Fixed
+
+- **A name defaulted differently on each side is no longer tied inside a changed name**
+  (#124). `relate` could answer `"always"` or `"never"` wrongly for two expressions in
+  which one name has a different default on each side, and the name sits inside a name
+  changed by `with_suffix`, `with_stem` or `with_name`, or inside a parent of a
+  `SubPath`. Left unbound, each side renders its own default, but the analysis tied the
+  two texts. `(data/{x}).with_suffix(".q")/y`, with `x` defaulting to `a` on one side
+  and `b` on the other, was "always" the same, though unbound it renders `data/a.q/y`
+  and `data/b.q/y`. `EffectGraph.obligations()` could then discharge a requirement by
+  a fact about the other path. 0.4.0 was affected through changed names. Pairs whose
+  names have the same defaults on both sides, and every `relate(e, e)`, were not.
+
 ## 0.4.0
 
 ### New

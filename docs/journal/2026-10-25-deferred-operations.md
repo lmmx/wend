@@ -1,5 +1,9 @@
 # 2026-10-25: Deferred operations with known anchors, and parents written out (#123)
 
+> **Correction, #124.** §2's fresh `SubPath` is revised in place, with its earlier
+> wording marked *Before*: it is one on both sides only where the base's names have the
+> same defaults on both (`2026-10-25-defaults-in-views.md`).
+
 #119 gave changed names a view and their anchors, and #122 wrote changed suffixes and
 stems out by how pathlib splits their base's name. The other deferred operations,
 `parent`, `relative_to` and `join`, stayed opaque: any anchor, and no prefix to cancel.
@@ -38,7 +42,17 @@ no segment. Let the base be `H/q/{rel...}`, where `q` is the parts before the
 
 On every binding, the parent renders what one of the two renders, with the fresh
 `SubPath` bound as above. Both keep the prefix `H/q`, which cancels against a sibling's,
-so a "never" proved of every pair of cases holds of the expressions.
+so a "never" proved of every pair of cases holds of the expressions. The fresh `SubPath`
+is named from the parent's key and its names' defaults. So two parents share it only
+where their bases render one text on both sides, unbound names included.
+
+> *Before:* "On every binding, the parent renders what one of the two renders, with the
+> fresh `SubPath` bound as above. Both keep the prefix `H/q`, which cancels against a
+> sibling's, so a "never" proved of every pair of cases holds of the expressions." The
+> name was taken from the parent's key alone, which leaves defaults out. So
+> `parent(data/{rel...})/a`, with `rel` defaulted `x/z`, was `"never"` the same as
+> `parent(data/{rel...})/x/{z}`, with `rel` defaulted `x`. Yet both render `data/x/a`
+> with `rel` unbound and `z="a"`.
 
 ## 3. Tests and measurements
 

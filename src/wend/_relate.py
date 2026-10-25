@@ -227,6 +227,22 @@ def _value_key(v: Any) -> Any:
         return ("id", type(v), id(v))
 
 
+def _fresh_key(x: Any, memo: Memo) -> Any:
+    """What decides the text ``x`` renders under shared bindings, unbound
+    names included: its key, and each parameter's default. A name wend makes
+    up for that text (a view's, a parent's SubPath) is fixed by this, so two
+    sides tie it only where they render one text: a name with a different
+    default on each side renders each side's own when unbound."""
+    params = PathExpr(x).params if isinstance(x, Deferred) else x.params
+    defaults = tuple(
+        sorted(
+            (n, _value_key(p.default) if p.has_default else ("none",))
+            for n, p in params.items()
+        )
+    )
+    return _key(x, memo), defaults
+
+
 def _names(x: Any) -> frozenset[str]:
     if isinstance(x, HeadParam):
         return frozenset({x.param.name})
@@ -297,14 +313,15 @@ def _view(e: PathExpr, memo: Memo) -> PathExpr:
     ``with_name``; text then the suffix for ``with_suffix``; the new stem then
     text for ``with_stem``. The view renders what ``e`` renders, and more, so
     it proves "never", and nesting by depth. The text's name is fixed by the
-    operation, so one operation viewed twice is alike."""
+    operation and the defaults of its names (`_fresh_key`), so one operation
+    viewed twice is alike where it renders one text."""
     h = e.head
     if not (isinstance(h, Deferred) and h.op in _NAME_OPS):
         return e
     base = _view(h.base, memo)
     if not base.parts or not isinstance(base.parts[-1], Seg):
         return e
-    text = Field(Param(f"_name_{abs(hash(_key(h, memo))):x}"))
+    text = Field(Param(f"_name_{abs(hash(_fresh_key(h, memo))):x}"))
     if h.op == "with_name":
         pieces = list(h.arg.pieces)
     elif h.op == "with_suffix":
@@ -376,7 +393,7 @@ def _parents(e: PathExpr, h: Deferred, memo: Memo) -> list[PathExpr] | None:
         return None
     if not isinstance(base.parts[-1], Splice):
         return None
-    rest = Splice(Param(f"_rest_{abs(hash(_key(h, memo))):x}", ParamKind.SUBPATH))
+    rest = Splice(Param(f"_rest_{abs(hash(_fresh_key(h, memo))):x}", ParamKind.SUBPATH))
     longer = PathExpr(base.head, base.parts[:-1] + (rest,) + e.parts)
     prefix = base.parts[:-1]
     if prefix and isinstance(prefix[-1], Seg):

@@ -75,6 +75,35 @@ def test_different_defaults_break_always():
     assert relate(a, P(root) / "x").same == "always"  # one default is not a conflict
 
 
+def test_a_name_changed_under_different_defaults_is_not_tied():
+    # A view's text, and a parent's SubPath, stand for what the operation
+    # renders. With a name defaulted differently on each side, the two sides
+    # render different texts when it is unbound, so the texts are not one.
+    xa, xb = Param("x", default="a"), Param("x", default="b")
+    a = (P("data") / xa).with_suffix(".q") / "y"
+    b = (P("data") / xb).with_suffix(".q") / "y"
+    assert (a.render({}), b.render({})) == ("data/a.q/y", "data/b.q/y")
+    r = relate(a, b)
+    assert r.same == "sometimes" and r.kind == "overlapping"
+    assert relate(a, a).same == "always"
+    # A parent's SubPath, defaulted "x/z" on one side and "x" on the other:
+    # unbound, both render data/x/a.
+    rel_a, rel_b = SubPath("rel", default="x/z"), SubPath("rel", default="x")
+    up, z = P("data") / rel_a, Param("z")
+    a = up.parent / "a"
+    b = (P("data") / rel_b).parent / "x" / T(t"{z}")
+    assert a.render({}) == b.render({"z": "a"}) == "data/x/a"
+    assert relate(a, b).same != "never"
+    # Defaults belong to names: swapped between two names, they render "ab" on
+    # one side and "ba" on the other.
+    x1, y1 = Param("x", default="a"), Param("y", default="b")
+    x2, y2 = Param("x", default="b"), Param("y", default="a")
+    a = (P("data") / T(t"{x1}{y1}")).with_suffix(".q")
+    b = (P("data") / T(t"{x2}{y2}")).with_suffix(".q")
+    assert (a.render({}), b.render({})) == ("data/ab.q", "data/ba.q")
+    assert relate(a, b).same == "sometimes"
+
+
 def test_independent_bindings_need_static_paths_for_always():
     assert relate(raw, raw, shared=False).same == "sometimes"
     assert relate(P("/a/b"), P("/a/b"), shared=False).same == "always"
@@ -435,6 +464,62 @@ def under_one_head(draw):
 @given(pair=under_one_head())
 def test_paths_below_one_deferred_head_hold_for_every_pooled_binding(pair):
     assert_sound(*pair)
+
+
+DEFAULTS = [".", "a", "x", "a/b", "x/z", "w", "x/a"]
+
+
+@st.composite
+def defaulted(draw):
+    """Two expressions over one base ending in a name with a default on each
+    side, perhaps a different one: a SubPath or a segment, changed by a name
+    operation or a parent, then joined onto."""
+
+    def side():
+        if draw(st.booleans()):
+            last = SubPath("rel", default=draw(st.sampled_from(DEFAULTS)))
+        else:
+            last = Param("rel", default=draw(st.sampled_from(["a", "x", "w", "x.q"])))
+        e = P("data") / last
+        op = draw(
+            st.sampled_from(["parent", "with_suffix", "with_stem", "with_name", ""])
+        )
+        try:
+            if op == "parent":
+                e = e.parent
+            elif op == "with_suffix":
+                e = e.with_suffix(draw(st.sampled_from([".q", ""])))
+            elif op:
+                e = getattr(e, op)(draw(st.sampled_from(["x", "y"])))
+        except WendError, ValueError:
+            pass
+        for part in draw(st.lists(st.sampled_from(["a", "x", "y", "z"]), max_size=2)):
+            e = e / (T(t"{Param('z')}") if part == "z" else part)
+        return e
+
+    return side(), side()
+
+
+@settings(max_examples=300, deadline=None, suppress_health_check=list(HealthCheck))
+@given(pair=defaulted())
+def test_names_defaulted_apart_hold_bound_and_unbound(pair):
+    # The pooled bindings bind every name, so a default never renders there:
+    # here `rel` is also left unbound, and each side renders its own.
+    a, b = pair
+    r = relate(a, b)
+    check_examples(a, b, r)
+    for rel in [None, ".", "a", "x", "x/z", "w/x"]:
+        for z in ["a", "x", "y"]:
+            env = {"z": z} if rel is None else {"z": z, "rel": rel}
+            pa, pb = rendered(a, env), rendered(b, env)
+            if pa is None or pb is None:
+                continue
+            how = lexically(pa, pb)
+            for h in ("same", "inside", "contains"):
+                if r[h] == "always":
+                    assert how == h, (h, a.pattern, b.pattern, env, pa, pb, r)
+                if r[h] == "never":
+                    assert how != h, (h, a.pattern, b.pattern, env, pa, pb, r)
 
 
 def test_one_deferred_head_cancels_as_a_prefix():

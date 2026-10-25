@@ -2,8 +2,9 @@
 
 `relate(a, b)` says whether two expressions name the same path, one inside
 the other, or neither, for every binding, for some, or for none, before any
-binding exists. Three questions, each answered ``"always"``, ``"sometimes"``,
-``"never"`` or ``"unknown"``:
+binding exists. Paths are compared as the strings they render (lexically),
+not as filesystem objects: two strings can name one file. Three questions,
+each answered ``"always"``, ``"sometimes"``, ``"never"`` or ``"unknown"``:
 
 - ``same``: ``a`` and ``b`` render one path;
 - ``inside``: ``a``'s path lies strictly below ``b``'s;
@@ -76,6 +77,7 @@ class Relation:
     binding under which both render), ``"sometimes"`` (for one at least: see
     ``examples``), ``"never"``, or ``"unknown"`` (neither was proved).
     ``inside`` is ``a`` strictly below ``b``; ``contains``, strictly above.
+    Each compares the rendered strings, not the files they may name.
     """
 
     same: Certainty
@@ -105,11 +107,13 @@ class Relation:
 
     @property
     def disjoint(self) -> bool:
-        """Whether the two paths never meet nor nest: they cannot interact."""
+        """Whether the two rendered paths never meet nor nest, as strings: no
+        path is both, nor one inside the other. Two spellings of one file
+        (a symlink, ``..``, a relative and an absolute path) are not seen."""
         return self.kind == "disjoint"
 
     def __bool__(self) -> bool:
-        """True unless the two are proved disjoint: they may interact."""
+        """True unless the two are proved disjoint: they may meet or nest."""
         return not self.disjoint
 
     def __repr__(self) -> str:
@@ -561,6 +565,10 @@ def relate(
     a: Any, b: Any, *, shared: bool = True, builtin_values: bool = False
 ) -> Relation:
     """How the paths ``a`` and ``b`` render relate, before any binding.
+
+    The paths are compared as strings (lexically), not as filesystem
+    objects: ``"never"`` means never the same string, and a symlink or a
+    ``..`` can still make two strings name one file.
 
     ``a`` and ``b`` are expressions, unions or path strings. With
     ``shared=True`` (the default) a parameter name common to both takes one

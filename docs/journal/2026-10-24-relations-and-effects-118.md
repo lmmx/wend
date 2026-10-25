@@ -7,6 +7,10 @@ path, one inside the other, or neither, for every binding, for some, or for none
 `wend.effects.EffectGraph`, which relates a pipeline's steps by it. The contract is
 `docs/SEMANTICS.md` §15.
 
+*Revised before merging.* The owner's check of the graph's scheduling semantics (§8)
+refuted two claims of §4 and narrowed one of §7. They are revised in place; the earlier
+wording stays beside each, marked *Before*.
+
 ## 1. The experimental modules at 0.3.0
 
 **[Fact]** `wend._experimental` held 16 files and 6,066 lines at 0.3.0 (`c07b42a`), none
@@ -80,12 +84,24 @@ an unhashable value only as itself.
 graph in:
 - relations: every link has the certainty of a `relate` answer, and a pair the relation
   proves apart has no link;
-- deletion: a hazard also when the read path is *inside* the deleted one, and for a
-  listing when the deleted path is inside the listed directory; a conflict also when a
-  written path is inside a deleted one. The experimental graph compared the paths for
-  equality only;
-- queries: `stages()` (groups that may run at once, no two conflicting),
-  `independent(x, y)`, `links`, `explain` (one sentence per link, with an example);
+- nesting: a declared path covers what lies below it, since it may be a directory, so
+  every link (dependency, hazard, conflict) holds when the two paths are one or one is
+  inside the other. Two deletions conflict, and a port that declares no verbs is kept
+  apart from every port it touches. The experimental graph compared the paths for
+  equality only (§8);
+
+  > *Before:* "deletion: a hazard also when the read path is *inside* the deleted one,
+  > and for a listing when the deleted path is inside the listed directory; a conflict
+  > also when a written path is inside a deleted one." Nesting was asked of deletions
+  > only: a writer of `{root}/raw` and a reader of `{root}/raw/{day}.csv` were
+  > independent (§8.1).
+- queries: `stages()` (groups that may run at once, no two joined by any link),
+  `independent(x, y)`, `links`, `explain` (one sentence per link, with an example), and
+  `cycles(certain=...)` over the links `order()` follows, dependencies and hazards both;
+
+  > *Before:* "`stages()` (groups that may run at once, no two conflicting)". It was so,
+  > but `cycles()` followed dependencies alone, so it could find none where `order()`
+  > found one (§8.2).
 - shared bindings by default;
 - `dependencies(certain=True)` keeps the links that hold on every run. The experimental
   `definite_only` kept those with a witness, which hold on *some* run.
@@ -173,5 +189,112 @@ against `/data/x`, through overlap).
 - **[Fact]** Conversions (`!r`), float and untyped formatted fields, and deferred
   operations give `"unknown"` where overlap's shapes are coarse.
 - **[Open]** `families.analyse_families` and `knowledge` still read `"sometimes"` and
-  `"unknown"` alike. With `relate`, a fact known of `b` could be known of `a` whenever
-  `same` is `"always"`, not only when the patterns are equal.
+  `"unknown"` alike. With `relate`, a fact *established* of `b` names the string `a`
+  renders whenever `same` is `"always"`. Whether the fact still holds is another
+  question: knowledge is sound only under the knowledge model's closed world, with every
+  mutation declared, and on alias-free runs (the aliasing entry, §5). Static identity of
+  two strings says nothing of freshness. A reuse of facts across `same == "always"` has
+  to be invalidated by every declared mutation of either spelling, and by nothing else
+  only under those assumptions.
+
+  > *Before:* "With `relate`, a fact known of `b` could be known of `a` whenever `same`
+  > is `"always"`, not only when the patterns are equal." Narrowed by the owner: textual
+  > equality does not make facts fresh.
+
+## 8. The owner's check before merging
+
+The owner approved merging on one condition: that the graph never take a possible
+interference for independence. Concretely, that `"sometimes"` and `"unknown"` never become
+independence, that `stages()` never groups steps that may interfere, that `order()`
+tells an unavoidable cycle from a possible one, and that the documents say the relation is
+of strings, not of files. Each was checked against the code; two defects were found, and
+fixed before merging.
+
+### 8.1 Nested paths were independent
+
+**[Refuted]** "a link holds when the two paths are equal (or, for a deletion, when one is
+inside the other)". A declared path may name a directory, and a step that writes, reads
+or deletes a directory touches what is inside it. Under one `{root}`, each of these pairs
+was independent and shared a stage:
+
+| steps | a link now |
+|---|---|
+| writes `{root}/raw`; reads `{root}/raw/{day}.csv` | dependency, always |
+| reads `{root}/raw`; writes `{root}/raw/{day}.csv` | dependency, always |
+| writes `{root}/raw`; writes `{root}/raw/{day}.csv` | conflict, always |
+| writes `{root}/raw`; deletes `{root}/raw/{day}.csv` | conflict, always |
+| reads `{root}/raw`; deletes `{root}/raw/{day}.csv` | hazard, always |
+| deletes `{root}/raw`; deletes `{root}/raw/x.csv` | conflict, always |
+| checks `Exists` on `{root}/raw` (no verbs); reads or writes `{root}/raw/x.csv` | conflict, always |
+
+**[Fact]** Every link now asks `same`, `inside` and `contains`, and its certainty is that
+of the three together (§15.4). Two deletions conflict because the second may find its
+path gone. A port with no verbs may write: it is kept apart from every port it touches,
+and orders nothing, since nothing says which way.
+
+**[Measured]** No precision lost where it was measured: the six-step pipeline keeps its 5
+dependencies, 1 hazard, 1 conflict, order and stages (0.17 ms), and the chain benchmark
+its links and orders (77 ms at N = 200).
+
+### 8.2 `cycles()` and `order()` followed different relations
+
+**[Refuted]** "`order()` is None if the steps form a cycle (`cycles`)". `order()` follows
+dependencies and hazards; `cycles()` followed dependencies alone. Step `a` reads `x` and
+`y`, and step `b` writes `y` and deletes `x`: `b` must come first (it writes what `a`
+reads) and last (it deletes what `a` reads). `order()` was None, and `cycles()` was
+empty. Both now follow one relation, and `cycles(certain=True)` keeps the links that hold
+on every run: a cycle among them is unavoidable. A cycle found only without it rests on a
+link that holds on some runs or is not ruled out, and may depend on the bindings
+(`test_a_cycle_that_rests_on_a_possible_link_is_not_called_unavoidable`).
+
+### 8.3 What held
+
+**[Fact]** `_link` drops a pair only when its relation is `"never"`, and the literal
+index (`_apart`) only when two literal segments diverge, which proves `"never"` for all
+three relations. Every query but those given `certain=True` counts every other link.
+`stages()` puts into one group only steps with no dependency or hazard between them (a
+step is ready only once all it follows are done) and no conflict.
+
+**[Fact]** One interaction stays outside the graph, now stated as an assumption (§15.4):
+the parents a creation may make. Two steps that create siblings in a missing directory
+both may create it, and do not touch. They may share a stage, which is safe when
+parents are made idempotently. It is not when a plain `mkdir` makes them, or when a
+`Creatable` check runs while the other step may be making the parent. Counting every
+parent would join every two writers under a root that may not exist yet. The families
+analysis bounds them by knowledge (`made_parents`); carrying that bound into the graph
+is open.
+
+**[Fact]** The relation's documents now say, in `relate`, `Relation`, `Relation.disjoint`,
+`EffectGraph.independent` and SEMANTICS §15, that paths are compared as rendered strings,
+not filesystem objects. `Relation.disjoint` had said "they cannot interact".
+
+### 8.4 An oracle for the schedule
+
+**[Measured]** `test_order_and_stages_hold_for_every_rendered_run` renders every port of
+150 generated pipelines (2–5 steps, 1–3 ports each, every verb and none) under 300
+bindings from the overlap tests' pool. It compares the rendered paths as strings, and
+checks three things. A step reading or listing what another writes comes after it, in
+`order()` and in `stages()`. A step reading what another deletes comes before it. Two
+steps whose paths touch, where either changes its path or declares no verbs, never share
+a stage. It also checks that `order()`, `stages()` and `cycles()` agree on whether there is
+a cycle.
+
+**[Measured]** Mutants of `effects.py`, run against the scheduling tests with one seed
+and no example database:
+
+| mutant | killed by |
+|---|---|
+| the graph as first pushed | the oracle, the nesting cases, the hazard cycle |
+| a link asks only `same` | the oracle, the nesting cases |
+| `cycles()` ignores hazards | the oracle, the hazard cycle |
+| two deletions never conflict | the oracle, the nesting cases |
+| a port without verbs conflicts with nothing | the oracle (seeds 0–4), the nesting case for a writer |
+| `stages()` ignores unknown conflicts | `test_an_unknown_conflict_keeps_two_steps_apart` |
+| `order()` follows certain links only | the oracle, the possible cycle |
+| unknown links dropped | the oracle, `test_unknown_is_a_dependency_for_the_order_but_never_certain` |
+| sometimes links dropped | the oracle, the possible cycle, `test_a_dependency_that_holds_on_some_runs_only` |
+| hazards for a deletion inside a read path dropped | the oracle, the nesting cases |
+
+**[Fact]** The oracle cannot catch the unknown-conflict mutant: an `"unknown"` link is
+one no binding from the pool shows (`{n!r}.csv` against `q.csv` needs an object whose repr
+is `q`). Only the contract, and a test of it, keeps such steps apart.

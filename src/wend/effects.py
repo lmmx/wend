@@ -3,18 +3,24 @@
 `EffectGraph` takes named steps (`wend.Step`) and relates what each declares it
 reads, lists, writes and deletes (`Step.effects`), with `wend.relate`:
 
-- a *dependency* runs from a step that writes a path to one that reads it,
-  or lists the directory it is in;
-- a *hazard* runs from a step that reads a path to one that deletes it, or a
-  directory above it: the reader has to run first;
-- a *conflict* is two steps that write one path, or one that writes a path
-  another deletes.
+- a *dependency* runs from a step that writes a path to one that reads or
+  lists it;
+- a *hazard* runs from a step that reads or lists a path to one that deletes
+  it: the reader has to run first;
+- a *conflict* is two steps that write one path, or delete it, or one that
+  writes and one that deletes it, or a path declared with no verbs (whose
+  effect is unknown) and another: they must not run at once.
+
+A declared path covers what lies below it, since it may be a directory: each
+link holds when the two paths are one, or one is inside the other.
 
 Each carries a certainty: ``"always"`` (on every run), ``"sometimes"`` (on
 some runs, with an example), or ``"unknown"`` (not ruled out). Pairs the
-analysis proves apart are not links at all. By default a parameter name means
-one value across every step, as when the pipeline runs with one set of
-bindings (``shared=True``)::
+analysis proves apart are not links at all, and every query but those given
+``certain=True`` counts every other link, so a possible conflict is never
+taken for independence. By default a parameter name means one value across
+every step, as when the pipeline runs with one set of bindings
+(``shared=True``)::
 
     from wend import Creatable, Exists, P, Param, Readable, Step, T
     from wend.effects import EffectGraph
@@ -30,8 +36,11 @@ bindings (``shared=True``)::
 
 What the graph knows is what the steps declare: a step's code can read or
 write anything, and a path read without ``Readable`` declared is not an input
-here. Paths are compared as strings, so two spellings of one file (a symlink,
-a relative and an absolute path, a ``..``) are two paths.
+here. Parents a creation may make (as ``mkdir -p`` does) are not counted: two
+steps that create siblings in a missing directory may share a stage, which is
+safe when parents are made idempotently (docs/SEMANTICS.md §15.4). Paths are compared as rendered strings, not as filesystem objects, so
+two spellings of one file (a symlink, a relative and an absolute path, a
+``..``, a hard link) are two paths.
 """
 
 from __future__ import annotations
@@ -59,6 +68,14 @@ SUPPLY_VERBS = frozenset({"create", "write"})
 DELETE_VERBS = frozenset({"delete"})
 INPUT_VERBS = frozenset({"read", "list"})
 Via = Literal["read", "list"]
+_TOUCH: tuple[How, ...] = ("same", "inside", "contains")
+_INVERSE: dict[How, How] = {"same": "same", "inside": "contains", "contains": "inside"}
+# The subject's path, relative to what the object's port does to its own.
+_WHAT: dict[How, str] = {
+    "same": "what",
+    "inside": "inside what",
+    "contains": "a directory holding what",
+}
 
 _PHRASE = {
     "always": "on every run",
@@ -105,6 +122,14 @@ class _Link:
     _analysis: Analysis = field(repr=False, compare=False)
     _hows: tuple[How, ...] = field(repr=False, compare=False)
 
+    def _how(self) -> How:
+        """How the first port's path relates to the second's in the answer
+        that gives the link its certainty."""
+        for how in self._hows:
+            if self._analysis(how) == self.certainty:
+                return how
+        return self._hows[0]
+
     def example(self) -> Example | None:
         """Bindings under which the link shows, when it holds always or
         sometimes: the paths both ports render with them."""
@@ -118,8 +143,8 @@ class _Link:
 
 @dataclass(frozen=True)
 class Dependency(_Link):
-    """``consumer`` reads the path ``producer`` writes (``via="read"``), or
-    lists the directory it is in (``via="list"``)."""
+    """``consumer`` reads (``via="read"``) or lists (``via="list"``) a path
+    that is, holds, or lies inside one ``producer`` writes."""
 
     producer: Port = field(kw_only=True)
     consumer: Port = field(kw_only=True)
@@ -131,8 +156,8 @@ class Dependency(_Link):
 
 @dataclass(frozen=True)
 class Hazard(_Link):
-    """``deleter`` deletes the path ``reader`` reads or lists, or a directory
-    above it: ``reader`` has to run first."""
+    """``deleter`` deletes the path ``reader`` reads or lists, a directory
+    above it, or a path inside it: ``reader`` has to run first."""
 
     reader: Port = field(kw_only=True)
     deleter: Port = field(kw_only=True)
@@ -143,9 +168,11 @@ class Hazard(_Link):
 
 @dataclass(frozen=True)
 class Conflict(_Link):
-    """Two ports that write one path, or a write and a deletion of it (or of
-    a directory above it): the steps must not run at once, and which one
-    wins depends on their order."""
+    """Two ports that may change what the other touches: two writes, a write
+    and a deletion, or two deletions of one path or of paths one inside the
+    other, or a port that declares no verbs (so its effect is unknown) and
+    any port it touches. The steps must not run at once; for writes, which
+    one wins depends on their order, which the graph does not choose."""
 
     first: Port = field(kw_only=True)
     second: Port = field(kw_only=True)
@@ -188,45 +215,36 @@ class EffectGraph:
         deleters = [p for p in self.ports if p.deletes]
         inputs = [p for p in self.ports if p.is_input]
 
+        # A declared path covers what lies below it (it may be a directory),
+        # so two ports touch when their paths are one, or one is inside the
+        # other: every link asks all three.
         self.edges: list[Dependency] = []
         for c in inputs:
             for p in suppliers:
                 if "read" in c.verbs:
-                    self._link(
-                        Dependency,
-                        (c, p),
-                        ("same",),
-                        producer=p,
-                        consumer=c,
-                        via="read",
-                    )
+                    self._link(Dependency, (c, p), producer=p, consumer=c, via="read")
                 if "list" in c.verbs:
-                    hows: tuple[How, ...] = ("same", "inside")
-                    self._link(
-                        Dependency, (p, c), hows, producer=p, consumer=c, via="list"
-                    )
+                    self._link(Dependency, (p, c), producer=p, consumer=c, via="list")
 
         self.hazards: list[Hazard] = []
         for c in inputs:
             for d in deleters:
                 if d.step == c.step:
                     continue  # a step that reads its own input, then deletes it
-                hows = ("same", "inside")
-                if "list" in c.verbs:
-                    hows = ("same", "inside", "contains")
-                self._link(Hazard, (c, d), hows, reader=c, deleter=d)
+                self._link(Hazard, (c, d), reader=c, deleter=d)
 
+        # Two ports conflict when either may change what the other touches:
+        # two writers, a writer and a deleter, two deleters (one may find the
+        # path gone), or a port whose verbs are unknown and any other.
         self.conflicts: list[Conflict] = []
-        writers = suppliers + [d for d in deleters if not d.supplies]
-        for n, x in enumerate(writers):
-            for y in writers[n + 1 :]:
-                if x.deletes and y.deletes:
-                    continue  # two deletions of one path do not conflict
-                if x.supplies and y.supplies:
-                    self._link(Conflict, (x, y), ("same",), first=x, second=y)
-                else:
-                    s, d = (x, y) if x.supplies else (y, x)
-                    self._link(Conflict, (s, d), ("same", "inside"), first=x, second=y)
+        changers = [p for p in self.ports if p.supplies or p.deletes or not p.verbs]
+        for n, x in enumerate(changers):
+            for y in changers[n + 1 :]:
+                self._link(Conflict, (x, y), first=x, second=y)
+        for u in self.unassigned:
+            for r in inputs:
+                if not (r.supplies or r.deletes):
+                    self._link(Conflict, (u, r), first=u, second=r)
 
     def _index_key(self, e: Any) -> tuple[Any, tuple[str, ...]] | None:
         """The head (with its default, if any) and the literal segments after
@@ -272,17 +290,20 @@ class EffectGraph:
         self,
         kind: type[Dependency] | type[Hazard] | type[Conflict],
         pair: tuple[Port, Port],
-        hows: tuple[How, ...],
         **ports: Any,
     ) -> None:
         if self._apart(*pair):
             return
         analysis = self._analysis(*pair)
-        certainties: list[Certainty] = [analysis(how) for how in hows]
+        certainties: list[Certainty] = []
+        for how in _TOUCH:
+            certainties.append(analysis(how))
+            if certainties[-1] == "always":
+                break
         certainty = either(*certainties)
         if certainty == "never":
             return
-        link = kind(certainty, analysis, hows, **ports)
+        link = kind(certainty, analysis, _TOUCH, **ports)
         if isinstance(link, Dependency):
             self.edges.append(link)
         elif isinstance(link, Hazard):
@@ -293,7 +314,7 @@ class EffectGraph:
     # -- reading the graph ---------------------------------------------------------
 
     def dependencies(self, *, certain: bool = False) -> dict[str, set[str]]:
-        """For each step, the steps whose writes it may read.
+        """For each step, the steps whose writes it may read or list.
 
         ``certain=True`` keeps the dependencies that hold on every run (under
         which both steps' paths render). Use the default, which also counts
@@ -307,27 +328,37 @@ class EffectGraph:
                 deps[e.consumer.step].add(e.producer.step)
         return deps
 
-    def _after(self) -> dict[str, set[str]]:
+    def _after(self, *, certain: bool = False) -> dict[str, set[str]]:
         """For each step, the steps it must follow: those it may depend on,
         and the readers of what it deletes."""
-        after = self.dependencies()
+        after = self.dependencies(certain=certain)
         for h in self.hazards:
-            after[h.deleter.step].add(h.reader.step)
+            if h.reader.step != h.deleter.step:
+                if not certain or h.certainty == "always":
+                    after[h.deleter.step].add(h.reader.step)
         return after
 
     def order(self) -> list[str] | None:
         """The steps in an order where each follows every step it may depend
         on, and every deleter follows the readers of what it deletes; ties
-        keep the order the steps were given in. None if they form a cycle
-        (`cycles`). Conflicts do not order steps: which writer wins is the
-        caller's choice."""
+        keep the order the steps were given in.
+
+        Every link counts, whatever its certainty: a dependency that holds
+        on some runs, or that is only not ruled out, orders the steps as one
+        that holds on every run does. None if these links form a cycle:
+        `cycles` lists the cycles, and ``cycles(certain=True)`` those made of
+        links that hold on every run, which no binding avoids. Conflicts do
+        not order steps: which writer wins is the caller's choice, and a port
+        that declares no verbs is kept apart from others (`stages`) but not
+        ordered."""
         stages = self._layers(self._after())
         return None if stages is None else [s for stage in stages for s in stage]
 
     def stages(self) -> list[list[str]] | None:
         """The steps in groups that may run at the same time: each group
         follows every step it may depend on, and no two steps in a group
-        conflict. None if the steps form a cycle."""
+        are joined by any link, whatever its certainty. None if the steps
+        form a cycle (see `order`)."""
         layers = self._layers(self._after())
         if layers is None:
             return None
@@ -363,10 +394,13 @@ class EffectGraph:
         return layers
 
     def independent(self, x: str, y: str) -> bool:
-        """Whether steps ``x`` and ``y`` cannot interact: neither may read
-        what the other writes, nor delete what it reads, nor write what it
-        writes or deletes. Independent steps may run in either order, or at
-        once."""
+        """Whether no link joins steps ``x`` and ``y``: no dependency, hazard
+        or conflict between them holds always, sometimes, or is even not
+        ruled out. Their declared paths, compared as strings, then never
+        meet nor nest where either one writes, deletes, or declares no verbs.
+        Independent steps may run in either order, or at once, so far as
+        their declarations go: a step's code may touch paths it does not
+        declare, and two spellings of one file are two paths here."""
         return not self.links(x, y)
 
     def links(
@@ -395,12 +429,18 @@ class EffectGraph:
         return [_sentence(link) for link in self.links(x, y)]
 
     def cycles(self, *, certain: bool = False) -> list[list[str]]:
-        """Groups of two or more steps that each depend, through the others,
-        on themselves. A cycle among declarations need not be a cycle on a
-        run: with ``shared=False``, a step that reads ``{day}`` and writes
-        ``{day}`` of another is one."""
-        deps = self.dependencies(certain=certain)
-        return [c for c in _sccs(deps) if len(c) > 1]
+        """Groups of two or more steps that must each run, through the
+        others, before themselves, by the dependencies and hazards `order`
+        follows. When there is one, `order` and `stages` are None.
+
+        ``certain=True`` keeps the links that hold on every run (under which
+        their paths render): a cycle among them is unavoidable. A cycle found
+        only without it is possible, not proved: it rests on a link that
+        holds on some runs, or is only not ruled out, so it may depend on the
+        bindings, as with ``shared=False``, where a step that reads ``{day}``
+        and writes ``{day}`` of another run is one."""
+        after = self._after(certain=certain)
+        return [c for c in _sccs(after) if len(c) > 1]
 
     def self_loops(self) -> list[Dependency]:
         """Dependencies from a step to itself: it may read what it writes."""
@@ -473,25 +513,49 @@ def _count(n: int, one: str, many: str) -> str:
 
 def _sentence(link: Dependency | Hazard | Conflict) -> str:
     phrase = _PHRASE[link.certainty]
+    how = link._how()
     if isinstance(link, Dependency):
         p, c = link.producer, link.consumer
         if link.via == "list":
-            text = f"{c} lists {c.expr.pattern}, where {p} writes {p.expr.pattern}, {phrase}"
+            # ``how`` is the written path's, relative to the listed one.
+            listed, written = c.expr.pattern, p.expr.pattern
+            if how == "contains":
+                text = (
+                    f"{c} lists {listed}, inside {written}, which {p} writes, {phrase}"
+                )
+            else:
+                text = f"{c} lists {listed}, where {p} writes {written}, {phrase}"
         else:
-            text = f"{c} reads what {p} writes, {phrase}: {_paths(c, p)}"
+            text = f"{c} reads {_WHAT[how]} {p} writes, {phrase}: {_paths(c, p)}"
     elif isinstance(link, Hazard):
         r, d = link.reader, link.deleter
+        verb = "reads" if "read" in r.verbs else "lists"
         text = (
-            f"{d} deletes what {r} reads, {phrase}, so {r.step} runs first:"
-            f" {_paths(r, d)}"
+            f"{d} deletes {_WHAT[_INVERSE[how]]} {r} {verb}, {phrase}, so {r.step}"
+            f" runs first: {_paths(r, d)}"
         )
     else:
         x, y = link.first, link.second
-        if x.deletes or y.deletes:
-            w, d = (y, x) if x.deletes else (x, y)
-            text = f"{d} deletes what {w} writes, {phrase}: {_paths(w, d)}"
+        if not x.verbs or not y.verbs:
+            u, o = (x, y) if not x.verbs else (y, x)
+            text = (
+                f"{u} declares no verbs, so it is kept apart from {o}, which may"
+                f" touch its path, {phrase}: {_paths(x, y)}"
+            )
+        elif x.supplies != y.supplies:
+            w, d = (x, y) if x.supplies else (y, x)
+            rel = how if d is x else _INVERSE[how]  # the deleted path's
+            text = f"{d} deletes {_WHAT[rel]} {w} writes, {phrase}: {_paths(w, d)}"
         else:
-            text = f"{x} and {y} write one path, {phrase}: {_paths(x, y)}"
+            verb = "write" if x.supplies else "delete"
+            if how == "same":
+                text = f"{x} and {y} {verb} one path, {phrase}: {_paths(x, y)}"
+            else:
+                inner, outer = (x, y) if how == "inside" else (y, x)
+                text = (
+                    f"{inner} {verb}s inside what {outer} {verb}s, {phrase}:"
+                    f" {_paths(x, y)}"
+                )
     ex = link.example()
     if ex is not None:
         bindings = {**ex.a_bindings, **ex.b_bindings}

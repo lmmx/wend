@@ -1052,8 +1052,10 @@ where one that skips fails (`tests/conftest.py`).
 ## 15. Relations between families
 
 `relate(a, b)` says how the paths two expressions render relate, before any binding.
-Paths are compared as strings (lexical identity): rendered, then split into an anchor
-(`""`, `"/"` or `"//"`) and segments as `PurePosixPath` splits them. Two paths are:
+Paths are compared as strings (lexical identity), not as filesystem objects: rendered,
+then split into an anchor (`""`, `"/"` or `"//"`) and segments as `PurePosixPath` splits
+them. Nothing here looks at a filesystem, so "never the same" means never the same
+string, and two strings can still name one file (§15.4). Two paths are:
 - **the same**, when anchor and segments are equal;
 - one **inside** the other, when they share the anchor and its segments are the
   other's followed by one or more segments (a `..` segment is a segment like any
@@ -1122,30 +1124,66 @@ when an answer relied on it.
 `wend.effects.EffectGraph(steps)` relates the paths named steps declare (`Step.effects`,
 §10.1), shared bindings by default. A port supplies its path if it declares `create`
 or `write`, deletes it if it declares `delete`, and is an input if it declares `read`
-or `list`. Its links, each with the certainty of the relation behind it:
+or `list`. A port that declares none of these (a check of `Exists` alone, say) has no
+known effect: `unassigned` lists it.
 
-| link | between | when |
+**A declared path covers what lies below it.** A path may name a directory, unless
+nothing says otherwise, so a step that writes it may write anything inside it, one that
+reads it may read anything inside it, and one that deletes it deletes everything inside
+it. Two ports *touch* when their paths are the same, or one is inside the other (§15,
+lexically), and every link asks all three. Its certainty is that of the three taken
+together: `"always"` if one holds always, `"never"` if all three are never, `"sometimes"`
+if one is shown on some binding, and `"unknown"` otherwise.
+
+| link | between | when they touch |
 |---|---|---|
-| dependency, `via="read"` | a supplier and a reader | the reader's path is the supplier's |
-| dependency, `via="list"` | a supplier and a lister | the supplier's path is the listed directory, or inside it |
-| hazard | a reader and a deleter in another step | the read path is the deleted one, or inside it; for a listing, also a deleted path inside the listed directory |
-| conflict | two suppliers | their paths are the same |
-| conflict | a supplier and a deleter | the supplied path is the deleted one, or inside it |
+| dependency, `via="read"` | a supplier and a reader | the reader runs after the supplier |
+| dependency, `via="list"` | a supplier and a lister | the lister runs after the supplier |
+| hazard | a reader or lister, and a deleter in another step | the reader runs before the deleter |
+| conflict | two suppliers; a supplier and a deleter; two deleters | never at once |
+| conflict | a port with no known effect, and any other port | never at once |
 
-A pair whose relation is `"never"` has no link. `"always"`, `"sometimes"` and
-`"unknown"` links are all kept, and every query but `dependencies(certain=True)` counts
-them all, which is the only safe reading for deciding what may run independently.
-`dependencies(certain=True)` keeps the `"always"` links, those that hold on every run:
-a lower bound, for reports, never for scheduling. `order()`
-puts each step after every step it may depend on, and each deleter after the readers
-of what it deletes; `stages()` groups steps that may run at once, never two that
-conflict.
+Two deletions conflict because a step that deletes a path its neighbour already deleted
+may fail. A port with no known effect may write: it is kept apart from every port it
+touches, and orders nothing, since nothing says which way.
 
-The graph describes declarations, not behaviour: a step's code may touch paths it
-does not declare. Identity is lexical: two spellings of one file (a symlink, a
-relative and an absolute path, `..`, case on a case-insensitive filesystem) are two
-paths here, so a missing link is only as good as the convention that every step spells
-a file one way.
+**Parents a creation makes are not counted.** A step that creates a path may create its
+missing parents, as `mkdir -p` does. A parent above another port's path is caught by
+nesting: it holds that path. Two steps that create siblings in a missing directory do
+not touch, though both may create the directory, so they may share a stage. That is
+safe when parents are made idempotently (`os.makedirs(..., exist_ok=True)`). It is not
+when a step creates the parent with a plain `mkdir`, or when its `Creatable` check runs
+while the other may be creating the parent: the check's answer depends on which
+ancestor exists. Counting every parent a creation may make would join every two writers
+under a root that may not exist yet. The knowledge analysis bounds the parents by what is
+known to exist (`wend._experimental.families`, `made_parents`).
+
+A pair whose relation is `"never"` has no link, and nothing else is dropped: `"always"`,
+`"sometimes"` and `"unknown"` links are all kept, and every query but those given
+`certain=True` counts them all, which is the only safe reading for deciding what may run
+at once or in which order:
+- `order()` puts each step after every step it may depend on, and each deleter after the
+  readers of what it deletes. It is None when these links form a cycle.
+- `stages()` groups steps no link joins, whatever its certainty.
+- `independent(x, y)` holds when no link joins `x` and `y`.
+- `cycles()` lists the cycles of the links `order()` follows. `cycles(certain=True)`
+  keeps the links that hold on every run: a cycle among them is unavoidable. A cycle
+  found only without it is possible, not proved: it rests on a link that holds on some
+  runs, or is not ruled out, and may depend on the bindings.
+- `dependencies(certain=True)` keeps the `"always"` dependencies: a lower bound, for
+  reports, never for scheduling.
+
+`tests/effects_test.py`'s oracle renders every port of generated pipelines under
+hundreds of bindings and checks, path against path: that a step reading what another
+writes comes after it in `order()` and `stages()`; that a step reading what another
+deletes comes before it; and that two steps whose paths touch, where either changes its
+path or declares no verbs, never share a stage.
+
+The graph describes declarations, not behaviour: a step's code may touch paths it does
+not declare. Identity is lexical: rendered paths are compared as strings, not as
+filesystem objects, so two spellings of one file (a symlink, a relative and an absolute
+path, `..`, case on a case-insensitive filesystem, a hard link) are two paths here. A
+missing link is only as good as the convention that every step spells a file one way.
 
 ### 15.5 The overlap analysis
 

@@ -22,12 +22,17 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
 - **Effects across a pipeline** (#118). `wend.effects.EffectGraph(steps)` relates what a
   set of `Step`s declare they read, list, write and delete, with every link as sure as its
   relation:
-  - dependencies, hazards (a step that reads a path another deletes, or lists a directory
-    another deletes inside) and conflicts (two steps that write, or write and delete, one
-    path);
+  - dependencies, hazards (a step that reads or lists a path another deletes) and
+    conflicts (two steps that write, or delete, or write and delete one path, or a path
+    declared with no verbs and another). A declared path covers what lies below it, so
+    a step that writes `{root}/raw` and one that reads `{root}/raw/{day}.csv` are linked;
   - `order()`, `stages()` (the groups that may run at once), `independent(x, y)`,
-    `dependencies(certain=True)` (the links that hold on every run) and `explain()`, one
-    sentence per link with an example.
+    `cycles()`, `dependencies(certain=True)` (the links that hold on every run) and
+    `explain()`, one sentence per link with an example.
+
+  Every query counts every link, whatever its certainty, so a possible interference is
+  never taken for independence; `cycles(certain=True)` lists the cycles no binding
+  avoids. Paths are compared as rendered strings, not as files.
 
   Under one shared `{root}`, a six-step pipeline that the experimental graph could not
   order (four "maybe" edges and a false cycle) gets five certain dependencies, an order and

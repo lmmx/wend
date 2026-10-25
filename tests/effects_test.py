@@ -2,12 +2,14 @@
 binding: dependencies, hazards, conflicts, a safe order, the steps that may run
 together, and how sure each link is (docs/SEMANTICS.md §15)."""
 
+import itertools
+import random
 from unittest import mock
 
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
-from overlap_test import expressions
+from overlap_test import POOL, expressions
 
 from wend import (
     Absent,
@@ -23,7 +25,9 @@ from wend import (
     T,
     Writable,
 )
+from wend._relate import lexically
 from wend.effects import EffectGraph
+from wend.errors import WendError
 from wend.lineage import Ledger
 
 
@@ -182,7 +186,24 @@ def test_unknown_is_a_dependency_for_the_order_but_never_certain():
     assert e.certainty == "unknown" and e.example() is None
     assert "possibly (not ruled out)" in g.explain("read")[0]
     assert g.order() == ["write", "read"]
+    assert g.stages() == [["write"], ["read"]]
+    assert not g.independent("write", "read")
     assert g.dependencies(certain=True)["read"] == set()
+
+
+def test_an_unknown_conflict_keeps_two_steps_apart():
+    # An object's repr can be "q": a write of {n!r}.csv may be a write of
+    # q.csv. No binding from the pool shows it, so only the contract (every
+    # link counts, whatever its certainty) keeps the two out of one stage.
+    steps = {
+        "w1": Step(dst=(R / T(t"{Param('n')!r}.csv")).requires(Writable)),
+        "w2": Step(dst=(R / "q.csv").requires(Writable)),
+    }
+    g = EffectGraph(steps)
+    (c,) = g.conflicts
+    assert c.certainty == "unknown"
+    assert g.stages() == [["w1"], ["w2"]]
+    assert not g.independent("w1", "w2")
 
 
 def test_a_deferred_operation_relates_through_the_overlap_engine():
@@ -202,8 +223,124 @@ def test_a_real_cycle_has_no_order():
         "ba": Step(src=b.requires(Readable), dst=a.requires(Writable)),
     }
     g = EffectGraph(steps)
-    assert g.cycles() == [["ab", "ba"]]
+    assert g.cycles() == [["ab", "ba"]] == g.cycles(certain=True)
     assert g.order() is None and g.stages() is None
+
+
+def test_a_cycle_through_a_hazard_is_a_cycle():
+    # b writes what a reads (b first), and deletes what a reads (a first).
+    steps = {
+        "a": Step(x=(R / "x").requires(Readable), y=(R / "y").requires(Readable)),
+        "b": Step(y=(R / "y").requires(Writable), x=(R / "x").ensures(Absent)),
+    }
+    g = EffectGraph(steps)
+    assert g.order() is None
+    assert g.cycles() == [["a", "b"]] == g.cycles(certain=True)
+
+
+def test_a_cycle_that_rests_on_a_possible_link_is_not_called_unavoidable():
+    # "b" writes a.csv for one day only: the cycle forms on runs that write
+    # the day "a" reads, and is not proved for every run.
+    steps = {
+        "a": Step(
+            src=(R / "in" / "a.csv").requires(Readable),
+            dst=(R / "out.csv").requires(Writable),
+        ),
+        "b": Step(
+            src=(R / "out.csv").requires(Readable),
+            dst=(R / "in" / T(t"{day}.csv")).requires(Writable),
+        ),
+    }
+    g = EffectGraph(steps)
+    assert [(e.producer.step, e.consumer.step, e.certainty) for e in g.edges] == [
+        ("b", "a", "sometimes"),
+        ("a", "b", "always"),
+    ]
+    assert g.order() is None and g.stages() is None
+    assert g.cycles() == [["a", "b"]]
+    assert g.cycles(certain=True) == []
+
+
+NESTED = {
+    "a step writes a directory, another reads a file in it": (
+        {
+            "unpack": Step(out=(R / "raw").requires(Creatable).ensures(Exists)),
+            "clean": Step(src=raw.requires(Readable)),
+        },
+        [["unpack"], ["clean"]],
+        "clean.src reads inside what unpack.out writes",
+    ),
+    "a step reads a directory, another writes a file in it": (
+        {
+            "archive": Step(src=(R / "raw").requires(Readable)),
+            "ingest": Step(out=raw.ensures(Exists)),
+        },
+        [["ingest"], ["archive"]],
+        "archive.src reads a directory holding what ingest.out writes",
+    ),
+    "two steps write a directory and a file in it": (
+        {
+            "unpack": Step(out=(R / "raw").ensures(Exists)),
+            "ingest": Step(out=raw.ensures(Exists)),
+        },
+        [["unpack"], ["ingest"]],
+        "ingest.out writes inside what unpack.out writes",
+    ),
+    "a step deletes a file in a directory another writes": (
+        {
+            "unpack": Step(out=(R / "raw").ensures(Exists)),
+            "purge": Step(old=raw.ensures(Absent)),
+        },
+        [["unpack"], ["purge"]],
+        "purge.old deletes inside what unpack.out writes",
+    ),
+    "a step deletes a file in a directory another reads": (
+        {
+            "archive": Step(src=(R / "raw").requires(Readable)),
+            "purge": Step(old=raw.ensures(Absent)),
+        },
+        [["archive"], ["purge"]],
+        "purge.old deletes inside what archive.src reads, on every run, so archive",
+    ),
+    "two steps delete a directory and a file in it": (
+        {
+            "wipe": Step(old=(R / "raw").ensures(Absent)),
+            "purge": Step(old=raw.ensures(Absent)),
+        },
+        [["wipe"], ["purge"]],
+        "purge.old deletes inside what wipe.old deletes",
+    ),
+    "a step declares no verbs for a directory another reads in": (
+        {
+            "check": Step(x=(R / "raw").requires(Exists)),
+            "clean": Step(src=raw.requires(Readable)),
+        },
+        [["check"], ["clean"]],
+        "check.x declares no verbs, so it is kept apart from clean.src",
+    ),
+    "a step declares no verbs for a path another writes in": (
+        {
+            "check": Step(x=(R / "raw").requires(Exists)),
+            "ingest": Step(out=raw.ensures(Exists)),
+        },
+        [["check"], ["ingest"]],
+        "check.x declares no verbs, so it is kept apart from ingest.out",
+    ),
+}
+
+
+@pytest.mark.parametrize("case", NESTED.values(), ids=NESTED.keys())
+def test_a_declared_path_covers_what_lies_below_it(case):
+    # A declared path may be a directory: a step that writes, reads or
+    # deletes it may touch anything inside it. Steps whose paths nest are
+    # never independent, and never in one stage.
+    steps, stages, sentence = case
+    g = EffectGraph(steps)
+    a, b = steps
+    assert not g.independent(a, b)
+    assert g.stages() == stages
+    (line,) = g.explain(a, b)
+    assert line.startswith(sentence) and "on every run" in line
 
 
 def test_two_writers_of_one_path_are_never_in_one_stage():
@@ -279,7 +416,7 @@ def test_different_defaults_of_one_head_are_not_indexed_apart():
     assert (ex.a_path, ex.b_path) == ("p/y/z", "p/y")
 
 
-VERBS = [Readable, Listable, Writable, Exists, Absent]
+VERBS = [Readable, Listable, Writable, Exists, Absent, None]
 
 
 @st.composite
@@ -290,14 +427,79 @@ def steps(draw):
         for j in range(draw(st.integers(1, 3))):
             e = draw(expressions())
             verb = VERBS[draw(st.integers(0, len(VERBS) - 1))]
-            e = (
-                e.requires(verb)
-                if verb in (Readable, Listable, Writable)
-                else e.ensures(verb)
-            )
+            if verb is None:
+                e = e.requires(Exists)  # a check, which declares no verb
+            elif verb in (Readable, Listable, Writable):
+                e = e.requires(verb)
+            else:
+                e = e.ensures(verb)
             paths[f"p{j}"] = e
         out[f"s{i}"] = Step(paths)
     return out
+
+
+def bindings(names, n=300, seed=0):
+    """Up to ``n`` bindings of ``names`` from the overlap tests' pool: the
+    first in order, then random ones."""
+    names = sorted(names)
+    first = itertools.islice(itertools.product(*(POOL[k] for k in names)), n // 2)
+    rng = random.Random(seed)
+    rand = (tuple(rng.choice(POOL[k]) for k in names) for _ in range(n // 2))
+    for combo in itertools.chain(first, rand):
+        yield dict(zip(names, combo, strict=True))
+
+
+def render(port, env):
+    try:
+        return port.expr.render(
+            {k: v for k, v in env.items() if k in port.expr.param_names}
+        )
+    except WendError, ValueError:
+        return None
+
+
+def changes(port):
+    return port.supplies or port.deletes or not port.verbs
+
+
+@settings(max_examples=150, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(s=steps())
+def test_order_and_stages_hold_for_every_rendered_run(s):
+    # The oracle: render every port under pooled bindings, and compare the
+    # paths as strings. Wherever a written path touches a read one, the
+    # writer must come first; wherever a deleted path touches a read one,
+    # the reader must; and two steps whose paths touch, where either changes
+    # its path (or declares no verbs), must never share a stage.
+    g = EffectGraph(s)
+    order, stages = g.order(), g.stages()
+    assert (order is None) == bool(g.cycles()) == (stages is None)
+    names = set().union(*(p.expr.param_names for p in g.ports))
+    before: set[tuple[str, str]] = set()
+    apart: set[frozenset[str]] = set()
+    for env in bindings(names):
+        paths = [(p, render(p, env)) for p in g.ports]
+        for (x, px), (y, py) in itertools.permutations(paths, 2):
+            if x.step == y.step or px is None or py is None:
+                continue
+            if lexically(px, py) is None:
+                continue
+            if x.is_input and y.supplies:
+                before.add((y.step, x.step))
+            if x.is_input and y.deletes:
+                before.add((x.step, y.step))
+            if changes(x) or changes(y):
+                apart.add(frozenset((x.step, y.step)))
+    if order is None:
+        return
+    assert stages is not None
+    pos = {step: n for n, step in enumerate(order)}
+    assert all(pos[u] < pos[v] for u, v in before), (before, order)
+    stage = {step: n for n, group in enumerate(stages) for step in group}
+    assert all(stage[u] < stage[v] for u, v in before), (before, stages)
+    for pair in apart:
+        u, v = sorted(pair)
+        assert stage[u] != stage[v], (pair, stages)
+        assert not g.independent(u, v)
 
 
 def everything(g):

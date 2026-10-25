@@ -1222,30 +1222,37 @@ def _overlap(
     sb, used_b = _shapes_of(b, builtin)
     assumptions = used_a | used_b
     common = a.param_names & b.param_names if shared else frozenset()
-    candidates: list[str] = []
+    # In the order found, once each. Only the first few the shapes give are
+    # tried below, after those rendered from samples.
+    candidates: dict[str, None] = {}
+    enough = witnesses * 4
 
     def add(path: str) -> None:
-        if path not in candidates:
-            candidates.append(path)
+        candidates.setdefault(path, None)
 
     any_shapes_meet = False
     any_structure = False
     all_complete = True
-    for x in sa:
-        for y in sb:
-            anchors = x.anchors & y.anchors
-            if not anchors:
+    for x, y in itertools.product(sa, sb):
+        # Once two shapes meet, NO is out, and the rest only adds candidates:
+        # stop when there are enough (the shapes multiply, by a SubPath's
+        # choices say, and pairing them all can take minutes).
+        if any_shapes_meet and len(candidates) >= enough:
+            break
+        anchors = x.anchors & y.anchors
+        if not anchors:
+            continue
+        structures, complete = _structures(x, y, MAX_STRUCTURES)
+        all_complete &= complete
+        any_structure |= bool(structures)
+        for segs in structures:
+            choices = _solve(x, y, segs, common, 2)
+            if choices is None:
                 continue
-            structures, complete = _structures(x, y, MAX_STRUCTURES)
-            all_complete &= complete
-            any_structure |= bool(structures)
-            for segs in structures:
-                choices = _solve(x, y, segs, common, 2)
-                if choices is None:
-                    continue
-                any_shapes_meet = True
-                for picked in itertools.islice(itertools.product(*choices), 4):
-                    for anchor in sorted(anchors):
+            any_shapes_meet = True
+            for picked in itertools.islice(itertools.product(*choices), 4):
+                for anchor in sorted(anchors):
+                    if len(candidates) < enough:
                         add((anchor + "/".join(picked)) or ".")
     if not any_shapes_meet and all_complete:
         why = (

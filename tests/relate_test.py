@@ -5,12 +5,13 @@ Each "always" and "never" is checked against every binding of a pool of
 hostile values; each "sometimes" against its example."""
 
 import itertools
+import time
 from pathlib import PurePosixPath
 
 import pytest
 from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
-from overlap_test import PARTS, POOL, expressions, p, q, s, sc
+from overlap_test import PARTS, POOL, ab, expressions, n, p, q, s, sc
 
 from wend import Absolute, P, Param, PathExpr, Relation, SubPath, T, relate
 from wend._expr import Deferred
@@ -266,6 +267,20 @@ def test_a_field_renders_its_value_alike_in_a_segment_and_in_text():
         assert r.same in ("sometimes", "unknown"), (text, r)
     # Without a field in each role, no answer rests on the assumption.
     assert relate(shard, P(root) / "x", builtin_values=True).assumptions == set()
+
+
+def test_finite_choices_that_multiply_shapes_stay_quick():
+    # With builtin_values the choices of `sc` are exhaustive, and each `sc`
+    # gives the overlap analysis three shapes: 54 for one side, 162 for the
+    # other. Pairing every one took minutes; once two shapes meet, the
+    # analysis now stops when it has candidates enough.
+    base = (P(ab) / sc / q / sc / s).with_suffix(".b")
+    a = base / s / n / sc
+    b = a / s / n / sc
+    start = time.monotonic()
+    for shared in (True, False):
+        relate(a, b, shared=shared, builtin_values=True)
+    assert time.monotonic() - start < 30
 
 
 def test_names_changed_from_one_base_are_written_out_by_its_split():

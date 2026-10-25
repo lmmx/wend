@@ -106,3 +106,33 @@ it is what the mutant did.
 
 **[Measured]** The property suites (relate, overlap, effects and families) pass under
 seeds 0 to 4.
+
+## 4. A hang the new checks found
+
+**[Measured]** Checking `builtin_values=True` in the relate property tests found a
+pair whose relation did not finish: under seed 3, below one deferred head,
+
+```python
+base = (P(ab) / sc / q / sc / s).with_suffix(".b")   # sc: choices {".", "a", "a/b"}
+a = base / s / n / sc
+b = a / s / n / sc
+relate(a, b, shared=False, builtin_values=True)    # over 120 s on master
+```
+
+**[Fact]** With `builtin_values=True` a `SubPath`'s choices are exhaustive, and each
+of the five `sc` gives the overlap analysis three shapes: 54 for one side, 162 for the
+other. `_overlap` paired all 8,748 shape pairs, up to 64 alignments each. It also kept
+every candidate path in a list, checking membership before each addition, which made
+the work quadratic in the number of candidates.
+
+**[Proven]** The fix keeps the candidates in a dict, and stops pairing shapes once two
+have met and enough candidates are in hand. Neither changes an answer.
+- A NO needs no two shapes to meet, so once two have met the verdict is YES or MAYBE
+  whatever the rest give.
+- Only the first `witnesses × 4` candidates were ever tried: those rendered from
+  samples first, then those the shapes gave, in order. The fix keeps exactly those.
+
+**[Measured]** The pair now takes 0.3 s. A variant whose shapes never meet still
+pairs them all, as a NO requires: 7.5 s, where master did not finish in 300 s.
+`test_finite_choices_that_multiply_shapes_stay_quick` holds the pair. On #119's
+samples, in both modes of `builtin_values`, no answer changed.

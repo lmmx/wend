@@ -17,6 +17,14 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   `builtin_values` wherever such an answer may rest on it. Without the option nothing
   changes: a `str` subclass may render the two apart.
 
+### Fixed
+
+- **`relate` no longer takes minutes over many finite choices** (#125). With
+  `builtin_values=True`, each `SubPath` or parameter with `choices` multiplies the
+  shapes the overlap analysis pairs, and keeping its candidate paths took quadratic
+  time. An expression with five `SubPath`s of three choices took longer than two
+  minutes; it now takes a third of a second, and no answer changes.
+
 ## 0.5.0
 
 ### New

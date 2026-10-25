@@ -16,6 +16,14 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   directory and its manifest never meet. `Relation.assumptions` names
   `builtin_values` wherever such an answer may rest on it. Without the option nothing
   changes: a `str` subclass may render the two apart.
+- **Names changed below a `SubPath` are written out** (#127). A name changed by
+  `with_name`, `with_suffix` or `with_stem` while its base ends in a `SubPath` had no
+  view, and `relate` left most such answers `"unknown"`. It is now written out as the
+  change of the `SubPath`'s last segment, or of what precedes the `SubPath`. A path that
+  begins with the same base is split alike, so `({root}/raw/{rel...}).with_suffix(".csv")`
+  is never `{root}/out/x`, and `(data/{sc...}).with_suffix(".b")` is never strictly
+  inside or above `data/{sc...}`. On #119's samples, 288 more `"unknown"` answers are now
+  `"never"`.
 
 ### Fixed
 

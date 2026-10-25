@@ -709,6 +709,142 @@ def test_the_cases_of_a_parent_render_all_it_renders(e):
             assert path in seen, (e.pattern, env, path)
 
 
+RENAMES = [
+    ("with_suffix", ".csv"),
+    ("with_suffix", ""),
+    ("with_stem", "x"),
+    ("with_name", "x.txt"),
+]
+
+
+@st.composite
+def renamed_below(draw):
+    """A name changed while its base ends in a SubPath."""
+    e = draw(expressions()) / draw(st.sampled_from([s, sc]))
+    op, arg = draw(st.sampled_from(RENAMES))
+    try:
+        e = getattr(e, op)(arg)
+    except WendError, ValueError:
+        assume(False)
+    if draw(st.booleans()):
+        e = e / draw(st.sampled_from(["a", "x.txt", ".."]))
+    assume(_cases(e, Memo()) is not None)
+    return e
+
+
+@settings(max_examples=200, deadline=None, suppress_health_check=list(HealthCheck))
+@given(e=renamed_below())
+def test_the_cases_of_a_renamed_subpath_render_all_it_renders(e):
+    # On every binding, the changed name renders what one of its cases
+    # renders, with the SubPath split into all but its last segment and that
+    # segment.
+    cases = _cases(e, Memo())
+    assert cases is not None
+    names = sorted(e.param_names)
+    for combo in itertools.islice(itertools.product(*(POOL[k] for k in names)), 400):
+        env = dict(zip(names, combo, strict=True))
+        path = rendered(e, env)
+        if path is not None:
+            seen = {rendered(c, env | _split_env(c, e, env)) for c in cases}
+            assert path in seen, (e.pattern, env, path)
+
+
+SPLIT_VALUES = [".", "a", "x", "a/x", "x/y", "data", "a/b/x", "x.b", "y/x.b"]
+
+
+@st.composite
+def below_two_subpaths(draw):
+    """Two parents or changed names, each of a base ending in its own
+    SubPath, then joined onto: the SubPaths split independently."""
+
+    def side(rel):
+        e = draw(st.sampled_from([P("data"), P("/"), P(root), P(".")]))
+        for part in draw(st.lists(st.sampled_from(["a", "x", "data"]), max_size=1)):
+            e = e / part
+        e = e / rel
+        op = draw(st.sampled_from(["parent", "with_suffix", "with_stem", "with_name"]))
+        try:
+            if op == "parent":
+                e = e.parent
+            else:
+                e = getattr(e, op)(
+                    draw(
+                        st.sampled_from(
+                            [".b", ""] if op == "with_suffix" else ["x", "x.b"]
+                        )
+                    )
+                )
+        except WendError, ValueError:
+            pass
+        for part in draw(
+            st.lists(st.sampled_from(["a", "x", "data", "x.b", ".."]), max_size=2)
+        ):
+            e = e / part
+        return e
+
+    return side(SubPath("r1")), side(SubPath("r2"))
+
+
+@settings(max_examples=200, deadline=None, suppress_health_check=list(HealthCheck))
+@given(pair=below_two_subpaths())
+def test_names_changed_below_two_subpaths_hold_for_pooled_bindings(pair):
+    # Each side is split by its own SubPath, so their cases are paired every
+    # way: the SubPaths may render any number of segments each.
+    a, b = pair
+    r = relate(a, b)
+    check_examples(a, b, r)
+    for v1, v2, rv in itertools.product(SPLIT_VALUES, SPLIT_VALUES, ["r", "/x"]):
+        env = {"r1": v1, "r2": v2, "root": rv}
+        pa, pb = rendered(a, env), rendered(b, env)
+        if pa is None or pb is None:
+            continue
+        how = lexically(pa, pb)
+        for h in ("same", "inside", "contains"):
+            if r[h] == "always":
+                assert how == h, (h, a.pattern, b.pattern, env, pa, pb, r)
+            if r[h] == "never":
+                assert how != h, (h, a.pattern, b.pattern, env, pa, pb, r)
+
+
+def _split_env(case, e, env):
+    """A case's own SubPath and segment, bound to the base's SubPath less its
+    last segment, and that segment."""
+    value = PurePosixPath(str(env[e.head.base.parts[-1].param.name]))
+    out = {}
+    for name in case.param_names - e.param_names:
+        if name.startswith("_rest_"):
+            out[name] = str(value.parent)
+        elif name.startswith("_seg_"):
+            out[name] = value.name or "."
+    return out
+
+
+def test_a_name_changed_below_a_subpath_is_written_out():
+    rel = SubPath("rel")
+    # The changed name keeps its base's prefix: never below {root}/out.
+    a = (P(root) / "raw" / rel).with_suffix(".csv")
+    assert relate(a, P(root) / "out" / "x").kind == "disjoint"
+    # A plain path that begins with the base is split alike, and under shared
+    # bindings only cases of one branch are paired: the SubPath renders one
+    # text on both sides. A name changed in place is never strictly inside or
+    # above its unchanged self.
+    sc_ = SubPath("sc", choices={".", "a", "a/b"})
+    r = relate((P("data") / sc_).with_suffix(".b"), P("data") / sc_)
+    assert (r.inside, r.contains) == ("never", "never")
+    # Bound apart, the branches are not paired, and nothing is proved.
+    r = relate((P("data") / rel).with_suffix(".b"), P("data") / rel, shared=False)
+    assert "never" not in (r.inside, r.contains)
+    # Bases split on two SubPaths have branches of their own: here the first
+    # renders a segment and the second none.
+    a = (P("x") / SubPath("r1")).with_suffix(".b") / ".." / "a"
+    b = (P("data") / SubPath("r2")).with_stem("x") / "x.b"
+    assert (a.render({"r1": "x"}), b.render({"r2": "."})) == ("x/x.b/../a", "x/x.b")
+    assert relate(a, b).inside != "never"
+    # A parent and a changed name of one base share the split.
+    r = relate((P("data") / rel).parent, (P("data") / rel).with_suffix(".b"))
+    assert (r.same, r.inside, r.contains) == ("never", "never", "sometimes")
+
+
 def _rest(case, e, env):
     """The longer case's own SubPath, bound to the base's SubPath less its
     last segment."""

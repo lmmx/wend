@@ -1,5 +1,17 @@
 # 2026-10-25: What a requirement relies on: obligations over the effect graph
 
+> **Correction, #124.** The identity rule (§2) is only as sound as the relation it
+> rests on, and the relation tied a changed name's text across two sides that give one
+> name different defaults. A step that creates `(data/{x}).with_suffix(".q")`, with `x`
+> defaulted `a`, then discharged a requirement that the same expression with `x`
+> defaulted `b` exist, though unbound the two are `data/a.q` and `data/b.q`. The disk
+> oracle leaves `day` unbound in one binding, with a different default in two families,
+> but no family hides a defaulted name inside a changed name, so it could not see this.
+> The rules here are unchanged; the
+> relation is fixed (`2026-10-25-defaults-in-views.md`), and
+> `tests/effects_test.py::test_a_fact_does_not_pass_between_names_defaulted_apart` holds
+> the case.
+
 The experimental families analysis (#109, research index row 4) answered a question the
 public graph did not: of the conditions each step requires, which do the steps before it
 settle, and which can never hold? It worked, and its disk oracle passed, but it read

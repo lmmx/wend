@@ -556,6 +556,21 @@ def test_a_pipeline_with_two_writers_in_one_new_directory():
     ]
 
 
+def test_a_fact_does_not_pass_between_names_defaulted_apart():
+    # Unbound, `make` creates data/a.q and `use` needs data/b.q: the changed
+    # names hide `x`, whose default differs, so they are not one path.
+    xa, xb = Param("x", default="a"), Param("x", default="b")
+    made = (P("data") / xa).with_suffix(".q")
+    make = Step(o=made.requires(Creatable).ensures(File, Exists))
+    use = Step(i=(P("data") / xb).with_suffix(".q").requires(Exists))
+    g = EffectGraph({"make": make, "use": use})
+    (o,) = [o for o in g.obligations(["make", "use"]) if o.port.step == "use"]
+    assert o.status == "external"
+    same = EffectGraph({"make": make, "use": Step(i=made.requires(Exists))})
+    (o,) = [o for o in same.obligations(["make", "use"]) if o.port.step == "use"]
+    assert o.status == "discharged"
+
+
 def test_a_step_that_needs_a_directory_makes_nothing_there():
     src = R / "raw" / T(t"{day}.csv")
 

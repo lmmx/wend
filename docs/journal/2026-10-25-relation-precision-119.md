@@ -2,6 +2,10 @@
 
 > **Correction, #120.** §2's view of a changed name is revised in place, with its earlier
 > wording kept beside it, marked *Before*: a stem of `.` or `..` can make the name `..`.
+>
+> **Correction, #124.** §2's naming of a view's text is revised in place, with its
+> earlier wording marked *Before*: two sides that give a name different defaults do not
+> render one text (`2026-10-25-defaults-in-views.md`).
 
 After #118, `wend.relate` answered `"unknown"` for about one question in six over the
 property tests' pairs, and for one in four over names changed with `with_suffix`,
@@ -60,8 +64,18 @@ one segment (`_view`):
 - text, then the suffix, for `with_suffix`;
 - the stem, then text, for `with_stem`.
 
-The text's parameter is named from the operation's render key, so one operation viewed
-twice is alike, and `relate(e, e)` is `"same always"` for a deferred `e`.
+The text's parameter is named from the operation's render key and its names' defaults,
+so one operation viewed twice is alike where it renders one text, and `relate(e, e)` is
+`"same always"` for a deferred `e`. Under shared bindings two sides render one text
+where the operation's structure is equal and so is each name's default. A name
+defaulted differently on each side renders each side's own default when unbound.
+
+> *Before:* "The text's parameter is named from the operation's render key, so one
+> operation viewed twice is alike, and `relate(e, e)` is `"same always"` for a deferred
+> `e`." The render key leaves defaults out, so the text was tied across two sides that
+> render different texts. `(data/{x}).with_suffix(".q")/y` with `x` defaulted `a` on one
+> side and `b` on the other was `"same always"`, yet renders `data/a.q/y` and
+> `data/b.q/y` unbound. 0.4.0 shipped this; #124 fixes it.
 
 **[Proven]** The view renders every path the expression renders, except where the new
 name may be `..`: the operation keeps its base's parent, and its new name has the stated

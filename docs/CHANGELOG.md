@@ -15,6 +15,16 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   `Readable` check says its path exists, and a passed `Listable` check that it exists as
   a directory, so later requirements of either are discharged, and a requirement that
   the path be absent is refuted.
+- **Fewer unknowns on realistic pipelines** (#122). Over eight realistic pipelines
+  (`bench/effects_corpus.py`), the links `EffectGraph` could neither prove nor rule out
+  fall from 19 to 6:
+  - `relate` cancels equal pieces at either end of two segments, so `{day}.csv` and
+    `{day}.csv.gz`, or `run{s}/x` and `run{s}.log`, never meet;
+  - a suffix or stem changed from one base is written out by how pathlib splits the
+    base's name, so `{day}.parquet` and `with_stem("summary")` of `{day}.csv` never
+    meet;
+  - `EffectGraph` drops a parent conflict where either step requires a path inside the
+    shared directory to exist: while it is missing, that step fails and makes nothing.
 
 ## 0.4.0
 

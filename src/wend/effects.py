@@ -68,9 +68,10 @@ from ._relate import (
     Example,
     How,
     Relation,
+    _apart_segments,
     _common,
+    _conflicting_defaults,
     _key,
-    _static,
     _value_key,
     _view,
     either,
@@ -240,6 +241,8 @@ _EXCLUSIVE = (
     ("absent", "list"),
     ("file", "list"),
 )
+# The atoms whose passed check says the path exists.
+_PRESENT = frozenset({"exists", "read", "list"})
 # What a passed check of each atom says of the path's existence: a readable or
 # listable path exists (§10), and a listable one is a directory.
 _IMPLIES = {"read": ("exists",), "list": ("exists", "dir")}
@@ -404,6 +407,14 @@ class EffectGraph:
         # directory above it is made, so a creation below a directory that
         # may be missing conflicts with such a check below the same one.
         checking = {id(p) for p in suppliers if p.checks_creation}
+        # A step that requires a path to exist (or to be readable or listable)
+        # fails while a directory above that path is missing, and so makes
+        # nothing below it: where that directory is the one two creations
+        # share, neither can make it for the other (§15.4).
+        present = {
+            s: [p for p in self.ports if p.step == s and p.requires & _PRESENT]
+            for s in self.steps
+        }
         for n, x in enumerate(suppliers):
             for y in suppliers[n + 1 :]:
                 if id(x) not in checking and id(y) not in checking:
@@ -411,6 +422,11 @@ class EffectGraph:
                 if x.step == y.step or (id(x), id(y)) in joined:
                     continue
                 missing, parent = self._shared_parent(x.expr, y.expr)
+                if missing and parent is not None:
+                    missing = not any(
+                        self._analysis(parent, p.expr)("contains") == "always"
+                        for p in (*present[x.step], *present[y.step])
+                    )
                 if missing:
                     a = self._analysis(x.expr, y.expr)
                     self.conflicts.append(
@@ -530,9 +546,14 @@ class EffectGraph:
         ra, rb = a.parts[k:], b.parts[k:]
         if not ra or not rb:
             return True, None
-        # The paths part at the first remaining part: two different literal
-        # segments, or the last segment of each.
-        diverge = _static(ra[0]) and _static(rb[0]) and ra[0].literal != rb[0].literal
+        # The paths part at the first remaining part: two segments that render
+        # different text on every run, or the last segment of each.
+        bad = _conflicting_defaults(a, b) if self.shared else frozenset()
+        diverge = (
+            isinstance(ra[0], Seg)
+            and isinstance(rb[0], Seg)
+            and _apart_segments(ra[0], rb[0], self.shared, bad, self._memo)
+        )
         last = len(ra) == len(rb) == 1 and all(
             isinstance(x, Seg) for x in (ra[0], rb[0])
         )

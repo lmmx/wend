@@ -1121,6 +1121,16 @@ every pair is never, sometimes when one pair shows it, and never always.
      where `day` is empty.
    - Its relation to `{root}/raw/{day}.parquet` is therefore `"sometimes"`, not
      `"always"`, as wend's own deferral of the operation implies.
+   - Where a changed suffix or stem's base ends in literal text with a dot, the change
+     is also written out *by how the base's name splits*. pathlib takes the suffix from
+     the name less its leading dots, so the last dot of that text starts the suffix
+     unless every character before it is a dot. `with_suffix(".parquet")` of
+     `{day}.csv` renders `{day}.parquet`, or `.csv.parquet` where `day` renders dots
+     alone (`""` included); `with_stem("summary")` renders `summary.csv`, or `summary`.
+     On every binding the change renders what the case that holds renders under the
+     same binding, and the cases keep the base's own fields, so `day` is still `day`:
+     two changes of one base are `"never"` related where no case of one meets a case
+     of the other, and `{day}.parquet` never meets `summary.csv` nor `summary`.
    - A name of `..` has no suffix, so `with_suffix("")` keeps it: `{root}` with the
      suffix `""` renders `a/..` from `root="a/.."`. The overlap analysis (§15.5) allows
      `..` wherever a changed name may render it.
@@ -1136,7 +1146,15 @@ every pair is never, sometimes when one pair shows it, and never always.
    - the remainders are both empty: the same, always;
    - one is empty and the other holds a segment: inside or containing, always. A
      `SubPath` may be empty, so alone it decides nothing;
-   - their first parts are different literal segments: never, all three;
+   - at some position both remainders hold segments, every earlier position does too,
+     and the two segments there render different text on every run: never, all
+     three. Two segments' pieces are compared as characters and fields: equal pieces
+     at either end cancel (a field only under shared bindings, by (1)), and the
+     segments differ when what remains differs in a character, or one side is empty
+     and the other holds one. `{day}.csv` and `{day}.csv.gz` never meet; `{day}.csv`
+     and `{other}.csv` may. A field alone in a segment renders a segment-valued
+     parameter, which a value of a type of its own may render apart from the same
+     value in text, so it does not cancel against one there;
    - both are segments alone, which decides by depth. A segment renders exactly one
      segment, never `""`, `.` or a separator (§3), so each remainder renders a fixed
      number of them. Paths of different depths are never the same, and paths of equal
@@ -1200,8 +1218,17 @@ reads it from the declarations as follows:
 | requires its parent directory to exist | the parent as a port: `requires(Exists, Dir)` | the step runs after every step that may make the parent: one that creates it (as sure as their paths' relation), or that creates a path below it (`"unknown"`: only if the parent was missing); and before every step that may delete it |
 | makes missing parents idempotently (`os.makedirs(..., exist_ok=True)`) | nothing: assumed for every parent a step does not declare | two such creations below one missing directory do not conflict |
 | makes a directory exclusively (plain `mkdir`), or requires it absent | the directory as a port: `requires(Absent)`, `ensures(Exists, Dir)` | the directory's port touches every path below it, so every step that touches them is linked to it |
-| checks it may create or write a path (`Creatable`, `Writable`) | the check | it conflicts (`"unknown"`, `via="parent"`) with a creation in another step below a directory above both that may be missing: making that directory changes which ancestor the check finds |
+| checks it may create or write a path (`Creatable`, `Writable`) | the check | it conflicts (`"unknown"`, `via="parent"`) with a creation in another step below a directory above both that may be missing: making that directory changes which ancestor the check finds; unless either step requires a path inside that directory to exist (below) |
 | has effects it does not declare | cannot be | outside the graph: nothing is promised |
+
+**A step that needs the directory makes nothing there.** Where either of the two steps
+requires a path always strictly inside the shared directory to exist (`Exists`, or
+`Readable` or `Listable`, which imply it), the parent conflict is dropped. While the
+directory is missing, that path is too, so the step's check fails whatever the other
+does, and its code, which runs only once its checks pass, makes nothing; once the
+directory exists, neither step makes it. Where the other step makes that very path, a
+dependency links the two already. The shared directory is the one before the first
+position at which the two paths' segments differ on every run (§15.3, 5).
 
 A directory *may be missing* unless it is the anchor (`/`, or the working directory for a
 relative path), or lies at or above a path given in `EffectGraph(..., existing=[...])`:

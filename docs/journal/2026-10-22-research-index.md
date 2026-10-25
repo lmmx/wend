@@ -74,7 +74,8 @@ its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #
 | 13 | [Consolidation: a plan](2026-10-22-consolidation.md) (a proposal) | #115 | a60bb7e | none: nothing in it is done |
 | 14 | [Relations between families, and effects across a pipeline](2026-10-24-relations-and-effects-118.md), and SEMANTICS.md §15 (after 0.3.0) | #118 | d5b2779 | `tests/{relate,effects}_test.py` (the schedule's oracle), `bench/effects.py`, `examples/pipeline_effects.py` |
 | 15 | [A more precise relation](2026-10-25-relation-precision-119.md): anchors, depth, names changed by binding | #119 | b4a212f | `tests/relate_test.py` (two property tests), `tests/overlap_test.py`'s pool |
-| 16 | [What a requirement relies on](2026-10-25-obligations.md): obligations over the effect graph, and a deferred head is itself; addendum §7 on paths given as existing, reads and listings | #120, #121 | 23ecda4; addendum on the PR's branch | `tests/effects_test.py` (the disk oracle, in order and by stages), `tests/relate_test.py` (paths below one deferred head) |
+| 16 | [What a requirement relies on](2026-10-25-obligations.md): obligations over the effect graph, and a deferred head is itself; addendum §7 on paths given as existing, reads and listings | #120, #121 | 23ecda4; addendum 2dcfbfe | `tests/effects_test.py` (the disk oracle, in order and by stages), `tests/relate_test.py` (paths below one deferred head) |
+| 17 | [Fewer unknowns on realistic pipelines](2026-10-25-realistic-precision.md): segments that differ, names written out by their split, parent conflicts a precondition rules out | #122 | on the PR's branch | `bench/effects_corpus.py`, `tests/effects_test.py` (stages commute on disk), `tests/relate_test.py` |
 
 ## How the discoveries build on one another
 

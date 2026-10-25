@@ -2309,8 +2309,28 @@ keeps the dependencies that hold on every run, and
 <a class="autorefs autorefs-internal" title="            cycles" href="../../reference/api/effects/#wend.effects.EffectGraph.cycles"><code>cycles(certain=True)</code></a> the cycles no binding avoids.</p>
 <p>A declared path covers what lies below it, since it may be a directory: a step that writes
 <code>{root}/raw</code> and one that reads <code>{root}/raw/{day}.csv</code> are linked, and so are two steps that
-delete a directory and a file in it. A path declared with no verbs (a check of <code>Exists</code>
-alone) is kept apart from every path it touches.</p>
+delete a directory and a file in it. A path declared with no conditions at all is kept apart
+from every path it touches, since its effect is unknown.</p>
+<p>A step that creates a file may also make its missing parent directories. The graph
+assumes it does so idempotently, as <code>os.makedirs(..., exist_ok=True)</code> does, unless the step
+declares the directory as a path of its own:
+- a path that must exist first is declared with <code>requires(Exists, Dir)</code>, and the step then
+  runs after any step that may make it;
+- a directory made exclusively is declared with <code>requires(Absent)</code> and
+  <code>ensures(Exists, Dir)</code>.</p>
+<p>A <code>Creatable</code> or <code>Writable</code> check is kept apart from a creation in another step below a
+directory that may be missing, because making the directory changes what the check finds.
+Name the directories that exist before the pipeline runs with <code>existing</code>, and nothing is
+made there:</p>
+<div class="language-pycon highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="n">stats</span> <span class="o">=</span> <span class="n">Step</span><span class="p">(</span><span class="n">out</span><span class="o">=</span><span class="p">(</span><span class="n">P</span><span class="p">(</span><span class="n">root</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"out"</span> <span class="o">/</span> <span class="s2">"summary.json"</span><span class="p">)</span><span class="o">.</span><span class="n">requires</span><span class="p">(</span><span class="n">Creatable</span><span class="p">)</span><span class="o">.</span><span class="n">ensures</span><span class="p">(</span><span class="n">File</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">EffectGraph</span><span class="p">({</span><span class="s2">"convert"</span><span class="p">:</span> <span class="n">convert</span><span class="p">,</span> <span class="s2">"stats"</span><span class="p">:</span> <span class="n">stats</span><span class="p">})</span><span class="o">.</span><span class="n">stages</span><span class="p">()</span>
+<span class="go">[['convert'], ['stats']]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">EffectGraph</span><span class="p">({</span><span class="s2">"convert"</span><span class="p">:</span> <span class="n">convert</span><span class="p">,</span> <span class="s2">"stats"</span><span class="p">:</span> <span class="n">stats</span><span class="p">},</span> <span class="n">existing</span><span class="o">=</span><span class="p">[</span><span class="n">P</span><span class="p">(</span><span class="n">root</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"out"</span><span class="p">])</span><span class="o">.</span><span class="n">stages</span><span class="p">()</span>
+<span class="go">[['convert', 'stats']]</span>
+</code></pre></div>
+<p>The graph promises only what the declarations say. Two steps in one stage cannot
+interfere through the effects they declare, but a step whose code touches a path it does
+not declare is outside the graph.</p>
 <p>Paths are compared as rendered strings, not as files: a symlink, a <code>..</code>, or a relative and
 an absolute spelling of one file are two paths to the graph
 (<a href="https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#15-relations-between-families">SEMANTICS.md §15</a>).</p>

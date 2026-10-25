@@ -1441,6 +1441,28 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#wend.effects.Conflict.via" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;via
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wend.effects.Conflict.parent" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;parent
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1535,6 +1557,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;builtin_values
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wend.effects.EffectGraph.existing" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;existing
       </span>
     </span>
   </a>
@@ -1916,6 +1949,39 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;is_input
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wend.effects.Port.requires" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;requires
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wend.effects.Port.observes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;observes
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wend.effects.Port.checks_creation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;checks_creation
       </span>
     </span>
   </a>
@@ -2541,6 +2607,28 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#wend.effects.Conflict.via" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;via
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wend.effects.Conflict.parent" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;parent
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2635,6 +2723,17 @@
     <span class="md-ellipsis">
       <span class="md-typeset">
         <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;builtin_values
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wend.effects.EffectGraph.existing" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;existing
       </span>
     </span>
   </a>
@@ -3022,6 +3121,39 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#wend.effects.Port.requires" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;requires
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wend.effects.Port.observes" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;observes
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#wend.effects.Port.checks_creation" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;checks_creation
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3221,17 +3353,28 @@ from wend.effects import EffectGraph
 root, day = Param("root"), Param("day")
 raw = P(root) / "raw" / T(t"{day}.csv")
 clean = P(root) / "clean" / T(t"{day}.parquet")
-graph = EffectGraph({
-    "ingest": Step(out=raw.ensures(Exists)),
-    "clean": Step(src=raw.requires(Readable), dst=clean.requires(Creatable)),
-})
+graph = EffectGraph(
+    {
+        "ingest": Step(out=raw.ensures(Exists)),
+        "clean": Step(src=raw.requires(Readable), dst=clean.requires(Creatable)),
+    },
+    existing=[P(root)],  # the data root exists before the pipeline runs
+)
 graph.order()  # ['ingest', 'clean']
 </code></pre></div>
-<p>What the graph knows is what the steps declare: a step's code can read or
-write anything, and a path read without <code>Readable</code> declared is not an input
-here. Parents a creation may make (as <code>mkdir -p</code> does) are not counted: two
-steps that create siblings in a missing directory may share a stage, which is
-safe when parents are made idempotently (docs/SEMANTICS.md §15.4). Paths are compared as rendered strings, not as filesystem objects, so
+<p>A step that creates a path may make its missing parents. The graph assumes it
+does so idempotently (as <code>os.makedirs(..., exist_ok=True)</code> does) unless it
+declares the directory as a port of its own. A check that a path may be
+created or written (<code>Creatable</code>, <code>Writable</code>) then conflicts with a creation
+below a directory above both that may be missing. A port requiring a
+directory to exist follows the steps that may make it. <code>existing</code> names the
+paths known to exist, which bounds both (docs/SEMANTICS.md §15.4).</p>
+<p>What the graph knows is what the steps declare, and its guarantees hold only
+as far as the declarations describe what each step's code does: a step's
+code can read or write anything, and a path read without <code>Readable</code>
+declared is not an input here. Two steps in one stage cannot interfere
+through their declared effects; that is no promise about effects a step has
+and does not declare. Paths are compared as rendered strings, not as filesystem objects, so
 two spellings of one file (a symlink, a relative and an absolute path, a
 <code>..</code>, a hard link) are two paths.</p>
 
@@ -3300,7 +3443,12 @@ two spellings of one file (a symlink, a relative and an absolute path, a
       module-attribute
    (wend._relate.Certainty)" href="./#wend.effects.Certainty">Certainty</a></span><span class="p">,</span>
     <span class="n">_analysis</span><span class="p">:</span> <span class="n"><span title="wend._relate.Analysis">Analysis</span></span><span class="p">,</span>
-    <span class="n">_hows</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><span title="wend._relate.How">How</span></span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">_answers</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><span title="wend._relate.How">How</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-internal" title="            Certainty
+
+
+  
+      module-attribute
+   (wend._relate.Certainty)" href="./#wend.effects.Certainty">Certainty</a></span><span class="p">],</span> <span class="o">...</span><span class="p">],</span>
     <span class="o">*</span><span class="p">,</span>
     <span class="n">first</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Port
 
@@ -3314,6 +3462,13 @@ two spellings of one file (a symlink, a relative and an absolute path, a
   
       dataclass
    (wend.effects.Port)" href="./#wend.effects.Port">Port</a></span><span class="p">,</span>
+    <span class="n">via</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s2">"path"</span><span class="p">,</span> <span class="s2">"parent"</span><span class="p">]</span> <span class="o">=</span> <span class="s2">"path"</span><span class="p">,</span>
+    <span class="n">parent</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._expr.PathExpr)" href="../wend/#wend.PathExpr">PathExpr</a></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
 <span class="p">)</span>
 </code></pre></div>
 
@@ -3326,8 +3481,12 @@ two spellings of one file (a symlink, a relative and an absolute path, a
         <p>Two ports that may change what the other touches: two writes, a write
 and a deletion, or two deletions of one path or of paths one inside the
 other, or a port that declares no verbs (so its effect is unknown) and
-any port it touches. The steps must not run at once; for writes, which
-one wins depends on their order, which the graph does not choose.</p>
+any port it touches (<code>via="path"</code>). Or two creations below a directory
+that may be missing, where one checks whether it may create its path:
+making the directory changes what that check finds (<code>via="parent"</code>;
+<code>parent</code> is the directory, when it is known). The steps must not run
+at once; for writes, which one wins depends on their order, which the
+graph does not choose.</p>
 
 
 
@@ -3413,6 +3572,67 @@ one wins depends on their order, which the graph does not choose.</p>
 
 
 
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="wend.effects.Conflict.via" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">via</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-class-attribute"><code>class-attribute</code></small>
+      <small class="doc doc-label doc-label-instance-attribute"><code>instance-attribute</code></small>
+  </span>
+
+<a href="#wend.effects.Conflict.via" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">via</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Literal" href="https://docs.python.org/3/library/typing.html#typing.Literal">Literal</a></span><span class="p">[</span><span class="s1">'path'</span><span class="p">,</span> <span class="s1">'parent'</span><span class="p">]</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-external" title="dataclasses.field" href="https://docs.python.org/3/library/dataclasses.html#dataclasses.field">field</a></span><span class="p">(</span><span class="n"><span title="dataclasses.field(default)">default</span></span><span class="o">=</span><span class="s1">'path'</span><span class="p">,</span> <span class="n"><span title="dataclasses.field(kw_only)">kw_only</span></span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="wend.effects.Conflict.parent" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">parent</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-class-attribute"><code>class-attribute</code></small>
+      <small class="doc doc-label doc-label-instance-attribute"><code>instance-attribute</code></small>
+  </span>
+
+<a href="#wend.effects.Conflict.parent" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">parent</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._expr.PathExpr)" href="../wend/#wend.PathExpr">PathExpr</a></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="n"><a class="autorefs autorefs-external" title="dataclasses.field" href="https://docs.python.org/3/library/dataclasses.html#dataclasses.field">field</a></span><span class="p">(</span><span class="n"><span title="dataclasses.field(default)">default</span></span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n"><span title="dataclasses.field(kw_only)">kw_only</span></span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n"><span title="dataclasses.field(compare)">compare</span></span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
+
+
+
+
   </div>
 
     </div>
@@ -3445,7 +3665,12 @@ one wins depends on their order, which the graph does not choose.</p>
       module-attribute
    (wend._relate.Certainty)" href="./#wend.effects.Certainty">Certainty</a></span><span class="p">,</span>
     <span class="n">_analysis</span><span class="p">:</span> <span class="n"><span title="wend._relate.Analysis">Analysis</span></span><span class="p">,</span>
-    <span class="n">_hows</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><span title="wend._relate.How">How</span></span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">_answers</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><span title="wend._relate.How">How</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-internal" title="            Certainty
+
+
+  
+      module-attribute
+   (wend._relate.Certainty)" href="./#wend.effects.Certainty">Certainty</a></span><span class="p">],</span> <span class="o">...</span><span class="p">],</span>
     <span class="o">*</span><span class="p">,</span>
     <span class="n">producer</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Port
 
@@ -3470,7 +3695,9 @@ one wins depends on their order, which the graph does not choose.</p>
 
 
         <p><code>consumer</code> reads (<code>via="read"</code>) or lists (<code>via="list"</code>) a path
-that is, holds, or lies inside one <code>producer</code> writes.</p>
+that is, holds, or lies inside one <code>producer</code> writes; or requires a
+path to exist (<code>via="exists"</code>) that <code>producer</code> may create, as that
+path or as a directory above one it creates.</p>
 
 
 
@@ -3605,7 +3832,16 @@ that is, holds, or lies inside one <code>producer</code> writes.</p>
 
 <a href="#wend.effects.EffectGraph" class="headerlink" title="Permanent link">&para;</a></h2>
 <div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">EffectGraph</span><span class="p">(</span>
-    <span class="n">steps</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="collections.abc.Mapping" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping">Mapping</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-internal" title="            Step (wend.conditions.Step)" href="../conditions/#wend.conditions.Step">Step</a></span><span class="p">],</span> <span class="o">*</span><span class="p">,</span> <span class="n">shared</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">builtin_values</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">steps</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="collections.abc.Mapping" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Mapping">Mapping</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-internal" title="            Step (wend.conditions.Step)" href="../conditions/#wend.conditions.Step">Step</a></span><span class="p">],</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">shared</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">builtin_values</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">existing</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="collections.abc.Iterable" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable">Iterable</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._expr.PathExpr)" href="../wend/#wend.PathExpr">PathExpr</a></span> <span class="o">|</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">]</span> <span class="o">=</span> <span class="p">(),</span>
 <span class="p">)</span>
 </code></pre></div>
 
@@ -3620,6 +3856,12 @@ every step; <code>shared=False</code> relates every binding of one step to every
 binding of another, as when steps run with bindings of their own.
 <code>builtin_values=True</code> assumes bound values are of builtin types, which
 proves more paths apart (<code>wend.relate</code>).</p>
+<p><code>existing</code> names paths (expressions or strings) that exist before the
+pipeline runs and that no step deletes: no step makes them, or a
+directory above them, as a missing parent. Without it, any directory
+above a created path may be missing, except the anchor (<code>/</code> or the
+working directory). A step that may delete one of them, or a directory
+above it, raises ValueError.</p>
 
 
 
@@ -3709,6 +3951,45 @@ proves more paths apart (<code>wend.relate</code>).</p>
 
 <a href="#wend.effects.EffectGraph.builtin_values" class="headerlink" title="Permanent link">&para;</a></h3>
 <div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">builtin_values</span> <span class="o">=</span> <span class="n"><span title="wend.effects.EffectGraph(builtin_values)">builtin_values</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="wend.effects.EffectGraph.existing" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">existing</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-instance-attribute"><code>instance-attribute</code></small>
+  </span>
+
+<a href="#wend.effects.EffectGraph.existing" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">existing</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#list">list</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._expr.PathExpr)" href="../wend/#wend.PathExpr">PathExpr</a></span><span class="p">]</span> <span class="o">=</span> <span class="p">[</span>
+    <span class="n"><span title="e">e</span></span> <span class="k">if</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#isinstance">isinstance</a></span><span class="p">(</span><span class="n"><span title="e">e</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
+
+
+  
+      dataclass
+   (wend._expr.PathExpr)" href="../wend/#wend.PathExpr">PathExpr</a></span><span class="p">)</span> <span class="k">else</span> <span class="n"><a class="autorefs autorefs-internal" title="            wend.P (wend._expr.P)" href="../wend/#wend.P">P</a></span><span class="p">(</span><span class="n"><span title="e">e</span></span><span class="p">)</span> <span class="k">for</span> <span class="n"><span title="e">e</span></span> <span class="ow">in</span> <span class="n"><span title="wend.effects.EffectGraph(existing)">existing</span></span>
+<span class="p">]</span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -3972,6 +4253,10 @@ ordered.</p>
 follows every step it may depend on, and no two steps in a group
 are joined by any link, whatever its certainty. None if the steps
 form a cycle (see <code>order</code>).</p>
+<p>That two steps share a stage means their <em>declared</em> effects cannot
+interfere, with parents not declared made idempotently
+(docs/SEMANTICS.md §15.4). It is no promise about what a step's code
+does beyond its declarations.</p>
 
 
     </div>
@@ -3999,10 +4284,12 @@ form a cycle (see <code>order</code>).</p>
         <p>Whether no link joins steps <code>x</code> and <code>y</code>: no dependency, hazard
 or conflict between them holds always, sometimes, or is even not
 ruled out. Their declared paths, compared as strings, then never
-meet nor nest where either one writes, deletes, or declares no verbs.
-Independent steps may run in either order, or at once, so far as
-their declarations go: a step's code may touch paths it does not
-declare, and two spellings of one file are two paths here.</p>
+meet nor nest where either one writes, deletes, or has no known
+effect, and no creation check of one depends on a directory the
+other may make. Independent steps may run in either order, or at
+once, so far as their declarations go: a step's code may touch paths
+it does not declare, and two spellings of one file are two paths
+here.</p>
 
 
     </div>
@@ -4462,7 +4749,12 @@ name.</p>
       module-attribute
    (wend._relate.Certainty)" href="./#wend.effects.Certainty">Certainty</a></span><span class="p">,</span>
     <span class="n">_analysis</span><span class="p">:</span> <span class="n"><span title="wend._relate.Analysis">Analysis</span></span><span class="p">,</span>
-    <span class="n">_hows</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><span title="wend._relate.How">How</span></span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>
+    <span class="n">_answers</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#tuple">tuple</a></span><span class="p">[</span><span class="n"><span title="wend._relate.How">How</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-internal" title="            Certainty
+
+
+  
+      module-attribute
+   (wend._relate.Certainty)" href="./#wend.effects.Certainty">Certainty</a></span><span class="p">],</span> <span class="o">...</span><span class="p">],</span>
     <span class="o">*</span><span class="p">,</span>
     <span class="n">reader</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Port
 
@@ -4820,6 +5112,97 @@ above it, or a path inside it: <code>reader</code> has to run first.</p>
     <div class="doc doc-contents ">
 
         <p>Whether the step reads this path or lists it.</p>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="wend.effects.Port.requires" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">requires</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#wend.effects.Port.requires" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">requires</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#frozenset">frozenset</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/stdtypes.html#str">str</a></span><span class="p">]</span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The atoms the step requires of this path before it runs.</p>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="wend.effects.Port.observes" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">observes</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#wend.effects.Port.observes" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">observes</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Whether the step requires this path to exist (<code>Exists</code>): it
+follows any step that may create it, as a path or as a directory
+above one, and precedes any step that may delete it.</p>
+
+    </div>
+
+</div>
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="wend.effects.Port.checks_creation" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">checks_creation</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#wend.effects.Port.checks_creation" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">checks_creation</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>Whether the step checks that it may create or write this path
+(<code>Creatable</code> or <code>Writable</code>). For a missing path the answer
+depends on which directories above it exist.</p>
 
     </div>
 

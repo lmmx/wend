@@ -174,7 +174,21 @@ purge.old deletes what convert.src reads, on every run, so convert runs first: {
 
 Every link carries how sure it is, and every query counts every link, whatever its certainty. A dependency, hazard or conflict that is only `"sometimes"` or `"unknown"` still orders the steps and keeps them out of one stage: treating it as absent could run two interfering steps at once. `dependencies(certain=True)` keeps the dependencies that hold on every run, and `cycles(certain=True)` the cycles no binding avoids.
 
-A declared path covers what lies below it, since it may be a directory: a step that writes `{root}/raw` and one that reads `{root}/raw/{day}.csv` are linked, and so are two steps that delete a directory and a file in it. A path declared with no verbs (a check of `Exists` alone) is kept apart from every path it touches.
+A declared path covers what lies below it, since it may be a directory: a step that writes `{root}/raw` and one that reads `{root}/raw/{day}.csv` are linked, and so are two steps that delete a directory and a file in it. A path declared with no conditions at all is kept apart from every path it touches, since its effect is unknown.
+
+A step that creates a file may also make its missing parent directories. The graph assumes it does so idempotently, as `os.makedirs(..., exist_ok=True)` does, unless the step declares the directory as a path of its own: - a path that must exist first is declared with `requires(Exists, Dir)`, and the step then runs after any step that may make it; - a directory made exclusively is declared with `requires(Absent)` and `ensures(Exists, Dir)`.
+
+A `Creatable` or `Writable` check is kept apart from a creation in another step below a directory that may be missing, because making the directory changes what the check finds. Name the directories that exist before the pipeline runs with `existing`, and nothing is made there:
+
+```pycon
+>>> stats = Step(out=(P(root) / "out" / "summary.json").requires(Creatable).ensures(File))
+>>> EffectGraph({"convert": convert, "stats": stats}).stages()
+[['convert'], ['stats']]
+>>> EffectGraph({"convert": convert, "stats": stats}, existing=[P(root) / "out"]).stages()
+[['convert', 'stats']]
+```
+
+The graph promises only what the declarations say. Two steps in one stage cannot interfere through the effects they declare, but a step whose code touches a path it does not declare is outside the graph.
 
 Paths are compared as rendered strings, not as files: a symlink, a `..`, or a relative and an absolute spelling of one file are two paths to the graph ([SEMANTICS.md §15](<https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#15-relations-between-families>)).
 

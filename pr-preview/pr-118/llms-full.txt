@@ -1205,7 +1205,21 @@ purge.old deletes what convert.src reads, on every run, so convert runs first: {
 
 Every link carries how sure it is, and every query counts every link, whatever its certainty. A dependency, hazard or conflict that is only `"sometimes"` or `"unknown"` still orders the steps and keeps them out of one stage: treating it as absent could run two interfering steps at once. `dependencies(certain=True)` keeps the dependencies that hold on every run, and `cycles(certain=True)` the cycles no binding avoids.
 
-A declared path covers what lies below it, since it may be a directory: a step that writes `{root}/raw` and one that reads `{root}/raw/{day}.csv` are linked, and so are two steps that delete a directory and a file in it. A path declared with no verbs (a check of `Exists` alone) is kept apart from every path it touches.
+A declared path covers what lies below it, since it may be a directory: a step that writes `{root}/raw` and one that reads `{root}/raw/{day}.csv` are linked, and so are two steps that delete a directory and a file in it. A path declared with no conditions at all is kept apart from every path it touches, since its effect is unknown.
+
+A step that creates a file may also make its missing parent directories. The graph assumes it does so idempotently, as `os.makedirs(..., exist_ok=True)` does, unless the step declares the directory as a path of its own: - a path that must exist first is declared with `requires(Exists, Dir)`, and the step then runs after any step that may make it; - a directory made exclusively is declared with `requires(Absent)` and `ensures(Exists, Dir)`.
+
+A `Creatable` or `Writable` check is kept apart from a creation in another step below a directory that may be missing, because making the directory changes what the check finds. Name the directories that exist before the pipeline runs with `existing`, and nothing is made there:
+
+```pycon
+>>> stats = Step(out=(P(root) / "out" / "summary.json").requires(Creatable).ensures(File))
+>>> EffectGraph({"convert": convert, "stats": stats}).stages()
+[['convert'], ['stats']]
+>>> EffectGraph({"convert": convert, "stats": stats}, existing=[P(root) / "out"]).stages()
+[['convert', 'stats']]
+```
+
+The graph promises only what the declarations say. Two steps in one stage cannot interfere through the effects they declare, but a step whose code touches a path it does not declare is outside the graph.
 
 Paths are compared as rendered strings, not as files: a symlink, a `..`, or a relative and an absolute spelling of one file are two paths to the graph ([SEMANTICS.md §15](<https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#15-relations-between-families>)).
 
@@ -5873,14 +5887,19 @@ from wend.effects import EffectGraph
 root, day = Param("root"), Param("day")
 raw = P(root) / "raw" / T(t"{day}.csv")
 clean = P(root) / "clean" / T(t"{day}.parquet")
-graph = EffectGraph({
-    "ingest": Step(out=raw.ensures(Exists)),
-    "clean": Step(src=raw.requires(Readable), dst=clean.requires(Creatable)),
-})
+graph = EffectGraph(
+    {
+        "ingest": Step(out=raw.ensures(Exists)),
+        "clean": Step(src=raw.requires(Readable), dst=clean.requires(Creatable)),
+    },
+    existing=[P(root)],  # the data root exists before the pipeline runs
+)
 graph.order()  # ['ingest', 'clean']
 ```
 
-What the graph knows is what the steps declare: a step's code can read or write anything, and a path read without `Readable` declared is not an input here. Parents a creation may make (as `mkdir -p` does) are not counted: two steps that create siblings in a missing directory may share a stage, which is safe when parents are made idempotently (docs/SEMANTICS.md §15.4). Paths are compared as rendered strings, not as filesystem objects, so two spellings of one file (a symlink, a relative and an absolute path, a `..`, a hard link) are two paths.
+A step that creates a path may make its missing parents. The graph assumes it does so idempotently (as `os.makedirs(..., exist_ok=True)` does) unless it declares the directory as a port of its own. A check that a path may be created or written (`Creatable`, `Writable`) then conflicts with a creation below a directory above both that may be missing. A port requiring a directory to exist follows the steps that may make it. `existing` names the paths known to exist, which bounds both (docs/SEMANTICS.md §15.4).
+
+What the graph knows is what the steps declare, and its guarantees hold only as far as the declarations describe what each step's code does: a step's code can read or write anything, and a path read without `Readable` declared is not an input here. Two steps in one stage cannot interfere through their declared effects; that is no promise about effects a step has and does not declare. Paths are compared as rendered strings, not as filesystem objects, so two spellings of one file (a symlink, a relative and an absolute path, a `..`, a hard link) are two paths.
 
 ## Certainty
 
@@ -5894,16 +5913,18 @@ Certainty = Literal['always', 'sometimes', 'never', 'unknown']
 Conflict(
     certainty: Certainty,
     _analysis: Analysis,
-    _hows: tuple[How, ...],
+    _answers: tuple[tuple[How, Certainty], ...],
     *,
     first: Port,
     second: Port,
+    via: Literal["path", "parent"] = "path",
+    parent: PathExpr | None = None,
 )
 ```
 
 Bases: `_Link`
 
-Two ports that may change what the other touches: two writes, a write and a deletion, or two deletions of one path or of paths one inside the other, or a port that declares no verbs (so its effect is unknown) and any port it touches. The steps must not run at once; for writes, which one wins depends on their order, which the graph does not choose.
+Two ports that may change what the other touches: two writes, a write and a deletion, or two deletions of one path or of paths one inside the other, or a port that declares no verbs (so its effect is unknown) and any port it touches (`via="path"`). Or two creations below a directory that may be missing, where one checks whether it may create its path: making the directory changes what that check finds (`via="parent"`; `parent` is the directory, when it is known). The steps must not run at once; for writes, which one wins depends on their order, which the graph does not choose.
 
 ### first
 
@@ -5917,13 +5938,25 @@ first: Port = field(kw_only=True)
 second: Port = field(kw_only=True)
 ```
 
+### via
+
+```python
+via: Literal['path', 'parent'] = field(default='path', kw_only=True)
+```
+
+### parent
+
+```python
+parent: PathExpr | None = field(default=None, kw_only=True, compare=False)
+```
+
 ## Dependency
 
 ```python
 Dependency(
     certainty: Certainty,
     _analysis: Analysis,
-    _hows: tuple[How, ...],
+    _answers: tuple[tuple[How, Certainty], ...],
     *,
     producer: Port,
     consumer: Port,
@@ -5933,7 +5966,7 @@ Dependency(
 
 Bases: `_Link`
 
-`consumer` reads (`via="read"`) or lists (`via="list"`) a path that is, holds, or lies inside one `producer` writes.
+`consumer` reads (`via="read"`) or lists (`via="list"`) a path that is, holds, or lies inside one `producer` writes; or requires a path to exist (`via="exists"`) that `producer` may create, as that path or as a directory above one it creates.
 
 ### producer
 
@@ -5957,13 +5990,19 @@ via: Via = field(kw_only=True)
 
 ```python
 EffectGraph(
-    steps: Mapping[str, Step], *, shared: bool = True, builtin_values: bool = False
+    steps: Mapping[str, Step],
+    *,
+    shared: bool = True,
+    builtin_values: bool = False,
+    existing: Iterable[PathExpr | str] = (),
 )
 ```
 
 What a set of named steps declare they do to their paths, related before any binding (see the module docstring).
 
 `shared=True` (the default) gives a parameter name one value across every step; `shared=False` relates every binding of one step to every binding of another, as when steps run with bindings of their own. `builtin_values=True` assumes bound values are of builtin types, which proves more paths apart (`wend.relate`).
+
+`existing` names paths (expressions or strings) that exist before the pipeline runs and that no step deletes: no step makes them, or a directory above them, as a missing parent. Without it, any directory above a created path may be missing, except the anchor (`/` or the working directory). A step that may delete one of them, or a directory above it, raises ValueError.
 
 ### steps
 
@@ -5981,6 +6020,14 @@ shared = shared
 
 ```python
 builtin_values = builtin_values
+```
+
+### existing
+
+```python
+existing: list[PathExpr] = [
+    e if isinstance(e, PathExpr) else P(e) for e in existing
+]
 ```
 
 ### ports
@@ -6045,13 +6092,15 @@ stages() -> list[list[str]] | None
 
 The steps in groups that may run at the same time: each group follows every step it may depend on, and no two steps in a group are joined by any link, whatever its certainty. None if the steps form a cycle (see `order`).
 
+That two steps share a stage means their *declared* effects cannot interfere, with parents not declared made idempotently (docs/SEMANTICS.md §15.4). It is no promise about what a step's code does beyond its declarations.
+
 ### independent
 
 ```python
 independent(x: str, y: str) -> bool
 ```
 
-Whether no link joins steps `x` and `y`: no dependency, hazard or conflict between them holds always, sometimes, or is even not ruled out. Their declared paths, compared as strings, then never meet nor nest where either one writes, deletes, or declares no verbs. Independent steps may run in either order, or at once, so far as their declarations go: a step's code may touch paths it does not declare, and two spellings of one file are two paths here.
+Whether no link joins steps `x` and `y`: no dependency, hazard or conflict between them holds always, sometimes, or is even not ruled out. Their declared paths, compared as strings, then never meet nor nest where either one writes, deletes, or has no known effect, and no creation check of one depends on a directory the other may make. Independent steps may run in either order, or at once, so far as their declarations go: a step's code may touch paths it does not declare, and two spellings of one file are two paths here.
 
 ### links
 
@@ -6163,7 +6212,7 @@ b_bindings: dict[str, Any]
 Hazard(
     certainty: Certainty,
     _analysis: Analysis,
-    _hows: tuple[How, ...],
+    _answers: tuple[tuple[How, Certainty], ...],
     *,
     reader: Port,
     deleter: Port,
@@ -6241,6 +6290,30 @@ is_input: bool
 ```
 
 Whether the step reads this path or lists it.
+
+### requires
+
+```python
+requires: frozenset[str]
+```
+
+The atoms the step requires of this path before it runs.
+
+### observes
+
+```python
+observes: bool
+```
+
+Whether the step requires this path to exist (`Exists`): it follows any step that may create it, as a path or as a directory above one, and precedes any step that may delete it.
+
+### checks\_creation
+
+```python
+checks_creation: bool
+```
+
+Whether the step checks that it may create or write this path (`Creatable` or `Writable`). For a missing path the answer depends on which directories above it exist.
 
 ## Relation
 

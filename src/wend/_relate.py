@@ -12,7 +12,14 @@ each answered ``"always"``, ``"sometimes"``, ``"never"`` or ``"unknown"``:
 
 The proofs, in order:
 
-1. *Structure*. Two pieces of normal form that are equal, with parameters
+1. *Anchors*. Paths with different anchors (relative, ``/``, ``//``) never
+   meet nor nest.
+2. *Views*. A name changed by ``with_name``, ``with_suffix`` or ``with_stem``
+   and deferred until binding is its base's parent and one segment, of which
+   the operation fixes the name, the suffix or the stem (`_view`). Reasoning
+   on the view proves "never" and depth; "sometimes" needs a binding of the
+   expressions themselves.
+3. *Structure*. Two pieces of normal form that are equal, with parameters
    compared by name, render the same text for one binding: a parameter's
    declaration (type, choices, kind) decides which bindings are accepted,
    never what an accepted one renders. Under shared bindings a common prefix
@@ -21,9 +28,11 @@ The proofs, in order:
    ``b`` relate exactly as their remainders do. Empty remainders, or one
    empty and the other holding a segment, decide the relation for every
    binding ("always" and "never").
-2. *Divergence*. Remainders whose first parts are different literal segments
-   never meet and never nest.
-3. *Overlap*. Otherwise each question is asked of `wend._overlap` about the
+4. *Divergence and depth*. Remainders whose first parts are different
+   literal segments never meet and never nest. Remainders of segments alone
+   render fixed numbers of segments, one each: different numbers never
+   meet, equal numbers never nest.
+5. *Overlap*. Otherwise each question is asked of `wend._overlap` about the
    remainders: its NO is "never", its YES a witness ("sometimes"), its MAYBE
    "unknown".
 
@@ -41,7 +50,20 @@ from pathlib import PurePosixPath
 from typing import Any, Literal, TypeGuard
 
 from . import _overlap
-from ._expr import REL, Const, Deferred, HeadParam, PathExpr, Root, Seg, Splice, _Rel
+from ._expr import (
+    _NAME_OPS,
+    REL,
+    Const,
+    Deferred,
+    Field,
+    HeadParam,
+    PathExpr,
+    Root,
+    Seg,
+    Splice,
+    _norm,
+    _Rel,
+)
 from ._params import Kind as ParamKind
 from ._params import Param, SubPath
 from .errors import WendError
@@ -235,6 +257,46 @@ def _may_render_dotdot(e: PathExpr) -> bool:
 def _plain(e: PathExpr) -> PathExpr:
     """``e`` without its declarations, which never change what it renders."""
     return PathExpr(e.head, e.parts)
+
+
+def _anchors(e: PathExpr) -> frozenset[str] | None:
+    """The anchors ``e`` may render (``""`` for a relative path), or None if
+    any: a literal head has one, an absolute parameter ``/`` or ``//``, and a
+    name changed by ``with_name``, ``with_suffix`` or ``with_stem`` keeps its
+    base's."""
+    h = e.head
+    if isinstance(h, _Rel):
+        return frozenset({""})
+    if isinstance(h, Root):
+        return frozenset({h.anchor})
+    if isinstance(h, HeadParam) and h.param.kind is ParamKind.ABSOLUTE:
+        return frozenset({"/", "//"})
+    if isinstance(h, Deferred) and h.op in _NAME_OPS:
+        return _anchors(h.base)
+    return None
+
+
+def _view(e: PathExpr, memo: Memo) -> PathExpr:
+    """``e`` with a name changed by ``with_name``, ``with_suffix`` or
+    ``with_stem`` seen as its base's parent and one segment: the new name for
+    ``with_name``; text then the suffix for ``with_suffix``; the new stem then
+    text for ``with_stem``. The view renders what ``e`` renders, and more, so
+    it proves "never", and nesting by depth. The text's name is fixed by the
+    operation, so one operation viewed twice is alike."""
+    h = e.head
+    if not (isinstance(h, Deferred) and h.op in _NAME_OPS):
+        return e
+    base = _view(h.base, memo)
+    if not base.parts or not isinstance(base.parts[-1], Seg):
+        return e
+    text = Field(Param(f"_name_{abs(hash(_key(h, memo))):x}"))
+    if h.op == "with_name":
+        pieces = list(h.arg.pieces)
+    elif h.op == "with_suffix":
+        pieces = [text, h.arg]
+    else:
+        pieces = [*h.arg.pieces, text]
+    return PathExpr(base.head, base.parts[:-1] + (Seg(_norm(pieces)),) + e.parts)
 
 
 def _common(a: PathExpr, b: PathExpr, shared: bool, memo: Memo) -> int | None:
@@ -501,11 +563,29 @@ class Analysis:
         return "unknown"
 
     def _pair(self, a: PathExpr, b: PathExpr, how: How) -> Certainty:
-        common = _common(a, b, self.shared, self.memo)
-        ra, rb = a, b
+        # Paths with different anchors are never one, nor nested.
+        aa, ab = _anchors(a), _anchors(b)
+        if aa is not None and ab is not None and not aa & ab:
+            return "never"
+        va, vb = _view(a, self.memo), _view(b, self.memo)
+        answer = self._decide(a, b, va, vb, how)
+        if answer == "unknown" and (va is not a or vb is not b):
+            # The views prove more "never"s, but a witness of them binds a
+            # name's text, which the expressions do not take: the expressions
+            # themselves may still be shown, or ruled out, as before.
+            answer = self._decide(a, b, a, b, how)
+        return answer
+
+    def _decide(
+        self, a: PathExpr, b: PathExpr, va: PathExpr, vb: PathExpr, how: How
+    ) -> Certainty:
+        """The answer for ``a`` and ``b``, reasoned on ``va`` and ``vb`` (each
+        the expression or its view)."""
+        common = _common(va, vb, self.shared, self.memo)
+        ra, rb = va, vb
         if common is not None:
-            ra = PathExpr(REL, a.parts[common:])
-            rb = PathExpr(REL, b.parts[common:])
+            ra = PathExpr(REL, va.parts[common:])
+            rb = PathExpr(REL, vb.parts[common:])
             decided = _structurally(ra, rb, how)
             if decided is not None:
                 return decided
@@ -557,6 +637,14 @@ def _structurally(ra: PathExpr, rb: PathExpr, how: How) -> Certainty | None:
     if ra.parts and rb.parts:
         fa, fb = ra.parts[0], rb.parts[0]
         if _static(fa) and _static(fb) and fa.literal != fb.literal:
+            return "never"
+    # Depth: a segment renders exactly one segment (never "", "." or a
+    # separator), so remainders of segments alone render a fixed count of
+    # them, and paths of different depths are never one, nor of equal depths
+    # one inside the other.
+    if all(isinstance(p, Seg) for p in (*ra.parts, *rb.parts)):
+        n, m = len(ra.parts), len(rb.parts)
+        if not {"same": n == m, "inside": n > m, "contains": n < m}[how]:
             return "never"
     return None
 

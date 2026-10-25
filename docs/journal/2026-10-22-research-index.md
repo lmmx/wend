@@ -73,6 +73,7 @@ its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #
 | 12 | [Drafts](2026-10-22-drafts.md) | #115 | aa38be1; Yama answered, a60bb7e | `tests/drafts_test.py`, `experiments/mutation/mutants.py` |
 | 13 | [Consolidation: a plan](2026-10-22-consolidation.md) (a proposal) | #115 | a60bb7e | none: nothing in it is done |
 | 14 | [Relations between families, and effects across a pipeline](2026-10-24-relations-and-effects-118.md), and SEMANTICS.md §15 (after 0.3.0) | #118 | on the PR's branch | `tests/{relate,effects}_test.py` (the schedule's oracle), `bench/effects.py`, `examples/pipeline_effects.py` |
+| 15 | [A more precise relation](2026-10-25-relation-precision-119.md): anchors, depth, names changed by binding | #119 | on the PR's branch | `tests/relate_test.py` (two property tests), `tests/overlap_test.py`'s pool |
 
 ## How the discoveries build on one another
 
@@ -232,6 +233,7 @@ its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #
 | a link holds when two declared paths are equal | a writer of a directory and a reader inside it, staged together | every link asks same, inside and contains: a declared path covers what lies below it | relations §8.1 |
 | `order()` is None exactly when `cycles()` finds one | a cycle through a hazard | one relation for both; `cycles(certain=True)` for the unavoidable ones | relations §8.2 |
 | every step makes missing parents idempotently, so siblings in a new directory never interfere | the owner: a `Creatable` check, an exclusive `mkdir`, or a step requiring the parent | each declared and modelled; idempotence assumed only for parents not declared; `existing=` bounds what may be missing | relations §8.5 |
+| `with_suffix` on `{day}.csv` names the same path as `{day}.parquet` | `day = ""`: `.csv` has no suffix, so it renders `.csv.parquet` | `"sometimes"`, as wend's deferral of the operation implies | relation precision §3 |
 | an overlap witness of two remainders is a witness of the two paths | a value for a parameter shared with the prefix that does not render there | a full binding that renders both and shows the relation | relations §5 |
 | each crash row's observed outcome can be asserted | an absent sync permits loss, never promises it | guaranteed, permitted and demonstrated outcomes | publication §2 |
 | a failure that passes on rerun is no defect | a rare generated case, found again in a third full run | the harness fixed and the case pinned | families A.1′ |

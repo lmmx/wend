@@ -190,6 +190,21 @@ path, one inside the other, or neither, for every binding (`"always"`), for some
 'sometimes'
 ```
 
+A name changed with `with_suffix`, `with_stem` or `with_name` stays in its directory and
+keeps what the change fixes, even while the name itself is unknown. `{day}.csv` with the
+suffix `.parquet` is never the CSV. It is `{day}.parquet` only when `day` is not empty:
+an empty `day` renders `.csv`, which has no suffix, so the change gives `.csv.parquet`.
+
+```pycon
+>>> parquet = src.with_suffix(".parquet")
+>>> relate(parquet, src).kind
+'disjoint'
+>>> relate(parquet, P(root) / "raw" / T(t"{day}.parquet")).same
+'sometimes'
+>>> parquet.render(root="data", day="")
+'data/raw/.csv.parquet'
+```
+
 By default a parameter name means one value on both sides, as in one run of a pipeline:
 `{root}/raw/{day}.csv` and `{root}/clean/{day}.csv` never meet, whatever `root` and `day`
 are. An [`EffectGraph`][wend.effects.EffectGraph] relates every path of a set of steps:

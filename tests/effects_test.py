@@ -550,6 +550,42 @@ def test_without_existing_a_root_may_be_made_by_any_creation():
     assert (g.order(), g.stages()) == (known.order(), known.stages())
 
 
+def test_outputs_named_after_their_inputs():
+    # Each output is its input with another suffix or stem. On their views
+    # (wend.relate) the parquet and the schema never meet the CSVs nor each
+    # other, so convert and schema may run at once.
+    convert = Step(
+        src=raw.requires(Readable),
+        dst=raw.with_suffix(".parquet").requires(Creatable).ensures(File),
+    )
+    schema = Step(
+        src=raw.requires(Readable),
+        dst=raw.with_suffix(".schema.json").requires(Creatable).ensures(File),
+    )
+    steps = {
+        "ingest": Step(out=raw.ensures(Exists)),
+        "convert": convert,
+        "schema": schema,
+    }
+    g = EffectGraph(steps, existing=[R, R / "raw"])
+    assert g.independent("convert", "schema")
+    assert g.stages() == [["ingest"], ["convert", "schema"]]
+    # A summary named by stem collides with the raw CSV of a day called
+    # "summary": possibly, so a possible cycle, and no certain one.
+    stats = Step(
+        src=raw.with_suffix(".parquet").requires(Readable),
+        out=raw.with_stem("summary").requires(Creatable).ensures(File),
+    )
+    g = EffectGraph({**steps, "stats": stats}, existing=[R, R / "raw"])
+    assert g.cycles() == [["convert", "stats"]] and g.cycles(certain=True) == []
+    (e,) = [
+        e
+        for e in g.edges
+        if e.producer.step == "stats" and e.consumer.step == "convert"
+    ]
+    assert e.certainty == "sometimes" and e.example().a_path.endswith("raw/summary.csv")
+
+
 VERBS = [Readable, Listable, Writable, Creatable, Exists, Absent, "exists", None]
 
 

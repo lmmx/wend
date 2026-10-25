@@ -200,7 +200,7 @@ A `Creatable` or `Writable` check is kept apart from a creation in another step 
 [['convert', 'stats']]
 ```
 
-`obligations` says, for each condition a step requires, whether the steps before it settle it. A check that passed, or a postcondition a step confirmed, is known of its path however the path is spelt, until a step that may run in between declares a change that may touch it. A *discharged* condition holds whenever the steps before it completed, and a *refuted* one makes the step fail. Anything else is *at risk* or *external*: for the world to provide.
+`obligations` says, for each condition a step requires, whether the steps before it settle it. A check that passed, or a postcondition a step confirmed, is known of its path however the path is spelt, until a step that may run in between declares a change that may touch it. A *discharged* condition holds whenever the steps before it completed, and a *refuted* one makes the step fail. Anything else is *at risk* or *external*: for the world to provide. A passed `Readable` or `Listable` check shows that its path exists, and a path given as `existing` exists throughout, as does every directory above it.
 
 ```pycon
 >>> audit = Step(out=(P(root) / "clean").joinpath(T(t"{day}.csv")).requires(File, Exists))

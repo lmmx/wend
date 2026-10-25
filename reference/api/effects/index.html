@@ -5153,7 +5153,8 @@ step that may run in between may change it; <code>"refuted"</code> when such a f
 makes it false: the check fails wherever both paths render; <code>"at risk"</code>
 when <code>by</code> may refute it, or may have changed a path it was known of;
 and <code>"external"</code> when nothing in the pipeline establishes it, so the
-world must provide it.</p>
+world must provide it. A path given to the graph as <code>existing</code> is a
+fact too: <code>by</code> is then a port of no step (<code>by.step == ""</code>).</p>
 
 
 

@@ -395,7 +395,7 @@ Obligation(port: Port, atom: str, status: ObligationStatus, by: Port | None = No
 
 What one atom a port requires relies on, under `ASSUMPTIONS`.
 
-`status` is `"discharged"` when an earlier step's passed check or confirmed promise (`by`) makes it true of the path on every run, and no step that may run in between may change it; `"refuted"` when such a fact makes it false: the check fails wherever both paths render; `"at risk"` when `by` may refute it, or may have changed a path it was known of; and `"external"` when nothing in the pipeline establishes it, so the world must provide it.
+`status` is `"discharged"` when an earlier step's passed check or confirmed promise (`by`) makes it true of the path on every run, and no step that may run in between may change it; `"refuted"` when such a fact makes it false: the check fails wherever both paths render; `"at risk"` when `by` may refute it, or may have changed a path it was known of; and `"external"` when nothing in the pipeline establishes it, so the world must provide it. A path given to the graph as `existing` is a fact too: `by` is then a port of no step (`by.step == ""`).
 
 ### port
 

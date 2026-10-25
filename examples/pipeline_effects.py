@@ -1,10 +1,14 @@
 """Pipeline effects: what a pipeline's steps do to each other, before any binding.
 
-Six steps share one data root: ingest a day's CSV, clean it, featurise it, train a
-model on every day's features, report on a day, and purge the raw CSV. Each step
+Seven steps share one data root: ingest a day's CSV, clean it, featurise it,
+summarise the cleaned data beside the features, train a model on everything in
+the features directory, report on a day, and purge the raw CSV. Each step
 declares its paths with conditions, and from those declarations alone wend works
 out which step feeds which, the order to run them in, which may run at once, and
 what to look out for, without binding a root or a day.
+
+The graph promises only what the declarations say: a step whose code touches a
+path it does not declare is outside it.
 """
 
 from wend import (
@@ -38,6 +42,10 @@ steps = {
         src=clean.requires(Readable),
         dst=(features / T(t"{day}.npz")).requires(Creatable).ensures(File),
     ),
+    "stats": Step(
+        src=clean.requires(Readable),
+        out=(features / "summary.json").requires(Creatable).ensures(File),
+    ),
     "train": Step(
         days=features.requires(Listable), out=weights.requires(Creatable).ensures(File)
     ),
@@ -58,13 +66,20 @@ if __name__ == "__main__":
         relate(raw, P(root) / "raw" / T(t"{Param('d')}.csv")).kind,
     )
 
-    graph = EffectGraph(steps)
+    # The data root exists before the pipeline runs; the directories below it
+    # may not, and a step that creates a file may make its missing parents.
+    graph = EffectGraph(steps, existing=[P(root)])
     print("\n" + repr(graph))
     print("order: ", graph.order())
     print("stages:", graph.stages())
     print("featurise and report independent:", graph.independent("featurise", "report"))
-    for name in ("clean", "train", "purge"):
+    for name in ("clean", "train", "purge", "stats"):
         print(f"\nwhy {name} is where it is:")
         for line in graph.explain(name):
             print(" -", line)
-    print("\nthe pipeline's results:", [str(p) for p in graph.terminal_outputs()])
+
+    # featurise and stats both check they may create a file in features/, which
+    # either may be making: they run apart until features/ is known to exist.
+    known = EffectGraph(steps, existing=[P(root), features])
+    print("\nwith features/ existing too, stages:", known.stages())
+    print("the pipeline's results:", [str(p) for p in graph.terminal_outputs()])

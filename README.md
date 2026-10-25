@@ -367,8 +367,11 @@ graph.explain("publish")
 dependencies, hazards (a deletion a reader must precede) and conflicts, a safe `order()`,
 the `stages()` that may run at once, and the links that hold on every run. A declared
 path covers what lies below it, and every link counts whatever its certainty, so a
-possible conflict is never taken for independence. Paths are compared as strings, not
-files, so a symlink or a `..` resolved on disk is not seen. The rules are in
+possible conflict is never taken for independence. A creation is assumed to make
+missing parents idempotently unless the directory is declared, and `existing=[...]` names
+the directories that exist before the run. The graph promises only what the steps
+declare, and compares paths as strings, not files, so a symlink or a `..` resolved on disk
+is not seen. The rules are in
 [SEMANTICS.md §15](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#15-relations-between-families).
 
 ### Unions and queries

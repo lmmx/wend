@@ -32,7 +32,12 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
 
   Every query counts every link, whatever its certainty, so a possible interference is
   never taken for independence; `cycles(certain=True)` lists the cycles no binding
-  avoids. Paths are compared as rendered strings, not as files.
+  avoids. Parents a creation may make are part of its effect: a port requiring a
+  directory to exist follows the steps that may make it, and a `Creatable` or `Writable`
+  check is kept apart from a creation below a directory that may be missing.
+  `existing=[...]` names the directories that exist before the run. The guarantees hold
+  for the effects the steps declare, with paths compared as rendered strings, not as
+  files.
 
   Under one shared `{root}`, a six-step pipeline that the experimental graph could not
   order (four "maybe" edges and a false cycle) gets five certain dependencies, an order and

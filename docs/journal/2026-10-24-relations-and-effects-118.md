@@ -86,9 +86,10 @@ graph in:
   proves apart has no link;
 - nesting: a declared path covers what lies below it, since it may be a directory, so
   every link (dependency, hazard, conflict) holds when the two paths are one or one is
-  inside the other. Two deletions conflict, and a port that declares no verbs is kept
-  apart from every port it touches. The experimental graph compared the paths for
-  equality only (§8);
+  inside the other. Two deletions conflict; a port that declares nothing of its path is
+  kept apart from every port it touches; a port requiring `Exists` follows what may make
+  its path; and a creation check is kept apart from a creation below a directory that may
+  be missing (§8.5). The experimental graph compared the paths for equality only (§8);
 
   > *Before:* "deletion: a hazard also when the read path is *inside* the deleted one,
   > and for a listing when the deleted path is inside the listed directory; a conflict
@@ -225,12 +226,18 @@ was independent and shared a stage:
 | writes `{root}/raw`; deletes `{root}/raw/{day}.csv` | conflict, always |
 | reads `{root}/raw`; deletes `{root}/raw/{day}.csv` | hazard, always |
 | deletes `{root}/raw`; deletes `{root}/raw/x.csv` | conflict, always |
-| checks `Exists` on `{root}/raw` (no verbs); reads or writes `{root}/raw/x.csv` | conflict, always |
+| declares nothing of `{root}/raw`; reads or writes `{root}/raw/x.csv` | conflict, always |
+| requires `{root}/raw` to exist; writes `{root}/raw/x.csv` | dependency, unknown (§8.5) |
+
+> *Before:* "checks `Exists` on `{root}/raw` (no verbs); reads or writes
+> `{root}/raw/x.csv` | conflict, always". A port requiring `Exists` was an effect
+> unknown. Since §8.5 it is an input of existence: it follows what may make its path,
+> and a reader below it is no conflict.
 
 **[Fact]** Every link now asks `same`, `inside` and `contains`, and its certainty is that
 of the three together (§15.4). Two deletions conflict because the second may find its
-path gone. A port with no verbs may write: it is kept apart from every port it touches,
-and orders nothing, since nothing says which way.
+path gone. A port that declares nothing of its path may write: it is kept apart from
+every port it touches, and orders nothing, since nothing says which way.
 
 **[Measured]** No precision lost where it was measured: the six-step pipeline keeps its 5
 dependencies, 1 hazard, 1 conflict, order and stages (0.17 ms), and the chain benchmark
@@ -255,14 +262,15 @@ three relations. Every query but those given `certain=True` counts every other l
 `stages()` puts into one group only steps with no dependency or hazard between them (a
 step is ready only once all it follows are done) and no conflict.
 
-**[Fact]** One interaction stays outside the graph, now stated as an assumption (§15.4):
-the parents a creation may make. Two steps that create siblings in a missing directory
-both may create it, and do not touch. They may share a stage, which is safe when
-parents are made idempotently. It is not when a plain `mkdir` makes them, or when a
-`Creatable` check runs while the other step may be making the parent. Counting every
-parent would join every two writers under a root that may not exist yet. The families
-analysis bounds them by knowledge (`made_parents`); carrying that bound into the graph
-is open.
+**[Fact]** One interaction was left outside the graph, as an assumption: the parents a
+creation may make. The owner did not accept it (§8.5), and it is now part of the
+graph.
+
+> *Before:* "Two steps that create siblings in a missing directory both may create it,
+> and do not touch. They may share a stage, which is safe when parents are made
+> idempotently. [...] Counting every parent would join every two writers under a root
+> that may not exist yet. [...] carrying that bound into the graph is open." The safety
+> contract rested, unstated in the API, on how every step makes its parents.
 
 **[Fact]** The relation's documents now say, in `relate`, `Relation`, `Relation.disjoint`,
 `EffectGraph.independent` and SEMANTICS §15, that paths are compared as rendered strings,
@@ -275,9 +283,9 @@ not filesystem objects. `Relation.disjoint` had said "they cannot interact".
 bindings from the overlap tests' pool. It compares the rendered paths as strings, and
 checks three things. A step reading or listing what another writes comes after it, in
 `order()` and in `stages()`. A step reading what another deletes comes before it. Two
-steps whose paths touch, where either changes its path or declares no verbs, never share
-a stage. It also checks that `order()`, `stages()` and `cycles()` agree on whether there is
-a cycle.
+steps whose paths touch, where either changes its path or has no known effect, never
+share a stage. It also checks that `order()`, `stages()` and `cycles()` agree on whether
+there is a cycle. Since §8.5 it checks the parent rules too.
 
 **[Measured]** Mutants of `effects.py`, run against the scheduling tests with one seed
 and no example database:
@@ -298,3 +306,97 @@ and no example database:
 **[Fact]** The oracle cannot catch the unknown-conflict mutant: an `"unknown"` link is
 one no binding from the pool shows (`{n!r}.csv` against `q.csv` needs an object whose repr
 is `q`). Only the contract, and a test of it, keeps such steps apart.
+
+### 8.5 Parents a creation may make
+
+The owner's second check: making a missing parent is part of a creation's effect, so the
+graph must not assume, silently, that every step makes its parents with
+`os.makedirs(..., exist_ok=True)`. Four kinds of step were to be told apart:
+- one that requires its parent to exist;
+- one that makes missing parents idempotently;
+- one that makes a directory exclusively, or checks `Creatable`;
+- one with effects it does not declare.
+
+**[Fact]** wend's `Creatable` passes for a missing path when its *nearest existing
+ancestor* is a writable, searchable directory (`conditions.py`, `_creatable`). So a
+creation check's answer depends on which directories above the path exist. Another
+step that makes one of them changes it, even when both make parents idempotently.
+
+**[Fact]** The rules, all in terms of what a step declares (§15.4's table):
+- **requires its parent to exist**: the parent is declared, `requires(Exists, Dir)`.
+  A port requiring `Exists` is now an input of existence (`via="exists"`). It follows
+  a step that creates its path (as sure as the paths' relation), and a step that creates
+  a path below it (`"unknown"`, since that makes it only if it was missing). It precedes
+  a step that may delete it. Before, such a port counted as an effect unknown, kept apart
+  from every writer below it, and ordered nothing.
+- **makes parents idempotently**: assumed for every parent not declared. Two creations
+  below one missing directory share a stage.
+- **makes a directory exclusively**: declared, `requires(Absent)` and
+  `ensures(Exists, Dir)`, and nesting links it to everything below it (§8.1).
+- **checks `Creatable` or `Writable`**: a conflict, `"unknown"` and `via="parent"`, with a
+  creation in another step below a directory above both that may be missing.
+- **undeclared effects**: outside the graph. `stages()`, `independent()` and the module
+  documentation now say the guarantees hold for declared effects only.
+
+**[Fact]** "May be missing" is bounded by `EffectGraph(..., existing=[...])`: paths that
+exist before the run and that no step deletes. A step that may delete one of them, or a
+directory above it, raises `ValueError`. The anchor (`/`, or the working directory for a
+relative path) always exists. The deepest directory two paths share is read from their
+structure:
+- after their common prefix, two different literal segments, or one segment each, and
+  it is that prefix;
+- otherwise it is not known, and the conflict is kept.
+
+**[Measured]** What the bound buys, on the pipelines of the tests and the example:
+
+| pipeline | `existing` | parent conflicts | stages |
+|---|---|---|---|
+| six steps | none | 10, all through `{root}` | unchanged: every pair is already ordered |
+| six steps | `[P(root)]` | 0 | unchanged |
+| seven steps, with `stats` writing `features/summary.json` beside `features/{day}.npz` | `[P(root)]` | 1: `featurise`, `stats`, through `{root}/features` | `[featurise, purge] [stats]` |
+| the same | `[P(root), P(root) / "features"]` | 0 | `[featurise, purge, stats]` |
+
+So the graph no longer serialises every writer sharing a root, once the root is named as
+existing. Only creation checks below a directory that may genuinely be missing are kept
+apart from the creations that may make it.
+
+**[Measured]** The oracle (§8.4) now also generates ports that check `Creatable`, ports that
+require `Exists`, and ports with no conditions at all. It requires two things.
+- **Apart:** two steps creating paths below a shared directory other than the anchor,
+  either checking creation, are kept apart.
+- **Ordered:** a step requiring a path to exist comes after a step creating that path or
+  one below it.
+
+  Its first run failed twice, on the oracle's side: it required a step requiring `.` to
+  exist to wait for a step creating `data` below it. The anchor exists, so nothing makes
+  it, and the graph was right. The oracle now exempts anchors.
+
+  The full suite, under another seed, found the same case for stages. A port that only
+  requires `.` to exist was required to stay apart from a step creating `a` below it.
+  The graph links them only when the observed path may be missing, so it did not. The
+  oracle now exempts that too, and passes under seeds 0 to 9. One property run under one
+  seed is not evidence enough: this one needed ten.
+
+**[Measured]** The harness of §8.4, run again on the parent rules: 18 mutants, one seed and no
+example database, all killed. The ten of §8.4, adapted to the new code, still fall. The eight
+new ones:
+
+| mutant | killed by |
+|---|---|
+| no parent conflicts | the parent cases, the naming test, the seven-step pipeline, the `{root}` count |
+| parent conflicts only when both steps check | the parent cases, the naming test, the `{root}` count |
+| `existing` ignored for parents | the parent cases, the seven-step pipeline |
+| nothing known to exist (not even `existing`) | the parent cases, the seven-step pipeline |
+| existence requirements not inputs | the oracle, the parent cases, `test_an_existence_requirement_follows_what_may_make_it` |
+| a missing parent made as surely as the path | `test_an_existence_requirement_follows_what_may_make_it` |
+| `existing` never checked against deleters | `test_a_path_given_as_existing_must_not_be_deleted` |
+| existence requirements kept apart as unknown | the parent cases |
+
+**[Fact]** The oracle did not kill "no parent conflicts" under seed 0: a generated pipeline
+rarely holds two creations below one shared, non-anchor directory, in one layer, with a
+creation check. The deterministic cases kill it; the oracle is evidence for the rest.
+
+**[Measured]** Cost: the parent rule pairs suppliers, and its first version recomputed each
+port's declarations for every pair, which took the chain benchmark to 105 ms at N = 200
+(77 ms before). With the creation checks computed once per port it is 47 ms, links and
+orders unchanged: the chain's steps check no creation, so no pair is examined further.

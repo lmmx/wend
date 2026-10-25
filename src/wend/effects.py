@@ -28,17 +28,29 @@ every step, as when the pipeline runs with one set of bindings
     root, day = Param("root"), Param("day")
     raw = P(root) / "raw" / T(t"{day}.csv")
     clean = P(root) / "clean" / T(t"{day}.parquet")
-    graph = EffectGraph({
-        "ingest": Step(out=raw.ensures(Exists)),
-        "clean": Step(src=raw.requires(Readable), dst=clean.requires(Creatable)),
-    })
+    graph = EffectGraph(
+        {
+            "ingest": Step(out=raw.ensures(Exists)),
+            "clean": Step(src=raw.requires(Readable), dst=clean.requires(Creatable)),
+        },
+        existing=[P(root)],  # the data root exists before the pipeline runs
+    )
     graph.order()  # ['ingest', 'clean']
 
-What the graph knows is what the steps declare: a step's code can read or
-write anything, and a path read without ``Readable`` declared is not an input
-here. Parents a creation may make (as ``mkdir -p`` does) are not counted: two
-steps that create siblings in a missing directory may share a stage, which is
-safe when parents are made idempotently (docs/SEMANTICS.md §15.4). Paths are compared as rendered strings, not as filesystem objects, so
+A step that creates a path may make its missing parents. The graph assumes it
+does so idempotently (as ``os.makedirs(..., exist_ok=True)`` does) unless it
+declares the directory as a port of its own. A check that a path may be
+created or written (``Creatable``, ``Writable``) then conflicts with a creation
+below a directory above both that may be missing. A port requiring a
+directory to exist follows the steps that may make it. ``existing`` names the
+paths known to exist, which bounds both (docs/SEMANTICS.md §15.4).
+
+What the graph knows is what the steps declare, and its guarantees hold only
+as far as the declarations describe what each step's code does: a step's
+code can read or write anything, and a path read without ``Readable``
+declared is not an input here. Two steps in one stage cannot interfere
+through their declared effects; that is no promise about effects a step has
+and does not declare. Paths are compared as rendered strings, not as filesystem objects, so
 two spellings of one file (a symlink, a relative and an absolute path, a
 ``..``, a hard link) are two paths.
 """
@@ -49,14 +61,16 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
-from ._expr import Deferred, HeadParam, PathExpr, Root, Seg, _Rel
+from ._expr import Deferred, HeadParam, P, PathExpr, Root, Seg, _Rel
 from ._relate import (
     Analysis,
     Certainty,
     Example,
     How,
     Relation,
+    _common,
     _key,
+    _static,
     _value_key,
     either,
     relate,
@@ -67,7 +81,8 @@ from .conditions import Step
 SUPPLY_VERBS = frozenset({"create", "write"})
 DELETE_VERBS = frozenset({"delete"})
 INPUT_VERBS = frozenset({"read", "list"})
-Via = Literal["read", "list"]
+CHECKS_CREATION = frozenset({"create", "write"})
+Via = Literal["read", "list", "exists"]
 _TOUCH: tuple[How, ...] = ("same", "inside", "contains")
 _INVERSE: dict[How, How] = {"same": "same", "inside": "contains", "contains": "inside"}
 # The subject's path, relative to what the object's port does to its own.
@@ -108,6 +123,25 @@ class Port:
         """Whether the step reads this path or lists it."""
         return bool(self.verbs & INPUT_VERBS)
 
+    @property
+    def requires(self) -> frozenset[str]:
+        """The atoms the step requires of this path before it runs."""
+        return self.expr.declares.requires
+
+    @property
+    def observes(self) -> bool:
+        """Whether the step requires this path to exist (``Exists``): it
+        follows any step that may create it, as a path or as a directory
+        above one, and precedes any step that may delete it."""
+        return "exists" in self.requires
+
+    @property
+    def checks_creation(self) -> bool:
+        """Whether the step checks that it may create or write this path
+        (``Creatable`` or ``Writable``). For a missing path the answer
+        depends on which directories above it exist."""
+        return bool(self.requires & CHECKS_CREATION)
+
     def __str__(self) -> str:
         return f"{self.step}.{self.name}"
 
@@ -120,21 +154,22 @@ class Port:
 class _Link:
     certainty: Certainty
     _analysis: Analysis = field(repr=False, compare=False)
-    _hows: tuple[How, ...] = field(repr=False, compare=False)
+    # The answer each relation gave the link, in the order asked.
+    _answers: tuple[tuple[How, Certainty], ...] = field(repr=False, compare=False)
 
     def _how(self) -> How:
         """How the first port's path relates to the second's in the answer
         that gives the link its certainty."""
-        for how in self._hows:
-            if self._analysis(how) == self.certainty:
+        for how, c in self._answers:
+            if c == self.certainty:
                 return how
-        return self._hows[0]
+        return self._answers[0][0] if self._answers else "same"
 
     def example(self) -> Example | None:
         """Bindings under which the link shows, when it holds always or
         sometimes: the paths both ports render with them."""
-        for how in self._hows:
-            if self._analysis(how) in ("always", "sometimes"):
+        for how, c in self._answers:
+            if c in ("always", "sometimes"):
                 ex = self._analysis.example(how)
                 if ex is not None:
                     return ex
@@ -144,7 +179,9 @@ class _Link:
 @dataclass(frozen=True)
 class Dependency(_Link):
     """``consumer`` reads (``via="read"``) or lists (``via="list"``) a path
-    that is, holds, or lies inside one ``producer`` writes."""
+    that is, holds, or lies inside one ``producer`` writes; or requires a
+    path to exist (``via="exists"``) that ``producer`` may create, as that
+    path or as a directory above one it creates."""
 
     producer: Port = field(kw_only=True)
     consumer: Port = field(kw_only=True)
@@ -171,11 +208,17 @@ class Conflict(_Link):
     """Two ports that may change what the other touches: two writes, a write
     and a deletion, or two deletions of one path or of paths one inside the
     other, or a port that declares no verbs (so its effect is unknown) and
-    any port it touches. The steps must not run at once; for writes, which
-    one wins depends on their order, which the graph does not choose."""
+    any port it touches (``via="path"``). Or two creations below a directory
+    that may be missing, where one checks whether it may create its path:
+    making the directory changes what that check finds (``via="parent"``;
+    ``parent`` is the directory, when it is known). The steps must not run
+    at once; for writes, which one wins depends on their order, which the
+    graph does not choose."""
 
     first: Port = field(kw_only=True)
     second: Port = field(kw_only=True)
+    via: Literal["path", "parent"] = field(default="path", kw_only=True)
+    parent: PathExpr | None = field(default=None, kw_only=True, compare=False)
 
     def __repr__(self) -> str:
         return f"<{self.first} x {self.second}: {self.certainty}>"
@@ -190,6 +233,13 @@ class EffectGraph:
     binding of another, as when steps run with bindings of their own.
     ``builtin_values=True`` assumes bound values are of builtin types, which
     proves more paths apart (`wend.relate`).
+
+    ``existing`` names paths (expressions or strings) that exist before the
+    pipeline runs and that no step deletes: no step makes them, or a
+    directory above them, as a missing parent. Without it, any directory
+    above a created path may be missing, except the anchor (``/`` or the
+    working directory). A step that may delete one of them, or a directory
+    above it, raises ValueError.
     """
 
     def __init__(
@@ -198,10 +248,14 @@ class EffectGraph:
         *,
         shared: bool = True,
         builtin_values: bool = False,
+        existing: Iterable[PathExpr | str] = (),
     ) -> None:
         self.steps: dict[str, Step] = dict(steps)
         self.shared = shared
         self.builtin_values = builtin_values
+        self.existing: list[PathExpr] = [
+            e if isinstance(e, PathExpr) else P(e) for e in existing
+        ]
         self.ports: list[Port] = [
             Port(name, e.name, e.expr, e.verbs)
             for name, step in self.steps.items()
@@ -213,18 +267,40 @@ class EffectGraph:
         self._index = {id(p): self._index_key(p.expr) for p in self.ports}
         suppliers = [p for p in self.ports if p.supplies]
         deleters = [p for p in self.ports if p.deletes]
-        inputs = [p for p in self.ports if p.is_input]
+        inputs = [p for p in self.ports if p.is_input or p.observes]
+        for e in self.existing:
+            for d in deleters:
+                a = self._analysis(d.expr, e)
+                if a("same") != "never" or a("contains") != "never":
+                    raise ValueError(
+                        f"{d} may delete {e.pattern} or a directory above it, so"
+                        " it cannot be given as existing"
+                    )
 
         # A declared path covers what lies below it (it may be a directory),
         # so two ports touch when their paths are one, or one is inside the
         # other: every link asks all three.
         self.edges: list[Dependency] = []
         for c in inputs:
+            vias = [v for v in ("read", "list") if v in c.verbs]
             for p in suppliers:
-                if "read" in c.verbs:
-                    self._link(Dependency, (c, p), producer=p, consumer=c, via="read")
-                if "list" in c.verbs:
-                    self._link(Dependency, (p, c), producer=p, consumer=c, via="list")
+                for via in vias:
+                    pair = (c, p) if via == "read" else (p, c)
+                    self._link(Dependency, pair, producer=p, consumer=c, via=via)
+                if not vias and p.step != c.step:
+                    # An existence requirement follows the creation of its
+                    # path, or of a path below it: making that path may make
+                    # this one, as a missing parent. Whether it does depends
+                    # on whether it was missing, so that link is "unknown",
+                    # and none when the path is known to exist.
+                    self._link(
+                        Dependency,
+                        (c, p),
+                        parent="contains",
+                        producer=p,
+                        consumer=c,
+                        via="exists",
+                    )
 
         self.hazards: list[Hazard] = []
         for c in inputs:
@@ -233,18 +309,53 @@ class EffectGraph:
                     continue  # a step that reads its own input, then deletes it
                 self._link(Hazard, (c, d), reader=c, deleter=d)
 
-        # Two ports conflict when either may change what the other touches:
-        # two writers, a writer and a deleter, two deleters (one may find the
-        # path gone), or a port whose verbs are unknown and any other.
+        # Two ports of two steps conflict when either may change what the
+        # other touches: two writers, a writer and a deleter, two deleters
+        # (one may find the path gone), or a port whose effect is unknown
+        # (no verbs, and no existence it requires) and any other.
         self.conflicts: list[Conflict] = []
-        changers = [p for p in self.ports if p.supplies or p.deletes or not p.verbs]
+        joined: set[tuple[int, int]] = set()
+        unknown = [p for p in self.unassigned if not p.observes]
+        changers = [p for p in self.ports if p.supplies or p.deletes] + unknown
         for n, x in enumerate(changers):
             for y in changers[n + 1 :]:
-                self._link(Conflict, (x, y), first=x, second=y)
-        for u in self.unassigned:
+                if x.step == y.step:
+                    continue
+                if self._link(Conflict, (x, y), first=x, second=y):
+                    joined.add((id(x), id(y)))
+        for u in unknown:
             for r in inputs:
-                if not (r.supplies or r.deletes):
+                if r.step != u.step and not (r.supplies or r.deletes):
                     self._link(Conflict, (u, r), first=u, second=r)
+
+        # Parents a creation may make. A step that creates a path may make
+        # the missing directories above it, which is assumed to be done
+        # idempotently (as os.makedirs(..., exist_ok=True) does): two such
+        # creations do not conflict. But a check that a path may be created
+        # or written (Creatable, Writable) finds a different answer once a
+        # directory above it is made, so a creation below a directory that
+        # may be missing conflicts with such a check below the same one.
+        checking = {id(p) for p in suppliers if p.checks_creation}
+        for n, x in enumerate(suppliers):
+            for y in suppliers[n + 1 :]:
+                if id(x) not in checking and id(y) not in checking:
+                    continue
+                if x.step == y.step or (id(x), id(y)) in joined:
+                    continue
+                missing, parent = self._shared_parent(x.expr, y.expr)
+                if missing:
+                    a = self._analysis(x.expr, y.expr)
+                    self.conflicts.append(
+                        Conflict(
+                            "unknown",
+                            a,
+                            (),
+                            first=x,
+                            second=y,
+                            via="parent",
+                            parent=parent,
+                        )
+                    )
 
     def _index_key(self, e: Any) -> tuple[Any, tuple[str, ...]] | None:
         """The head (with its default, if any) and the literal segments after
@@ -274,12 +385,12 @@ class EffectGraph:
         k = min(len(ka[1]), len(kb[1]))
         return ka[1][:k] != kb[1][:k]
 
-    def _analysis(self, a: Port, b: Port) -> Analysis:
-        key = (id(a.expr), id(b.expr))
+    def _analysis(self, a: Any, b: Any) -> Analysis:
+        key = (id(a), id(b))
         if key not in self._analyses:
             self._analyses[key] = Analysis(
-                a.expr,
-                b.expr,
+                a,
+                b,
                 shared=self.shared,
                 builtin_values=self.builtin_values,
                 memo=self._memo,
@@ -290,26 +401,75 @@ class EffectGraph:
         self,
         kind: type[Dependency] | type[Hazard] | type[Conflict],
         pair: tuple[Port, Port],
+        *,
+        parent: How | None = None,
         **ports: Any,
-    ) -> None:
+    ) -> Dependency | Hazard | Conflict | None:
+        """Link ``pair`` by the relations of their paths. ``parent`` names a
+        relation by which the first port's path holds a directory the
+        second's step may make as a missing parent: it counts as "unknown"
+        at most, and not at all when that path is known to exist."""
         if self._apart(*pair):
-            return
-        analysis = self._analysis(*pair)
-        certainties: list[Certainty] = []
+            return None
+        a, b = pair
+        analysis = self._analysis(a.expr, b.expr)
+        answers: list[tuple[How, Certainty]] = []
+        found: list[Certainty] = []
         for how in _TOUCH:
-            certainties.append(analysis(how))
-            if certainties[-1] == "always":
+            c: Certainty = analysis(how)
+            if how == parent and c != "never":
+                c = "never" if self._exists(a.expr) else "unknown"
+            answers.append((how, c))
+            found.append(c)
+            if c == "always":
                 break
-        certainty = either(*certainties)
+        certainty = either(*found)
         if certainty == "never":
-            return
-        link = kind(certainty, analysis, _TOUCH, **ports)
+            return None
+        link = kind(certainty, analysis, tuple(answers), **ports)
         if isinstance(link, Dependency):
             self.edges.append(link)
         elif isinstance(link, Hazard):
             self.hazards.append(link)
         else:
             self.conflicts.append(link)
+        return link
+
+    def _exists(self, e: Any) -> bool:
+        """Whether ``e`` exists throughout the pipeline: an anchor (``/`` or
+        the working directory), or at or above a path given as existing."""
+        if not isinstance(e, PathExpr):
+            return False
+        if not e.parts and isinstance(e.head, (Root, _Rel)):
+            return True
+        for x in self.existing:
+            a = self._analysis(x, e)
+            if a("same") == "always" or a("inside") == "always":
+                return True
+        return False
+
+    def _shared_parent(self, a: Any, b: Any) -> tuple[bool, PathExpr | None]:
+        """Whether a directory above both ``a`` and ``b`` (whose paths do not
+        touch) may be missing; and the deepest such directory, when the
+        structure says which one it is."""
+        if not (isinstance(a, PathExpr) and isinstance(b, PathExpr)):
+            return True, None
+        k = _common(a, b, self.shared, self._memo)
+        if k is None:
+            return True, None
+        ra, rb = a.parts[k:], b.parts[k:]
+        if not ra or not rb:
+            return True, None
+        # The paths part at the first remaining part: two different literal
+        # segments, or the last segment of each.
+        diverge = _static(ra[0]) and _static(rb[0]) and ra[0].literal != rb[0].literal
+        last = len(ra) == len(rb) == 1 and all(
+            isinstance(x, Seg) for x in (ra[0], rb[0])
+        )
+        if not (diverge or last):
+            return True, None
+        parent = PathExpr(a.head, a.parts[:k])
+        return not self._exists(parent), parent
 
     # -- reading the graph ---------------------------------------------------------
 
@@ -358,7 +518,12 @@ class EffectGraph:
         """The steps in groups that may run at the same time: each group
         follows every step it may depend on, and no two steps in a group
         are joined by any link, whatever its certainty. None if the steps
-        form a cycle (see `order`)."""
+        form a cycle (see `order`).
+
+        That two steps share a stage means their *declared* effects cannot
+        interfere, with parents not declared made idempotently
+        (docs/SEMANTICS.md §15.4). It is no promise about what a step's code
+        does beyond its declarations."""
         layers = self._layers(self._after())
         if layers is None:
             return None
@@ -397,10 +562,12 @@ class EffectGraph:
         """Whether no link joins steps ``x`` and ``y``: no dependency, hazard
         or conflict between them holds always, sometimes, or is even not
         ruled out. Their declared paths, compared as strings, then never
-        meet nor nest where either one writes, deletes, or declares no verbs.
-        Independent steps may run in either order, or at once, so far as
-        their declarations go: a step's code may touch paths it does not
-        declare, and two spellings of one file are two paths here."""
+        meet nor nest where either one writes, deletes, or has no known
+        effect, and no creation check of one depends on a directory the
+        other may make. Independent steps may run in either order, or at
+        once, so far as their declarations go: a step's code may touch paths
+        it does not declare, and two spellings of one file are two paths
+        here."""
         return not self.links(x, y)
 
     def links(
@@ -516,7 +683,18 @@ def _sentence(link: Dependency | Hazard | Conflict) -> str:
     how = link._how()
     if isinstance(link, Dependency):
         p, c = link.producer, link.consumer
-        if link.via == "list":
+        if link.via == "exists":
+            if how == "contains":
+                text = (
+                    f"{c} requires {c.expr.pattern} to exist, which {p} may make as"
+                    f" a missing directory above {p.expr.pattern}, {phrase}"
+                )
+            else:
+                text = (
+                    f"{c} requires {_WHAT[how]} {p} writes to exist, {phrase}:"
+                    f" {_paths(c, p)}"
+                )
+        elif link.via == "list":
             # ``how`` is the written path's, relative to the listed one.
             listed, written = c.expr.pattern, p.expr.pattern
             if how == "contains":
@@ -536,11 +714,28 @@ def _sentence(link: Dependency | Hazard | Conflict) -> str:
         )
     else:
         x, y = link.first, link.second
+        if link.via == "parent":
+            where = "a directory above both"
+            if link.parent is not None:
+                where = link.parent.pattern
+            if x.checks_creation and y.checks_creation:
+                return (
+                    f"{x} and {y} each check they may create a path below {where},"
+                    f" which either may make if it is missing: what each check"
+                    f" finds depends on whether the other has, {phrase}:"
+                    f" {_paths(x, y)}"
+                )
+            checker, other = (x, y) if x.checks_creation else (y, x)
+            return (
+                f"{other} may make {where} if it is missing, and {checker} checks"
+                f" it may create {checker.expr.pattern}, which depends on whether"
+                f" {where} exists, {phrase}: {_paths(x, y)}"
+            )
         if not x.verbs or not y.verbs:
             u, o = (x, y) if not x.verbs else (y, x)
             text = (
-                f"{u} declares no verbs, so it is kept apart from {o}, which may"
-                f" touch its path, {phrase}: {_paths(x, y)}"
+                f"{u} declares no verbs nor that its path exists, so it is kept"
+                f" apart from {o}, which may touch its path, {phrase}: {_paths(x, y)}"
             )
         elif x.supplies != y.supplies:
             w, d = (x, y) if x.supplies else (y, x)
@@ -563,7 +758,7 @@ def _sentence(link: Dependency | Hazard | Conflict) -> str:
         rendered = (
             ex.a_path if ex.a_path == ex.b_path else f"{ex.a_path} and {ex.b_path}"
         )
-        text += f" (e.g. {shown}: {rendered})"
+        text += f" (e.g. {shown}: {rendered})" if shown else f" (e.g. {rendered})"
     return text
 
 

@@ -1124,8 +1124,16 @@ when an answer relied on it.
 `wend.effects.EffectGraph(steps)` relates the paths named steps declare (`Step.effects`,
 §10.1), shared bindings by default. A port supplies its path if it declares `create`
 or `write`, deletes it if it declares `delete`, and is an input if it declares `read`
-or `list`. A port that declares none of these (a check of `Exists` alone, say) has no
-known effect: `unassigned` lists it.
+or `list`. A port that requires `Exists` observes its path's existence. A port that
+declares none of these has no known effect. `unassigned` lists the ports that declare
+no verbs.
+
+**What it promises, and on what.** The graph's guarantees are about declared effects.
+They hold for a run only if every step's declarations describe what its code does to
+the filesystem, and only for the paths as strings (below). Two steps in one stage of
+`stages()` cannot interfere *through the effects they declare*. That is no promise that
+two arbitrary step bodies may run at once: a body that opens, makes or removes a path
+it does not declare (an undeclared side effect) is outside the graph.
 
 **A declared path covers what lies below it.** A path may name a directory, unless
 nothing says otherwise, so a step that writes it may write anything inside it, one that
@@ -1135,28 +1143,41 @@ lexically), and every link asks all three. Its certainty is that of the three ta
 together: `"always"` if one holds always, `"never"` if all three are never, `"sometimes"`
 if one is shown on some binding, and `"unknown"` otherwise.
 
-| link | between | when they touch |
+| link | between ports of two steps | when |
 |---|---|---|
-| dependency, `via="read"` | a supplier and a reader | the reader runs after the supplier |
-| dependency, `via="list"` | a supplier and a lister | the lister runs after the supplier |
-| hazard | a reader or lister, and a deleter in another step | the reader runs before the deleter |
-| conflict | two suppliers; a supplier and a deleter; two deleters | never at once |
-| conflict | a port with no known effect, and any other port | never at once |
+| dependency, `via="read"` or `"list"` | a supplier and a reader or lister | they touch: the reader runs after |
+| dependency, `via="exists"` | a supplier and a port that requires `Exists` | they touch: the requirer runs after (see parents, below) |
+| hazard | a reader, lister or `Exists` requirer, and a deleter | they touch: the reader runs before |
+| conflict, `via="path"` | two suppliers; a supplier and a deleter; two deleters | they touch: never at once |
+| conflict, `via="path"` | a port with no known effect, and any other | they touch: never at once |
+| conflict, `via="parent"` | two suppliers, one checking `Creatable` or `Writable` | a directory above both may be missing (below): never at once |
 
 Two deletions conflict because a step that deletes a path its neighbour already deleted
 may fail. A port with no known effect may write: it is kept apart from every port it
 touches, and orders nothing, since nothing says which way.
 
-**Parents a creation makes are not counted.** A step that creates a path may create its
-missing parents, as `mkdir -p` does. A parent above another port's path is caught by
-nesting: it holds that path. Two steps that create siblings in a missing directory do
-not touch, though both may create the directory, so they may share a stage. That is
-safe when parents are made idempotently (`os.makedirs(..., exist_ok=True)`). It is not
-when a step creates the parent with a plain `mkdir`, or when its `Creatable` check runs
-while the other may be creating the parent: the check's answer depends on which
-ancestor exists. Counting every parent a creation may make would join every two writers
-under a root that may not exist yet. The knowledge analysis bounds the parents by what is
-known to exist (`wend._experimental.families`, `made_parents`).
+**Parents a creation may make.** Creating a path whose parent is missing needs the
+parent made first. What a step does about that is part of its effect, and the graph
+reads it from the declarations as follows:
+
+| what a step does | how it is declared | what the graph does |
+|---|---|---|
+| requires its parent directory to exist | the parent as a port: `requires(Exists, Dir)` | the step runs after every step that may make the parent: one that creates it (as sure as their paths' relation), or that creates a path below it (`"unknown"`: only if the parent was missing); and before every step that may delete it |
+| makes missing parents idempotently (`os.makedirs(..., exist_ok=True)`) | nothing: assumed for every parent a step does not declare | two such creations below one missing directory do not conflict |
+| makes a directory exclusively (plain `mkdir`), or requires it absent | the directory as a port: `requires(Absent)`, `ensures(Exists, Dir)` | the directory's port touches every path below it, so every step that touches them is linked to it |
+| checks it may create or write a path (`Creatable`, `Writable`) | the check | it conflicts (`"unknown"`, `via="parent"`) with a creation in another step below a directory above both that may be missing: making that directory changes which ancestor the check finds |
+| has effects it does not declare | cannot be | outside the graph: nothing is promised |
+
+A directory *may be missing* unless it is the anchor (`/`, or the working directory for a
+relative path), or lies at or above a path given in `EffectGraph(..., existing=[...])`:
+paths that exist before the pipeline runs and that no step deletes. A step that may
+delete one of them, or a directory above it, makes the graph raise `ValueError`. Without
+`existing`, any directory above a created path may be missing, `{root}` included: every
+creation check under `{root}` then conflicts with every other creation there. With
+`existing=[P(root)]`, only creations below one directory under the root, which may be
+missing, conflict with creation checks below it. The bound is exact where the two paths
+part at a literal segment or are siblings, and conservative (a conflict) where their
+structure does not say which directory they share.
 
 A pair whose relation is `"never"` has no link, and nothing else is dropped: `"always"`,
 `"sometimes"` and `"unknown"` links are all kept, and every query but those given
@@ -1174,16 +1195,19 @@ at once or in which order:
   reports, never for scheduling.
 
 `tests/effects_test.py`'s oracle renders every port of generated pipelines under
-hundreds of bindings and checks, path against path: that a step reading what another
-writes comes after it in `order()` and `stages()`; that a step reading what another
-deletes comes before it; and that two steps whose paths touch, where either changes its
-path or declares no verbs, never share a stage.
+hundreds of bindings and checks, path against path:
+- a step reading or requiring what another writes comes after it, in `order()` and
+  `stages()`;
+- a step reading what another deletes comes before it;
+- two steps whose paths touch, where either changes its path or has no known effect,
+  never share a stage;
+- nor do two that create paths below a directory other than the anchor, where either
+  checks it may create its own.
 
-The graph describes declarations, not behaviour: a step's code may touch paths it does
-not declare. Identity is lexical: rendered paths are compared as strings, not as
-filesystem objects, so two spellings of one file (a symlink, a relative and an absolute
-path, `..`, case on a case-insensitive filesystem, a hard link) are two paths here. A
-missing link is only as good as the convention that every step spells a file one way.
+Identity is lexical: rendered paths are compared as strings, not as filesystem objects,
+so two spellings of one file (a symlink, a relative and an absolute path, `..`, case on a
+case-insensitive filesystem, a hard link) are two paths here. A missing link is only as
+good as the convention that every step spells a file one way.
 
 ### 15.5 The overlap analysis
 

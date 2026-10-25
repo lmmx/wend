@@ -191,6 +191,7 @@ its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #
 | A union's verbs are not those of its alternatives | observed | SEMANTICS.md §10.1; declarations §3 |
 | Containment holds for every rendered path only lexically | refutes the earlier statement | declarations §3; SEMANTICS.md §10.1 |
 | A declared path may name a directory: a graph that links only equal paths calls a writer of `{root}/raw` independent of a reader of `{root}/raw/{day}.csv`, and schedules them together | observed; fixed before merging; pinned by an oracle over rendered paths | relations §8.1; `test_order_and_stages_hold_for_every_rendered_run` |
+| A creation's missing parents are part of its effect: `Creatable` judges the nearest existing ancestor, so another step's `mkdir -p` changes what the check finds | read in `_creatable`; ruled on by the owner; modelled before merging | relations §8.5; `test_parents_a_creation_may_make` |
 | A NO for "strictly below" does not rule out lexical nesting: `/x/..` is inside `/x`, and no segment parameter renders `..` | found by reading the construction; pinned | relations §5; `test_dotdot_makes_a_path_lexically_inside_and_is_never_ruled_out_by_shape` |
 | Durability needs the file's sync *and* the directory's | observed, in one crash model (ext4, loop device) | #114 §2 and addendum A.3 |
 
@@ -230,6 +231,7 @@ its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #
 
 | a link holds when two declared paths are equal | a writer of a directory and a reader inside it, staged together | every link asks same, inside and contains: a declared path covers what lies below it | relations §8.1 |
 | `order()` is None exactly when `cycles()` finds one | a cycle through a hazard | one relation for both; `cycles(certain=True)` for the unavoidable ones | relations §8.2 |
+| every step makes missing parents idempotently, so siblings in a new directory never interfere | the owner: a `Creatable` check, an exclusive `mkdir`, or a step requiring the parent | each declared and modelled; idempotence assumed only for parents not declared; `existing=` bounds what may be missing | relations §8.5 |
 | an overlap witness of two remainders is a witness of the two paths | a value for a parameter shared with the prefix that does not render there | a full binding that renders both and shows the relation | relations §5 |
 | each crash row's observed outcome can be asserted | an absent sync permits loss, never promises it | guaranteed, permitted and demonstrated outcomes | publication §2 |
 | a failure that passes on rerun is no defect | a rare generated case, found again in a third full run | the harness fixed and the case pinned | families A.1′ |

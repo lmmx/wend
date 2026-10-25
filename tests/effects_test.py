@@ -14,6 +14,7 @@ from overlap_test import POOL, expressions
 from wend import (
     Absent,
     Creatable,
+    Dir,
     Exists,
     File,
     Listable,
@@ -25,7 +26,7 @@ from wend import (
     T,
     Writable,
 )
-from wend._relate import lexically
+from wend._relate import _segments, lexically
 from wend.effects import EffectGraph
 from wend.errors import WendError
 from wend.lineage import Ledger
@@ -68,7 +69,7 @@ def links(g):
 
 
 def test_a_pipeline_sharing_one_root_has_exactly_its_real_dependencies():
-    g = EffectGraph(pipeline())
+    g = EffectGraph(pipeline(), existing=[R])
     assert links(g) == {
         ("ingest", "clean", "read", "always"),
         ("clean", "featurise", "read", "always"),
@@ -86,7 +87,7 @@ def test_a_pipeline_sharing_one_root_has_exactly_its_real_dependencies():
 
 
 def test_order_and_stages_respect_dependencies_hazards_and_conflicts():
-    g = EffectGraph(pipeline())
+    g = EffectGraph(pipeline(), existing=[R])
     assert g.order() == ["ingest", "clean", "featurise", "purge", "train", "report"]
     # purge waits for clean (a hazard); featurise and purge touch nothing in
     # common, so they may run together.
@@ -103,7 +104,7 @@ def test_order_and_stages_respect_dependencies_hazards_and_conflicts():
 
 
 def test_certain_dependencies_and_the_pipelines_inputs_and_outputs():
-    g = EffectGraph(pipeline())
+    g = EffectGraph(pipeline(), existing=[R])
     assert {k: v for k, v in g.dependencies(certain=True).items() if v} == {
         "clean": {"ingest"},
         "featurise": {"clean"},
@@ -115,7 +116,7 @@ def test_certain_dependencies_and_the_pipelines_inputs_and_outputs():
 
 
 def test_explanations_name_the_ports_the_certainty_and_an_example():
-    g = EffectGraph(pipeline())
+    g = EffectGraph(pipeline(), existing=[R])
     (line,) = g.explain("clean", "ingest")
     assert line.startswith("clean.src reads what ingest.out writes, on every run:")
     assert "{root}/raw/{day}.csv" in line and "(e.g. " in line
@@ -125,7 +126,7 @@ def test_explanations_name_the_ports_the_certainty_and_an_example():
 
 
 def test_examples_render_the_paths_they_show():
-    g = EffectGraph(pipeline())
+    g = EffectGraph(pipeline(), existing=[R])
     for link in [*g.edges, *g.hazards, *g.conflicts]:
         ex = link.example()
         assert ex is not None
@@ -310,21 +311,23 @@ NESTED = {
         [["wipe"], ["purge"]],
         "purge.old deletes inside what wipe.old deletes",
     ),
-    "a step declares no verbs for a directory another reads in": (
+    "a step declares nothing of a directory another reads in": (
         {
-            "check": Step(x=(R / "raw").requires(Exists)),
+            "touch": Step(x=R / "raw"),
             "clean": Step(src=raw.requires(Readable)),
         },
-        [["check"], ["clean"]],
-        "check.x declares no verbs, so it is kept apart from clean.src",
+        [["touch"], ["clean"]],
+        "touch.x declares no verbs nor that its path exists, so it is kept apart"
+        " from clean.src",
     ),
-    "a step declares no verbs for a path another writes in": (
+    "a step declares nothing of a directory another writes in": (
         {
-            "check": Step(x=(R / "raw").requires(Exists)),
+            "touch": Step(x=R / "raw"),
             "ingest": Step(out=raw.ensures(Exists)),
         },
-        [["check"], ["ingest"]],
-        "check.x declares no verbs, so it is kept apart from ingest.out",
+        [["touch"], ["ingest"]],
+        "touch.x declares no verbs nor that its path exists, so it is kept apart"
+        " from ingest.out",
     ),
 }
 
@@ -349,7 +352,7 @@ def test_two_writers_of_one_path_are_never_in_one_stage():
         "second": Step(dst=(R / "out.csv").requires(Writable)),
         "other": Step(dst=(R / "else.csv").requires(Writable)),
     }
-    g = EffectGraph(steps)
+    g = EffectGraph(steps, existing=[R])  # {root} exists: no parent is made
     assert [(c.first.step, c.second.step) for c in g.conflicts] == [("first", "second")]
     assert g.order() == ["first", "second", "other"]
     assert g.stages() == [["first", "other"], ["second"]]
@@ -416,7 +419,138 @@ def test_different_defaults_of_one_head_are_not_indexed_apart():
     assert (ex.a_path, ex.b_path) == ("p/y/z", "p/y")
 
 
-VERBS = [Readable, Listable, Writable, Exists, Absent, None]
+OUT = P("output")
+PARENTS = {
+    # Two steps create files in output/, which may be missing: each may make it.
+    "both make missing parents idempotently": (
+        {"a": Step(f=(OUT / "a.csv").ensures(Exists))},
+        {"b": Step(f=(OUT / "b.csv").ensures(Exists))},
+        [["a", "b"]],
+        [["a", "b"]],
+    ),
+    "one checks it may create its file": (
+        {"a": Step(f=(OUT / "a.csv").ensures(Exists))},
+        {"b": Step(f=(OUT / "b.csv").requires(Creatable).ensures(File))},
+        [["a"], ["b"]],
+        [["a", "b"]],
+    ),
+    "one requires the directory to exist": (
+        {"a": Step(f=(OUT / "a.csv").ensures(Exists))},
+        {"b": Step(d=OUT.requires(Exists, Dir), f=(OUT / "b.csv").ensures(Exists))},
+        [["a"], ["b"]],
+        [["a", "b"]],
+    ),
+}
+
+
+@pytest.mark.parametrize("case", PARENTS.values(), ids=PARENTS.keys())
+def test_parents_a_creation_may_make(case):
+    # Without ``existing``, output/ may be missing, and a creation of a.csv
+    # may make it: kept apart from a creation check below it, and ordered
+    # before a step that requires it. Declared existing, it is never made.
+    a, b, stages, existing_stages = case
+    assert EffectGraph({**a, **b}).stages() == stages
+    assert EffectGraph({**a, **b}, existing=[OUT]).stages() == existing_stages
+
+
+def test_a_parent_conflict_names_the_directory_and_is_never_certain():
+    g = EffectGraph(
+        {
+            "a": Step(f=(OUT / "a.csv").ensures(Exists)),
+            "b": Step(f=(OUT / "b.csv").requires(Creatable).ensures(File)),
+        }
+    )
+    (c,) = g.conflicts
+    assert (c.via, c.certainty, c.parent.pattern) == ("parent", "unknown", "output")
+    assert c.example() is None
+    assert g.explain("a") == [
+        "a.f may make output if it is missing, and b.f checks it may create"
+        " output/b.csv, which depends on whether output exists, possibly (not"
+        " ruled out): output/a.csv and output/b.csv"
+    ]
+
+
+def test_an_existence_requirement_follows_what_may_make_it():
+    g = EffectGraph(
+        {
+            "b": Step(d=OUT.requires(Exists, Dir)),
+            "a": Step(f=(OUT / "a.csv").ensures(Exists)),
+            "mk": Step(d=OUT.requires(Creatable).ensures(Dir)),
+        }
+    )
+    deps = {(e.producer.step, e.consumer.step): (e.via, e.certainty) for e in g.edges}
+    # Made as a missing parent of a.csv: only possibly. Made as the path: always.
+    assert deps == {
+        ("a", "b"): ("exists", "unknown"),
+        ("mk", "b"): ("exists", "always"),
+    }
+    assert g.order() == ["a", "mk", "b"]
+    assert g.dependencies(certain=True)["b"] == {"mk"}
+
+
+def test_a_directory_made_exclusively_is_declared_and_then_nests():
+    g = EffectGraph(
+        {
+            "a": Step(f=(OUT / "a.csv").ensures(Exists)),
+            "mk": Step(d=OUT.requires(Absent).ensures(Exists, Dir)),
+        }
+    )
+    (c,) = g.conflicts
+    assert (c.via, c.certainty) == ("path", "always")
+    assert g.stages() == [["a"], ["mk"]]
+
+
+def test_a_path_given_as_existing_must_not_be_deleted():
+    with pytest.raises(ValueError, match="cannot be given as existing"):
+        EffectGraph({"wipe": Step(d=R.ensures(Absent))}, existing=[R / "raw"])
+    # Deleting below it is no deletion of it.
+    EffectGraph({"purge": Step(d=raw.ensures(Absent))}, existing=[R / "raw"])
+
+
+def test_a_pipeline_with_two_writers_in_one_new_directory():
+    # stats writes features/summary.json beside featurise's features/{day}.npz,
+    # and both check they may create their file: until features/ is known to
+    # exist, either may be making it while the other checks.
+    steps = pipeline()
+    steps["stats"] = Step(
+        src=clean.requires(Readable),
+        out=(features / "summary.json").requires(Creatable).ensures(File),
+    )
+    g = EffectGraph(steps, existing=[R])
+    assert [(c.first.step, c.second.step, c.via) for c in g.conflicts] == [
+        ("ingest", "purge", "path"),
+        ("featurise", "stats", "parent"),
+    ]
+    assert g.stages() == [
+        ["ingest"],
+        ["clean"],
+        ["featurise", "purge"],
+        ["stats"],
+        ["train"],
+        ["report"],
+    ]
+    g = EffectGraph(steps, existing=[R, features])
+    assert g.stages() == [
+        ["ingest"],
+        ["clean"],
+        ["featurise", "purge", "stats"],
+        ["train"],
+        ["report"],
+    ]
+
+
+def test_without_existing_a_root_may_be_made_by_any_creation():
+    # Every creation check under {root} conflicts with every other creation
+    # there, possibly: and the pipeline's order and stages are unchanged.
+    g, known = EffectGraph(pipeline()), EffectGraph(pipeline(), existing=[R])
+    parents = [c for c in g.conflicts if c.via == "parent"]
+    assert len(parents) == 10
+    assert {(c.certainty, c.parent.pattern) for c in parents} == {("unknown", "{root}")}
+    assert g.edges == known.edges and g.hazards == known.hazards
+    assert (g.order(), g.stages()) == (known.order(), known.stages())
+
+
+VERBS = [Readable, Listable, Writable, Creatable, Exists, Absent, "exists", None]
 
 
 @st.composite
@@ -427,8 +561,12 @@ def steps(draw):
         for j in range(draw(st.integers(1, 3))):
             e = draw(expressions())
             verb = VERBS[draw(st.integers(0, len(VERBS) - 1))]
-            if verb is None:
-                e = e.requires(Exists)  # a check, which declares no verb
+            if verb == "exists":
+                e = e.requires(Exists)  # requires existence, and no verb
+            elif verb is None:
+                pass  # declares nothing: its effect is unknown
+            elif verb is Creatable:
+                e = e.requires(Creatable).ensures(File)
             elif verb in (Readable, Listable, Writable):
                 e = e.requires(verb)
             else:
@@ -459,17 +597,36 @@ def render(port, env):
 
 
 def changes(port):
-    return port.supplies or port.deletes or not port.verbs
+    return port.supplies or port.deletes or not (port.verbs or port.observes)
+
+
+def watches(port):
+    """Whether the port only requires its path to exist."""
+    return port.observes and not port.verbs
+
+
+def parent_shared(px, py):
+    """Whether two rendered paths share a directory above both, other than
+    their anchor: one that may be missing."""
+    (ax, sx), (ay, sy) = _segments(px), _segments(py)
+    if ax != ay:
+        return False
+    j = 0
+    while j < min(len(sx), len(sy)) and sx[j] == sy[j]:
+        j += 1
+    return 0 < j < min(len(sx), len(sy))
 
 
 @settings(max_examples=150, deadline=None, suppress_health_check=[HealthCheck.too_slow])
 @given(s=steps())
 def test_order_and_stages_hold_for_every_rendered_run(s):
     # The oracle: render every port under pooled bindings, and compare the
-    # paths as strings. Wherever a written path touches a read one, the
-    # writer must come first; wherever a deleted path touches a read one,
-    # the reader must; and two steps whose paths touch, where either changes
-    # its path (or declares no verbs), must never share a stage.
+    # paths as strings. Wherever a written path touches a read one (or one
+    # required to exist), the writer must come first; wherever a deleted
+    # path touches a read one, the reader must; two steps whose paths touch,
+    # where either changes its path (or its effect is unknown), must never
+    # share a stage; nor two that create paths below a directory that may be
+    # missing, where either checks it may create its own.
     g = EffectGraph(s)
     order, stages = g.order(), g.stages()
     assert (order is None) == bool(g.cycles()) == (stages is None)
@@ -481,13 +638,25 @@ def test_order_and_stages_hold_for_every_rendered_run(s):
         for (x, px), (y, py) in itertools.permutations(paths, 2):
             if x.step == y.step or px is None or py is None:
                 continue
-            if lexically(px, py) is None:
+            how = lexically(px, py)
+            if how is None:
+                if x.supplies and y.supplies and parent_shared(px, py):
+                    if x.checks_creation or y.checks_creation:
+                        apart.add(frozenset((x.step, y.step)))
                 continue
-            if x.is_input and y.supplies:
+            # An anchor ("/", ".") exists: making a path below it makes no
+            # parent an existence requirement could wait for.
+            made = how != "contains" or x.is_input or _segments(px)[1]
+            if (x.is_input or x.observes) and y.supplies and made:
                 before.add((y.step, x.step))
-            if x.is_input and y.deletes:
+            if (x.is_input or x.observes) and y.deletes:
                 before.add((x.step, y.step))
-            if changes(x) or changes(y):
+            # A port that only requires an anchor to exist is not touched by a
+            # change below it: the anchor exists whatever is made there.
+            anchored = (watches(x) and how == "contains" and not _segments(px)[1]) or (
+                watches(y) and how == "inside" and not _segments(py)[1]
+            )
+            if (changes(x) or changes(y)) and not anchored:
                 apart.add(frozenset((x.step, y.step)))
     if order is None:
         return

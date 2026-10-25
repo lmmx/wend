@@ -1089,6 +1089,13 @@ when that is always; `"disjoint"` when all three are never; `"overlapping"` when
 sometimes; `"unknown"` otherwise. A union relates as its alternatives do: never when
 every pair is never, sometimes when one pair shows it, and never always.
 
+The answers, and the examples, are a function of the two expressions and the options.
+They do not depend on how Python hashes strings (`PYTHONHASHSEED`), nor on the order in
+which a set of `choices` iterates. `"sometimes"` and `"unknown"` differ only in whether
+a bounded search found an example, so the search tries values in a fixed order, and a
+name wend makes up for its own reasoning (§15.3, 3) never takes the name of a
+parameter of either expression.
+
 ### 15.3 How each answer is proved
 
 1. **Rendering is a function of structure.** Two pieces of normal form with equal

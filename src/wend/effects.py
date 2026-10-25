@@ -62,6 +62,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from ._expr import Deferred, HeadParam, P, PathExpr, Root, Seg, _Rel
+from ._overlap import _alternatives
 from ._relate import (
     Analysis,
     Certainty,
@@ -334,6 +335,12 @@ class EffectGraph:
         # A path given as existing, as a port of no step: what obligations
         # name as the fact that it exists.
         self._given = [Port("", "existing", e, frozenset()) for e in self.existing]
+        self._memo.reserve(
+            n
+            for p in (*self.ports, *self._given)
+            for x in _alternatives(p.expr)
+            for n in x.param_names
+        )
         self._index = {
             id(p): self._index_key(p.expr) for p in (*self.ports, *self._given)
         }

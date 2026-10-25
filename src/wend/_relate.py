@@ -193,6 +193,30 @@ class Memo(dict[int, tuple[Any, Any]]):
     def __init__(self, builtin: bool = False) -> None:
         super().__init__()
         self.builtin = builtin
+        self._names: dict[Any, str] = {}
+        self._reserved: set[str] = set()
+
+    def reserve(self, names: Iterable[str]) -> None:
+        """Keep ``names`` (the parameters of the expressions compared) from
+        being given to a view's text or a parent's SubPath."""
+        names = set(names)
+        clash = names & set(self._names.values())
+        if clash:
+            raise ValueError(f"names already given to a view: {sorted(clash)}")
+        self._reserved |= names
+
+    def name(self, prefix: str, key: Any) -> str:
+        """A parameter name for what ``key`` renders: one name per key, none of
+        the reserved ones, and numbered in the order first asked, so answers do
+        not depend on string hashing."""
+        if (prefix, key) not in self._names:
+            n = len(self._names)
+            while f"{prefix}{n}" in self._reserved:
+                n += 1
+            name = f"{prefix}{n}"
+            self._reserved.add(name)
+            self._names[(prefix, key)] = name
+        return self._names[(prefix, key)]
 
 
 def _plain_field(f: Field) -> bool:
@@ -363,7 +387,7 @@ def _view(e: PathExpr, memo: Memo) -> PathExpr:
     base = _view(h.base, memo)
     if not base.parts or not isinstance(base.parts[-1], Seg):
         return e
-    text = Field(Param(f"_name_{abs(hash(_fresh_key(h, memo))):x}"))
+    text = Field(Param(memo.name("_name_", _fresh_key(h, memo))))
     if h.op == "with_name":
         pieces = list(h.arg.pieces)
     elif h.op == "with_suffix":
@@ -435,7 +459,7 @@ def _parents(e: PathExpr, h: Deferred, memo: Memo) -> list[PathExpr] | None:
         return None
     if not isinstance(base.parts[-1], Splice):
         return None
-    rest = Splice(Param(f"_rest_{abs(hash(_fresh_key(h, memo))):x}", ParamKind.SUBPATH))
+    rest = Splice(Param(memo.name("_rest_", _fresh_key(h, memo)), ParamKind.SUBPATH))
     longer = PathExpr(base.head, base.parts[:-1] + (rest,) + e.parts)
     prefix = base.parts[:-1]
     if prefix and isinstance(prefix[-1], Seg):
@@ -660,6 +684,9 @@ class Analysis:
         self.pairs = [
             (x, y) for x in _overlap._alternatives(a) for y in _overlap._alternatives(b)
         ]
+        self.memo.reserve(
+            n for x, y in self.pairs for n in x.param_names | y.param_names
+        )
         self.single = len(self.pairs) == 1
         self._answers: dict[How, Certainty] = {}
         self._examples: dict[How, Example | None] = {}

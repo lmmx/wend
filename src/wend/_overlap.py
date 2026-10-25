@@ -472,7 +472,8 @@ def _domain(p: Param, assumed: _Assumed | None = None) -> list[Any] | None:
             if not assumed.builtin:
                 return None
             assumed.used.add("builtin_values")
-        values = list(p.choices)
+        # In a fixed order, whatever the hash of a string: samples come from it.
+        values = sorted(p.choices, key=lambda v: (type(v).__name__, repr(v)))
         for c in list(values):
             for twin in _numeric_twins(c):
                 if not any(

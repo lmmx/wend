@@ -7,6 +7,15 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
 
 ## Unreleased
 
+### New
+
+- **What paths given as existing, reads and listings establish** (#121).
+  `EffectGraph.obligations()` takes a path given as `existing` as a fact from the start
+  that no step forgets: it exists, and so does every directory above it. A passed
+  `Readable` check says its path exists, and a passed `Listable` check that it exists as
+  a directory, so later requirements of either are discharged, and a requirement that
+  the path be absent is refuted.
+
 ## 0.4.0
 
 ### New

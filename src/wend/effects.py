@@ -240,6 +240,9 @@ _EXCLUSIVE = (
     ("absent", "list"),
     ("file", "list"),
 )
+# What a passed check of each atom says of the path's existence: a readable or
+# listable path exists (§10), and a listable one is a directory.
+_IMPLIES = {"read": ("exists",), "list": ("exists", "dir")}
 ASSUMPTIONS = frozenset({"closed world", "declared effects", "lexical identity"})
 """What every `Obligation` rests on (docs/SEMANTICS.md §15.6): nothing outside
 the steps changes their paths while they run; each step's declarations
@@ -256,7 +259,8 @@ class Obligation:
     makes it false: the check fails wherever both paths render; ``"at risk"``
     when ``by`` may refute it, or may have changed a path it was known of;
     and ``"external"`` when nothing in the pipeline establishes it, so the
-    world must provide it."""
+    world must provide it. A path given to the graph as ``existing`` is a
+    fact too: ``by`` is then a port of no step (``by.step == ""``)."""
 
     port: Port
     atom: str
@@ -265,10 +269,13 @@ class Obligation:
 
     def __str__(self) -> str:
         what = f"{self.port} requires {self.atom} of {self.port.expr.pattern}"
+        by = self.by
+        if by is not None and not by.step:
+            by = f"{by.expr.pattern}, given as existing"
         if self.status == "discharged":
-            return f"{what}: discharged by {self.by}"
+            return f"{what}: discharged by {by}"
         if self.status == "refuted":
-            return f"{what}: refuted by {self.by}, so the check fails"
+            return f"{what}: refuted by {by}, so the check fails"
         if self.status == "at risk":
             return f"{what}: at risk from {self.by}"
         return f"{what}: external, the world must provide it"
@@ -320,7 +327,12 @@ class EffectGraph:
         self.unassigned: list[Port] = [p for p in self.ports if not p.verbs]
         self._analyses: dict[tuple[int, int], Analysis] = {}
         self._memo: dict[int, tuple[Any, Any]] = {}
-        self._index = {id(p): self._index_key(p.expr) for p in self.ports}
+        # A path given as existing, as a port of no step: what obligations
+        # name as the fact that it exists.
+        self._given = [Port("", "existing", e, frozenset()) for e in self.existing]
+        self._index = {
+            id(p): self._index_key(p.expr) for p in (*self.ports, *self._given)
+        }
         suppliers = [p for p in self.ports if p.supplies]
         deleters = [p for p in self.ports if p.deletes]
         inputs = [p for p in self.ports if p.is_input or p.observes]
@@ -699,6 +711,9 @@ class EffectGraph:
         holds of another only while no step that may run in between declares
         a change to either, and only under `ASSUMPTIONS`."""
         groups = self._schedule(schedule)
+        # A path given as existing exists throughout: no step may delete it
+        # or a directory above it (the constructor refuses one that may).
+        given = [_Fact("exists", p) for p in self._given]
         known: list[_Fact] = []
         lost: list[tuple[_Fact, Port]] = []
         out: list[Obligation] = []
@@ -715,7 +730,9 @@ class EffectGraph:
                 here, gone = self._forget(known, others)
                 for p in ports[s]:
                     for atom in sorted(p.requires):
-                        out.append(self._judge(p, atom, here, [*lost, *gone]))
+                        out.append(
+                            self._judge(p, atom, [*given, *here], [*lost, *gone])
+                        )
             for s in group:
                 for p in ports[s]:
                     known.extend(_Fact(a, p) for a in p.requires & _KEPT)
@@ -776,10 +793,14 @@ class EffectGraph:
             answer = analysis(how)
             return answer == "always" if certain else answer != "never"
 
-        if f.atom == atom and proved("same"):
+        if atom in (f.atom, *_IMPLIES.get(f.atom, ())) and proved("same"):
             return True
         # A path below p's exists: p exists, as a directory.
-        if atom in ("exists", "dir") and f.atom == "exists" and proved("contains"):
+        if (
+            atom in ("exists", "dir")
+            and f.atom in ("exists", *_IMPLIES)
+            and proved("contains")
+        ):
             return True
         # p's path is below an absent one: it is absent too.
         return atom == "absent" and f.atom == "absent" and proved("inside")

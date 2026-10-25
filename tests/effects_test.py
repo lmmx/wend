@@ -10,17 +10,20 @@ from unittest import mock
 import pytest
 from families_test import (
     ENVS,
+    FAMILIES,
     ROOT_REPLACED,
+    SURVEY,
     _worked_pipeline,
     bound,
-    build,
     cases,
     make_tree,
     run,
     run_root,
+    trees,
 )
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
+from knowledge_test import ROLES, _list, _read
 from overlap_test import POOL, expressions
 
 from wend import (
@@ -852,6 +855,61 @@ def test_a_port_that_declares_nothing_may_change_its_path():
     assert got[("read", "src")] == {"at risk": {"exists", "file"}}
 
 
+def test_a_path_given_as_existing_is_a_fact_throughout():
+    survey = Step(d=R.requires(Dir, Exists, Listable))
+    clear = Step(d=(R / "raw").requires(Absent))
+    steps = {"make": Step(out=raw.ensures(File, Exists)), "survey": survey}
+    order = ["make", "survey"]
+    # Without it, nothing says the root exists before the steps run; making a
+    # file below it shows it exists once make completes.
+    assert statuses(EffectGraph(steps), order)[("survey", "d")] == {
+        "discharged": {"dir", "exists"},
+        "external": {"list"},
+    }
+    got = EffectGraph({"survey": survey}, existing=[R]).obligations(["survey"])
+    assert {o.atom: o.status for o in got} == {
+        "dir": "external",  # a path given as existing may be a file
+        "exists": "discharged",
+        "list": "external",
+    }
+    assert "given as existing" in str(got[1])
+    # Everything above an existing path is a directory that exists, and a
+    # step requiring it absent fails.
+    g = EffectGraph({"survey": survey, "clear": clear}, existing=[R / "raw" / "x"])
+    got = statuses(g, ["survey", "clear"])
+    assert got[("survey", "d")] == {
+        "discharged": {"dir", "exists"},
+        "external": {"list"},
+    }
+    assert got[("clear", "d")] == {"refuted": {"absent"}}
+    # No step forgets it: a deletion below the root leaves the root.
+    drop = Step(old=raw.requires(Exists).ensures(Absent))
+    g = EffectGraph({"drop": drop, "survey": survey}, existing=[R])
+    assert statuses(g, ["drop", "survey"])[("survey", "d")]["discharged"] == {"exists"}
+
+
+def test_a_read_or_listing_says_the_path_exists():
+    peek = Step(src=raw.requires(Readable))
+    after = Step(src=raw.requires(Exists), d=(R / "raw").requires(Dir, Exists))
+    gone = Step(src=raw.requires(Absent))
+    got = statuses(
+        EffectGraph({"peek": peek, "after": after, "gone": gone}),
+        ["peek", "after", "gone"],
+    )
+    assert got[("after", "src")] == {"discharged": {"exists"}}
+    # What is readable below a directory shows the directory exists.
+    assert got[("after", "d")] == {"discharged": {"dir", "exists"}}
+    assert got[("gone", "src")] == {"refuted": {"absent"}}
+    # A listing shows a directory.
+    scan = Step(d=(R / "out").requires(Listable))
+    kind = Step(d=(R / "out").requires(Dir, Exists))
+    got = statuses(EffectGraph({"scan": scan, "kind": kind}), ["scan", "kind"])
+    assert got[("kind", "d")] == {"discharged": {"dir", "exists"}}
+    # A read says nothing of the kind: Readable holds of a directory too.
+    g = EffectGraph({"peek": peek, "file": Step(src=raw.requires(File))})
+    assert statuses(g, ["peek", "file"])[("file", "src")] == {"external": {"file"}}
+
+
 def test_creating_and_writing_are_never_discharged():
     out = R / "out.txt"
     steps = {
@@ -881,11 +939,64 @@ def test_a_schedule_names_every_step_once():
     assert len(loop.obligations(["ab", "ba"])) == 4
 
 
+# Ports that declare Readable or Listable alone, so that what a passed read or
+# listing says of a path's existence is tested apart from Exists and Dir.
+ROLES_PLUS = {
+    **ROLES,
+    "peek": ((Readable,), (), _read),
+    "scan": ((Listable,), (), _list),
+}
+
+
+def build_plus(pipeline_):
+    steps, bodies = [("survey", SURVEY)], [[]]
+    for i, ps in enumerate(pipeline_):
+        paths, b = {}, []
+        for j, (role, fam) in enumerate(ps):
+            pre, post, body = ROLES_PLUS[role]
+            e = FAMILIES[fam].requires(*pre)
+            if post:
+                e = e.ensures(*post)
+            paths[f"p{j}"] = e
+            b.append((f"p{j}", body))
+        steps.append((f"s{i}", Step(paths)))
+        bodies.append(b)
+    return steps, bodies
+
+
+plus_pipelines = st.lists(
+    st.lists(
+        st.tuples(
+            st.sampled_from(sorted(ROLES_PLUS)), st.sampled_from(sorted(FAMILIES))
+        ),
+        min_size=1,
+        max_size=2,
+        unique_by=lambda t: t[1],
+    ),
+    min_size=1,
+    max_size=6,
+)
+# A case, and what the graph is told exists: nothing, the root, or the raw
+# directory (where the tree has one; else the root).
+oracle_cases = st.tuples(
+    st.one_of(cases, st.tuples(plus_pipelines, trees)),
+    st.sampled_from(["none", "root", "raw"]),
+)
+
+
 def _obligations_hold_on_disk(case, staged):
-    pipeline_, tree = case
-    steps, bodies = build(pipeline_)
+    (pipeline_, tree), given = case
+    steps, bodies = build_plus(pipeline_)
     names = [n for n, _ in steps]
-    g = EffectGraph(dict(steps))
+    existing = {
+        "none": [],
+        "root": [P(root)],
+        "raw": [P(root) / "raw" if tree["raw"] else P(root)],
+    }[given]
+    try:
+        g = EffectGraph(dict(steps), existing=existing)
+    except ValueError:
+        return  # a step may delete what was given as existing
     if staged:
         groups = g.stages()
         if groups is None:
@@ -934,8 +1045,8 @@ def _obligations_hold_on_disk(case, staged):
 
 
 @settings(max_examples=150, deadline=None, suppress_health_check=list(HealthCheck))
-@given(case=cases)
-@example(case=ROOT_REPLACED)
+@given(case=oracle_cases)
+@example(case=(ROOT_REPLACED, "none"))
 def test_obligations_hold_on_disk_when_run_in_order(case):
     # The oracle: random pipelines over families whose bindings collide, run
     # in a real directory under several bindings. Wherever every earlier step
@@ -945,8 +1056,8 @@ def test_obligations_hold_on_disk_when_run_in_order(case):
 
 
 @settings(max_examples=150, deadline=None, suppress_health_check=list(HealthCheck))
-@given(case=cases)
-@example(case=ROOT_REPLACED)
+@given(case=oracle_cases)
+@example(case=(ROOT_REPLACED, "none"))
 def test_obligations_hold_on_disk_when_run_by_stages(case):
     # The same, by stages(): a step's group-mates may run before or after it.
     _obligations_hold_on_disk(case, staged=True)

@@ -22,8 +22,10 @@ The proofs, in order:
 3. *Structure*. Two pieces of normal form that are equal, with parameters
    compared by name, render the same text for one binding: a parameter's
    declaration (type, choices, kind) decides which bindings are accepted,
-   never what an accepted one renders. Under shared bindings a common prefix
-   of head and parts therefore renders one string, and joining it onto a
+   never what an accepted one renders. A deferred head is pathlib applied to
+   what its base renders, so it is no exception. Under shared bindings a
+   common prefix of head and parts therefore renders one string, unless a
+   name in it has a different default on each side, and joining it onto a
    relative remainder is injective and keeps "lies above", so ``a`` and
    ``b`` relate exactly as their remainders do. Empty remainders, or one
    empty and the other holding a segment, decide the relation for every
@@ -232,6 +234,8 @@ def _names(x: Any) -> frozenset[str]:
         return frozenset({x.param.name})
     if isinstance(x, Seg):
         return x.param_names
+    if isinstance(x, Deferred):
+        return PathExpr(x).param_names
     return frozenset()
 
 
@@ -302,8 +306,6 @@ def _view(e: PathExpr, memo: Memo) -> PathExpr:
 def _common(a: PathExpr, b: PathExpr, shared: bool, memo: Memo) -> int | None:
     """How many leading parts render alike for every binding, after heads
     that do; None if the heads may not."""
-    if isinstance(a.head, Deferred) or isinstance(b.head, Deferred):
-        return None
     if not shared and not isinstance(a.head, (Root, _Rel)):
         return None
     bad = _conflicting_defaults(a, b) if shared else frozenset()

@@ -57,7 +57,7 @@ two spellings of one file (a symlink, a relative and an absolute path, a
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -223,6 +223,61 @@ class Conflict(_Link):
 
     def __repr__(self) -> str:
         return f"<{self.first} x {self.second}: {self.certainty}>"
+
+
+ObligationStatus = Literal["discharged", "refuted", "at risk", "external"]
+
+# The atoms a run can know of a path once a check of them passed, until a
+# declared mutation may change it. Whether a path may be created or written
+# depends on its ancestors and permissions at the moment, so those checks are
+# never discharged.
+_KEPT = frozenset({"exists", "absent", "file", "dir", "read", "list"})
+# Atoms one path cannot have at once. File and Dir exclude each other only for
+# a path that exists (§10: both hold of a missing path).
+_EXCLUSIVE = (
+    ("exists", "absent"),
+    ("absent", "read"),
+    ("absent", "list"),
+    ("file", "list"),
+)
+ASSUMPTIONS = frozenset({"closed world", "declared effects", "lexical identity"})
+"""What every `Obligation` rests on (docs/SEMANTICS.md §15.6): nothing outside
+the steps changes their paths while they run; each step's declarations
+describe what it does; and two spellings of one file are not two paths."""
+
+
+@dataclass(frozen=True)
+class Obligation:
+    """What one atom a port requires relies on, under `ASSUMPTIONS`.
+
+    ``status`` is ``"discharged"`` when an earlier step's passed check or
+    confirmed promise (``by``) makes it true of the path on every run, and no
+    step that may run in between may change it; ``"refuted"`` when such a fact
+    makes it false: the check fails wherever both paths render; ``"at risk"``
+    when ``by`` may refute it, or may have changed a path it was known of;
+    and ``"external"`` when nothing in the pipeline establishes it, so the
+    world must provide it."""
+
+    port: Port
+    atom: str
+    status: ObligationStatus
+    by: Port | None = None
+
+    def __str__(self) -> str:
+        what = f"{self.port} requires {self.atom} of {self.port.expr.pattern}"
+        if self.status == "discharged":
+            return f"{what}: discharged by {self.by}"
+        if self.status == "refuted":
+            return f"{what}: refuted by {self.by}, so the check fails"
+        if self.status == "at risk":
+            return f"{what}: at risk from {self.by}"
+        return f"{what}: external, the world must provide it"
+
+
+@dataclass(frozen=True)
+class _Fact:
+    atom: str
+    port: Port  # whose path the fact is of, and whose check or promise made it
 
 
 class EffectGraph:
@@ -626,6 +681,137 @@ class EffectGraph:
         used = {id(e.producer) for e in self.edges}
         return [p for p in self.ports if p.supplies and id(p) not in used]
 
+    def obligations(
+        self, schedule: Sequence[str] | Sequence[Sequence[str]] | None = None
+    ) -> list[Obligation]:
+        """For every atom each port requires, what it relies on (`Obligation`),
+        when the steps run by ``schedule``: an order of step names, or groups
+        (as `stages` gives) whose steps may interleave in any way. The default
+        is `stages`. Raises ValueError if the steps form a cycle and no
+        schedule is given.
+
+        A run knows an atom of a path from the moment a check of it passes
+        (a step's precondition, or its postcondition once it completes) until
+        a declared mutation that may touch the path. A fact is of the paths
+        the relation proves the same on every run, or proves below a path
+        known to exist (which then exists, as a directory), or above one known
+        absent. Static identity is not freshness: a fact about one spelling
+        holds of another only while no step that may run in between declares
+        a change to either, and only under `ASSUMPTIONS`."""
+        groups = self._schedule(schedule)
+        known: list[_Fact] = []
+        lost: list[tuple[_Fact, Port]] = []
+        out: list[Obligation] = []
+        ports = {s: [p for p in self.ports if p.step == s] for s in self.steps}
+        changers = {
+            s: [p for p in ps if p.supplies or p.deletes or not (p.verbs or p.observes)]
+            for s, ps in ports.items()
+        }
+        for group in groups:
+            for s in group:
+                # Another step of the group may run first: what it may change
+                # is not known here.
+                others = [m for o in group if o != s for m in changers[o]]
+                here, gone = self._forget(known, others)
+                for p in ports[s]:
+                    for atom in sorted(p.requires):
+                        out.append(self._judge(p, atom, here, [*lost, *gone]))
+            for s in group:
+                for p in ports[s]:
+                    known.extend(_Fact(a, p) for a in p.requires & _KEPT)
+            for s in group:
+                known, gone = self._forget(known, changers[s])
+                lost.extend(gone)
+            for s in group:
+                others = [m for o in group if o != s for m in changers[o]]
+                for p in ports[s]:
+                    learned = [_Fact(a, p) for a in p.expr.declares.ensures & _KEPT]
+                    kept, gone = self._forget(learned, others)
+                    known.extend(kept)
+                    lost.extend(gone)
+        return out
+
+    def _schedule(
+        self, schedule: Sequence[str] | Sequence[Sequence[str]] | None
+    ) -> list[list[str]]:
+        if schedule is None:
+            stages = self.stages()
+            if stages is None:
+                raise ValueError("the steps form a cycle: give a schedule")
+            return stages
+        groups = [[g] if isinstance(g, str) else list(g) for g in schedule]
+        named = [s for g in groups for s in g]
+        if sorted(named) != sorted(self.steps):
+            raise ValueError("a schedule names every step once")
+        return groups
+
+    def _touches(self, a: Port, b: Port) -> bool:
+        if self._apart(a, b):
+            return False
+        analysis = self._analysis(a.expr, b.expr)
+        return any(analysis(how) != "never" for how in _TOUCH)
+
+    def _forget(
+        self, facts: list[_Fact], mutations: list[Port]
+    ) -> tuple[list[_Fact], list[tuple[_Fact, Port]]]:
+        """``facts`` split into those no mutation may change, and those one
+        may, with the mutation."""
+        kept, gone = [], []
+        for f in facts:
+            m = next((m for m in mutations if self._touches(f.port, m)), None)
+            if m is None:
+                kept.append(f)
+            else:
+                gone.append((f, m))
+        return kept, gone
+
+    def _holds(self, f: _Fact, p: Port, atom: str, *, certain: bool = True) -> bool:
+        """Whether fact ``f`` makes ``atom`` true of ``p``'s path on every run
+        under which both render; with ``certain=False``, on some run."""
+        if self._apart(p, f.port):
+            return False
+        analysis = self._analysis(p.expr, f.port.expr)
+
+        def proved(how: How) -> bool:
+            answer = analysis(how)
+            return answer == "always" if certain else answer != "never"
+
+        if f.atom == atom and proved("same"):
+            return True
+        # A path below p's exists: p exists, as a directory.
+        if atom in ("exists", "dir") and f.atom == "exists" and proved("contains"):
+            return True
+        # p's path is below an absent one: it is absent too.
+        return atom == "absent" and f.atom == "absent" and proved("inside")
+
+    def _judge(
+        self,
+        p: Port,
+        atom: str,
+        known: list[_Fact],
+        lost: list[tuple[_Fact, Port]],
+    ) -> Obligation:
+        if atom not in _KEPT:
+            return Obligation(p, atom, "external")
+        for f in known:
+            if self._holds(f, p, atom):
+                return Obligation(p, atom, "discharged", f.port)
+        excluded = [b if atom == a else a for a, b in _EXCLUSIVE if atom in (a, b)]
+        if atom in ("file", "dir") and any(self._holds(f, p, "exists") for f in known):
+            excluded.append("dir" if atom == "file" else "file")
+        for other in excluded:
+            for f in known:
+                if self._holds(f, p, other):
+                    return Obligation(p, atom, "refuted", f.port)
+        for other in excluded:
+            for f in known:
+                if self._holds(f, p, other, certain=False):
+                    return Obligation(p, atom, "at risk", f.port)
+        for f, m in reversed(lost):
+            if self._holds(f, p, atom):
+                return Obligation(p, atom, "at risk", m)
+        return Obligation(p, atom, "external")
+
     def compare(self, records: Iterable[Any]) -> dict[str, list[tuple[str, str]]]:
         """Observed lineage (the `wend.lineage.Record` objects a `Ledger`
         writes) against the declarations. A record names its step by
@@ -809,12 +995,14 @@ def _sccs(graph: Mapping[str, set[str]]) -> list[list[str]]:
 
 
 __all__ = [
+    "ASSUMPTIONS",
     "Certainty",
     "Conflict",
     "Dependency",
     "EffectGraph",
     "Example",
     "Hazard",
+    "Obligation",
     "Port",
     "Relation",
     "relate",

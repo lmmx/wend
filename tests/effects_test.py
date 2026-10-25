@@ -4,10 +4,22 @@ together, and how sure each link is (docs/SEMANTICS.md §15)."""
 
 import itertools
 import random
+from pathlib import Path
 from unittest import mock
 
 import pytest
-from hypothesis import HealthCheck, given, settings
+from families_test import (
+    ENVS,
+    ROOT_REPLACED,
+    _worked_pipeline,
+    bound,
+    build,
+    cases,
+    make_tree,
+    run,
+    run_root,
+)
+from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
 from overlap_test import POOL, expressions
 
@@ -26,6 +38,8 @@ from wend import (
     T,
     Writable,
 )
+from wend._experimental.families import analyse_families
+from wend._experimental.knowledge import Fact, holds
 from wend._relate import _segments, lexically
 from wend.effects import EffectGraph
 from wend.errors import WendError
@@ -721,3 +735,217 @@ def test_the_index_never_changes_a_link(s, shared):
     with mock.patch.object(EffectGraph, "_apart", lambda self, a, b: False):
         full = everything(EffectGraph(s, shared=shared))
     assert everything(EffectGraph(s, shared=shared)) == full
+
+
+# -- obligations: what each requirement relies on ------------------------------
+
+
+def statuses(g, schedule=None):
+    got: dict[tuple[str, str], dict[str, set[str]]] = {}
+    for o in g.obligations(schedule):
+        by = got.setdefault((o.port.step, o.port.name), {})
+        by.setdefault(o.status, set()).add(o.atom)
+    return got
+
+
+def test_obligations_agree_with_the_experimental_analysis_on_its_pipeline():
+    steps = _worked_pipeline()
+    g = EffectGraph(dict(steps))
+    got = statuses(g, [n for n, _ in steps])
+    for e in analyse_families(steps):
+        mine = got[(e.step, e.port)]
+        assert mine.get("discharged", set()) == set(e.known), e
+        assert mine.get("refuted", set()) == set(e.refuted), e
+    # Run by stages, the audit reads the raw file before cleanup deletes it.
+    assert statuses(g)[("audit", "src")]["discharged"] == {"exists", "file"}
+
+
+def test_a_fact_holds_of_another_spelling_until_a_change_may_reach_it():
+    made = R / "raw" / T(t"{day}.csv")
+    again = (R / "raw").joinpath(T(t"{Param('day', type=str)}.csv"))
+    other = R / "raw" / T(t"{Param('name', type=str)}.csv")
+    steps = {
+        "make": Step(out=made.requires(Absent, Creatable).ensures(File, Exists)),
+        "read": Step(src=again.requires(File, Exists, Readable)),
+    }
+    assert statuses(EffectGraph(steps))[("read", "src")]["discharged"] == {
+        "exists",
+        "file",
+    }
+    # A deletion that may be of the same file, for some name.
+    steps = {**steps, "drop": Step(old=other.requires(Exists).ensures(Absent))}
+    o = statuses(EffectGraph(steps), ["make", "drop", "read"])[("read", "src")]
+    # The deletion may also have made it absent, which refutes reading it.
+    assert o == {"at risk": {"exists", "file", "read"}}
+
+
+def test_existence_below_a_path_and_absence_above_one():
+    steps = {
+        "make": Step(out=raw.requires(Absent, Creatable).ensures(File, Exists)),
+        "list": Step(d=(R / "raw").requires(Dir, Exists, Listable)),
+        "drop": Step(d=(R / "raw").requires(Exists).ensures(Absent)),
+        "read": Step(src=raw.requires(File, Exists, Readable)),
+    }
+    got = statuses(EffectGraph(steps), ["make", "list", "drop", "read"])
+    assert got[("list", "d")] == {"discharged": {"dir", "exists"}, "external": {"list"}}
+    assert got[("drop", "d")] == {"discharged": {"exists"}}
+    assert got[("read", "src")]["refuted"] == {"exists", "read"}
+
+
+def test_a_promise_in_the_same_group_discharges_nothing():
+    steps = {
+        "make": Step(out=raw.requires(Absent, Creatable).ensures(File, Exists)),
+        "read": Step(src=raw.requires(File, Exists, Readable)),
+    }
+    g = EffectGraph(steps)
+    assert statuses(g, ["make", "read"])[("read", "src")]["discharged"] == {
+        "exists",
+        "file",
+    }
+    # Run together, read may run first: what make promises is not known yet,
+    # and what read checks may be changed by make while it runs.
+    assert "discharged" not in statuses(g, [["make", "read"]])[("read", "src")]
+
+
+def test_a_group_given_by_hand_may_run_in_any_order():
+    # stages() never groups steps that interfere; a schedule given by hand may.
+    steps = {
+        "make": Step(out=raw.requires(Absent, Creatable).ensures(File, Exists)),
+        "drop": Step(old=raw.requires(Exists).ensures(Absent)),
+        "read": Step(src=raw.requires(File, Exists, Readable)),
+        "after": Step(src=raw.requires(Exists)),
+    }
+    g = EffectGraph(steps)
+    # drop may run before read: what make promised is not known to read.
+    got = statuses(g, ["make", ["drop", "read"], "after"])
+    assert "discharged" not in got[("read", "src")]
+    # read changes nothing, so drop's requirement holds whichever runs first.
+    assert got[("drop", "old")] == {"discharged": {"exists"}}
+    assert got[("after", "src")] == {"refuted": {"exists"}}
+    # make and drop in either order: neither promise is known after them.
+    got = statuses(g, [["make", "drop"], "read", "after"])
+    assert "discharged" not in got[("read", "src")]
+    assert "refuted" not in got[("read", "src")]
+
+
+def test_file_and_dir_exclude_each_other_only_for_a_path_that_exists():
+    # Both hold of a missing path (§10).
+    d = R / "d"
+    steps = {"dir": Step(d=d.requires(Dir)), "file": Step(d=d.requires(File))}
+    assert statuses(EffectGraph(steps), ["dir", "file"])[("file", "d")] == {
+        "external": {"file"}
+    }
+    steps["dir"] = Step(d=d.requires(Dir, Exists))
+    assert statuses(EffectGraph(steps), ["dir", "file"])[("file", "d")] == {
+        "refuted": {"file"}
+    }
+
+
+def test_a_port_that_declares_nothing_may_change_its_path():
+    steps = {
+        "make": Step(out=raw.requires(Absent, Creatable).ensures(File, Exists)),
+        "touch": Step(x=raw),
+        "read": Step(src=raw.requires(File, Exists)),
+    }
+    got = statuses(EffectGraph(steps), ["make", "touch", "read"])
+    assert got[("read", "src")] == {"at risk": {"exists", "file"}}
+
+
+def test_creating_and_writing_are_never_discharged():
+    out = R / "out.txt"
+    steps = {
+        "check": Step(o=out.requires(Creatable)),
+        "again": Step(o=out.requires(Creatable)),
+    }
+    assert statuses(EffectGraph(steps), ["check", "again"])[("again", "o")] == {
+        "external": {"create"}
+    }
+
+
+def test_a_schedule_names_every_step_once():
+    g = EffectGraph(pipeline())
+    with pytest.raises(ValueError, match="every step once"):
+        g.obligations(["ingest", "clean"])
+    with pytest.raises(ValueError, match="every step once"):
+        g.obligations([*g.steps, "ingest"])
+    a, b = R / "a.txt", R / "b.txt"
+    loop = EffectGraph(
+        {
+            "ab": Step(src=a.requires(Readable), dst=b.requires(Writable)),
+            "ba": Step(src=b.requires(Readable), dst=a.requires(Writable)),
+        }
+    )
+    with pytest.raises(ValueError, match="cycle"):
+        loop.obligations()
+    assert len(loop.obligations(["ab", "ba"])) == 4
+
+
+def _obligations_hold_on_disk(case, staged):
+    pipeline_, tree = case
+    steps, bodies = build(pipeline_)
+    names = [n for n, _ in steps]
+    g = EffectGraph(dict(steps))
+    if staged:
+        groups = g.stages()
+        if groups is None:
+            return
+        found = g.obligations()
+        # Steps of one group may run in any order: try two.
+        orders = [
+            [names.index(s) for grp in groups for s in grp],
+            [names.index(s) for grp in groups for s in reversed(grp)],
+        ]
+    else:
+        groups = [[n] for n in names]
+        found = g.obligations(names)
+        orders = [list(range(len(steps)))]
+    group = {names.index(s): k for k, grp in enumerate(groups) for s in grp}
+    by_step: dict[str, list] = {}
+    for o in found:
+        by_step.setdefault(o.port.step, []).append(o)
+
+    def earlier_done(i, done):
+        return all(done.get(j) for j in group if group[j] < group[i])
+
+    for env0 in ENVS:
+        for order in orders:
+            with run_root() as d:
+                env = bound(env0, d)
+                make_tree(Path(d), tree)
+
+                def check(i, done):
+                    if not earlier_done(i, done):
+                        return
+                    for o in by_step.get(names[i], []):
+                        if o.status != "discharged":
+                            continue
+                        try:
+                            path = o.port.expr.render(env)
+                        except WendError, ValueError, TypeError:
+                            continue
+                        assert holds(Fact(o.atom, path)) is not False, (o, path, env0)
+
+                done = run(Path(d), steps, bodies, env, order=order, check=check)
+                for i, n in enumerate(names):
+                    refuted = [o for o in by_step.get(n, []) if o.status == "refuted"]
+                    if refuted and earlier_done(i, done):
+                        assert not done[i], (refuted, env0)
+
+
+@settings(max_examples=150, deadline=None, suppress_health_check=list(HealthCheck))
+@given(case=cases)
+@example(case=ROOT_REPLACED)
+def test_obligations_hold_on_disk_when_run_in_order(case):
+    # The oracle: random pipelines over families whose bindings collide, run
+    # in a real directory under several bindings. Wherever every earlier step
+    # completed, a discharged atom holds when the step starts, and a step
+    # with a refuted atom fails.
+    _obligations_hold_on_disk(case, staged=False)
+
+
+@settings(max_examples=150, deadline=None, suppress_health_check=list(HealthCheck))
+@given(case=cases)
+@example(case=ROOT_REPLACED)
+def test_obligations_hold_on_disk_when_run_by_stages(case):
+    # The same, by stages(): a step's group-mates may run before or after it.
+    _obligations_hold_on_disk(case, staged=True)

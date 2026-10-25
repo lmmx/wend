@@ -371,7 +371,9 @@ possible conflict is never taken for independence. A creation is assumed to make
 missing parents idempotently unless the directory is declared, and `existing=[...]` names
 the directories that exist before the run. The graph promises only what the steps
 declare, and compares paths as strings, not files, so a symlink or a `..` resolved on disk
-is not seen. The rules are in
+is not seen. `obligations()` says, for each condition a step requires, whether the steps
+before it settle it (discharged), make it fail (refuted), or leave it to the world. The
+rules are in
 [SEMANTICS.md §15](https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#15-relations-between-families).
 
 ### Unions and queries

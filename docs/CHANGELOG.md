@@ -51,6 +51,20 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   and from 26% to 11% for changed names, with no answer lost. `EffectGraph` gains as
   much: outputs named after one input by different suffixes are independent.
 
+- **What a requirement relies on** (#120). `EffectGraph.obligations(schedule=None)` says,
+  for each condition a step requires, what settles it when the steps run in order or by
+  stages: `"discharged"` by an earlier check or promise of the same path (however it is
+  spelt) that no step in between may change, so it holds whenever the earlier steps
+  completed; `"refuted"`, so the step fails; `"at risk"`, naming the step that may have
+  broken it; or `"external"`, for the world to provide. Creating and writing are never
+  discharged. The answers rest on `wend.effects.ASSUMPTIONS`: nothing outside the steps
+  changes their paths, each step does what it declares, and no two spellings name one
+  file. It carries the experimental families analysis into the library, and a disk
+  oracle checks it as that analysis was checked.
+- **A deferred head is itself** (#120). Two paths below one `parent`, `relative_to` or
+  changed name that is not known until binding now cancel it as a shared prefix, so
+  `relate(e, e)` is `"same"` for every expression, and what follows the head decides.
+
 ### Changed
 
 - The overlap analysis behind `relate` moved from `wend._experimental.overlap` into the

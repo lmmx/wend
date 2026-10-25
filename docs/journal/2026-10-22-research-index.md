@@ -72,8 +72,9 @@ its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #
 | 11 | [Leases](2026-10-22-leases.md) | #115 | 8b2caa0; §3.4 revised for Linux 7.0, 43c675d | `tests/leases_test.py`, `experiments/mutation/mutants.py` |
 | 12 | [Drafts](2026-10-22-drafts.md) | #115 | aa38be1; Yama answered, a60bb7e | `tests/drafts_test.py`, `experiments/mutation/mutants.py` |
 | 13 | [Consolidation: a plan](2026-10-22-consolidation.md) (a proposal) | #115 | a60bb7e | none: nothing in it is done |
-| 14 | [Relations between families, and effects across a pipeline](2026-10-24-relations-and-effects-118.md), and SEMANTICS.md §15 (after 0.3.0) | #118 | on the PR's branch | `tests/{relate,effects}_test.py` (the schedule's oracle), `bench/effects.py`, `examples/pipeline_effects.py` |
-| 15 | [A more precise relation](2026-10-25-relation-precision-119.md): anchors, depth, names changed by binding | #119 | on the PR's branch | `tests/relate_test.py` (two property tests), `tests/overlap_test.py`'s pool |
+| 14 | [Relations between families, and effects across a pipeline](2026-10-24-relations-and-effects-118.md), and SEMANTICS.md §15 (after 0.3.0) | #118 | d5b2779 | `tests/{relate,effects}_test.py` (the schedule's oracle), `bench/effects.py`, `examples/pipeline_effects.py` |
+| 15 | [A more precise relation](2026-10-25-relation-precision-119.md): anchors, depth, names changed by binding | #119 | b4a212f | `tests/relate_test.py` (two property tests), `tests/overlap_test.py`'s pool |
+| 16 | [What a requirement relies on](2026-10-25-obligations.md): obligations over the effect graph, and a deferred head is itself | #120 | on the PR's branch | `tests/effects_test.py` (the disk oracle, in order and by stages), `tests/relate_test.py` (paths below one deferred head) |
 
 ## How the discoveries build on one another
 
@@ -164,6 +165,15 @@ its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #
     - Two answers the engine gives are not yet proofs: a NO for "strictly below" when the
       inner side may render `..`, and a witness of two remainders that binds no prefix
       parameter.
+13. **Identity is not freshness (#120).**
+    - A fact of one spelling is a fact of another when `relate` proves them the same
+      string on every run; whether it still holds is a separate question, answered by
+      what may run in between.
+    - `EffectGraph.obligations()` keeps a fact until a step that may run in between
+      declares a change that may touch it, under three named assumptions, and a disk
+      oracle checks what it discharges and refutes, in order and by stages.
+    - Comparing it with the experimental analysis found a gap in `relate`: an expression
+      under a deferred head was not always itself.
 
 ## Discoveries not to lose
 

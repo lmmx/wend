@@ -33,6 +33,14 @@ A step that creates a path may make its missing parents. The graph assumes it do
 
 What the graph knows is what the steps declare, and its guarantees hold only as far as the declarations describe what each step's code does: a step's code can read or write anything, and a path read without `Readable` declared is not an input here. Two steps in one stage cannot interfere through their declared effects; that is no promise about effects a step has and does not declare. Paths are compared as rendered strings, not as filesystem objects, so two spellings of one file (a symlink, a relative and an absolute path, a `..`, a hard link) are two paths.
 
+## ASSUMPTIONS
+
+```python
+ASSUMPTIONS = frozenset({'closed world', 'declared effects', 'lexical identity'})
+```
+
+What every `Obligation` rests on (docs/SEMANTICS.md §15.6): nothing outside the steps changes their paths while they run; each step's declarations describe what it does; and two spellings of one file are not two paths.
+
 ## Certainty
 
 ```python
@@ -284,6 +292,18 @@ terminal_outputs() -> list[Port]
 
 Paths written that no step reads: the pipeline's results.
 
+### obligations
+
+```python
+obligations(
+    schedule: Sequence[str] | Sequence[Sequence[str]] | None = None,
+) -> list[Obligation]
+```
+
+For every atom each port requires, what it relies on (`Obligation`), when the steps run by `schedule`: an order of step names, or groups (as `stages` gives) whose steps may interleave in any way. The default is `stages`. Raises ValueError if the steps form a cycle and no schedule is given.
+
+A run knows an atom of a path from the moment a check of it passes (a step's precondition, or its postcondition once it completes) until a declared mutation that may touch the path. A fact is of the paths the relation proves the same on every run, or proves below a path known to exist (which then exists, as a directory), or above one known absent. Static identity is not freshness: a fact about one spelling holds of another only while no step that may run in between declares a change to either, and only under `ASSUMPTIONS`.
+
 ### compare
 
 ```python
@@ -365,6 +385,40 @@ reader: Port = field(kw_only=True)
 
 ```python
 deleter: Port = field(kw_only=True)
+```
+
+## Obligation
+
+```python
+Obligation(port: Port, atom: str, status: ObligationStatus, by: Port | None = None)
+```
+
+What one atom a port requires relies on, under `ASSUMPTIONS`.
+
+`status` is `"discharged"` when an earlier step's passed check or confirmed promise (`by`) makes it true of the path on every run, and no step that may run in between may change it; `"refuted"` when such a fact makes it false: the check fails wherever both paths render; `"at risk"` when `by` may refute it, or may have changed a path it was known of; and `"external"` when nothing in the pipeline establishes it, so the world must provide it.
+
+### port
+
+```python
+port: Port
+```
+
+### atom
+
+```python
+atom: str
+```
+
+### status
+
+```python
+status: ObligationStatus
+```
+
+### by
+
+```python
+by: Port | None = None
 ```
 
 ## Port

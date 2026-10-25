@@ -24,6 +24,11 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   is never `{root}/out/x`, and `(data/{sc...}).with_suffix(".b")` is never strictly
   inside or above `data/{sc...}`. On #119's samples, 288 more `"unknown"` answers are now
   `"never"`.
+- **Stems of `.` and `..` are written out** (#128). `with_stem(".")` and
+  `with_stem("..")` of a name whose suffix is unknown had no view, since they may render
+  the name `..`. They are now written out as the stem, a dot and the suffix's text, or
+  the name `..`, so `({root}/{x}).with_stem("..")` is never `{root}/a`. On #119's
+  samples, 552 more `"unknown"` answers are now `"never"`.
 
 ### Fixed
 

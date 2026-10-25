@@ -17,7 +17,7 @@ from hypothesis import strategies as st
 from overlap_test import PARTS, POOL, ab, expressions, n, p, q, s, sc
 
 from wend import Absolute, P, Param, PathExpr, Relation, SubPath, T, relate
-from wend._expr import Deferred
+from wend._expr import Deferred, Splice
 from wend._relate import Memo, _cases, lexically
 from wend.errors import WendError
 
@@ -843,6 +843,83 @@ def test_a_name_changed_below_a_subpath_is_written_out():
     # A parent and a changed name of one base share the split.
     r = relate((P("data") / rel).parent, (P("data") / rel).with_suffix(".b"))
     assert (r.same, r.inside, r.contains) == ("never", "never", "sometimes")
+
+
+@st.composite
+def dot_stems(draw):
+    """The stem "." or ".." given to a name pathlib cannot split yet: a
+    segment's with fields, or a SubPath's last."""
+    e = draw(expressions())
+    e = e / PARTS[draw(st.integers(0, len(PARTS) - 1))]()
+    try:
+        e = e.with_stem(draw(st.sampled_from([".", ".."])))
+    except WendError, ValueError:
+        assume(False)
+    assume(isinstance(e.head, Deferred))
+    if draw(st.booleans()):
+        e = e / draw(st.sampled_from(["a", "x.txt", ".."]))
+    assume(_cases(e, Memo()) is not None)
+    return e
+
+
+def _dot_env(case, e, env):
+    """A case's own names: the suffix's text, bound to the base's suffix less
+    its dot, and a SubPath split as `_split_env` splits it."""
+    base = e.head.base
+    out = {}
+    if isinstance(base.parts[-1], Splice):
+        out = _split_env(case, e, env)
+    suffix = PurePosixPath(base.render(env)).suffix[1:]
+    for name in case.param_names - e.param_names:
+        if name.startswith("_name_"):
+            out[name] = suffix
+    return out
+
+
+@settings(max_examples=200, deadline=None, suppress_health_check=list(HealthCheck))
+@given(e=dot_stems())
+def test_the_cases_of_a_dot_stem_render_all_it_renders(e):
+    # On every binding, the stem "." or ".." renders what one of its cases
+    # renders: the stem, a dot and the suffix's text, or the name "..".
+    cases = _cases(e, Memo())
+    assert cases is not None
+    names = sorted(e.param_names)
+    for combo in itertools.islice(itertools.product(*(POOL[k] for k in names)), 400):
+        env = dict(zip(names, combo, strict=True))
+        path = rendered(e, env)
+        if path is not None:
+            seen = {rendered(c, env | _dot_env(c, e, env)) for c in cases}
+            assert path in seen, (e.pattern, env, path)
+
+
+@settings(max_examples=200, deadline=None, suppress_health_check=list(HealthCheck))
+@given(a=dot_stems(), b=st.one_of(expressions(), dot_stems()))
+def test_dot_stems_hold_for_pooled_bindings(a, b):
+    assert_sound(a, b)
+
+
+def test_a_dot_stem_is_written_out():
+    x = Param("x")
+    # The stem ".." renders the name "..", where the name has no suffix, or
+    # ".." then the suffix: never a name without a leading dot.
+    a = (P("d") / T(t"{x}")).with_stem("..")
+    assert (a.render(x="q"), a.render(x="q.t")) == ("d/..", "d/...t")
+    assert relate(a, P("d") / "a").kind == "disjoint"
+    assert relate(a, P("d") / "..").same == "sometimes"
+    # The stem "." renders "." then the suffix, which begins with a dot: two
+    # dots at least.
+    a = (P("d") / T(t"{x}")).with_stem(".")
+    assert (a.render(x="q."), a.render(x="q.t")) == ("d/..", "d/..t")
+    assert relate(a, P("d") / ".a").kind == "disjoint"
+    assert relate(a, P("d") / "..t").same != "never"
+    # Below a SubPath, the changed name's cases are written out in turn: one
+    # base's name changed two ways renders two names at one depth.
+    rel = SubPath("rel")
+    a = (P("d") / rel).with_stem("..") / "a"
+    assert relate(a, P("d") / "b").same == "never"
+    assert relate(a, P("d") / "b", shared=False).same == "never"
+    r = relate((P("data") / rel).with_stem(".."), (P("data") / rel).with_suffix(".b"))
+    assert (r.inside, r.contains) == ("never", "never")
 
 
 def _rest(case, e, env):

@@ -136,6 +136,62 @@ wend.errors.PathExistsError: 'data/clean/mon.csv' already exists (required: Abse
 
 `effects` lists what each path declares it is used for: `read`, `write`, `create`, `list` or `delete`. It reports the declarations, and does not observe what the step does.
 
+## Across a pipeline
+
+Because a step declares its paths as expressions, what several steps do to each other can be worked out before any of them runs, and before any value is bound. `relate` says how two families of paths relate: whether they name the same path, one inside the other, or neither, for every binding (`"always"`), for some (`"sometimes"`, with an example), for none (`"never"`), or `"unknown"`:
+
+```pycon
+>>> from wend import relate
+>>> relate(src, dst).kind
+'disjoint'
+>>> relate(src, P(root) / "raw").inside
+'always'
+>>> relate(src, P(root) / "raw" / T(t"{Param('other')}.csv")).same
+'sometimes'
+```
+
+By default a parameter name means one value on both sides, as in one run of a pipeline: `{root}/raw/{day}.csv` and `{root}/clean/{day}.csv` never meet, whatever `root` and `day` are. An `EffectGraph` relates every path of a set of steps: which step reads what another writes, which deletes what another reads, and which two write one path. From that it gives an order, the steps that may run at once, and why:
+
+```pycon
+>>> from wend.effects import EffectGraph
+>>> clean = P(root) / "clean" / T(t"{day}.csv")
+>>> report = Step(
+...     src=clean.requires(Readable),
+...     out=(P(root) / "reports" / T(t"{day}.html")).ensures(Exists),
+... )
+>>> purge = Step(old=(P(root) / "raw" / T(t"{day}.csv")).ensures(Absent))
+>>> graph = EffectGraph({"convert": convert, "report": report, "purge": purge})
+>>> graph.order()
+['convert', 'report', 'purge']
+>>> graph.stages()
+[['convert'], ['report', 'purge']]
+>>> graph.independent("report", "purge")
+True
+>>> for line in graph.explain("purge"):
+...     print(line)
+purge.old deletes what convert.src reads, on every run, so convert runs first: {root}/raw/{day}.csv (e.g. day='data', root='out': out/raw/data.csv)
+```
+
+Every link carries how sure it is, and every query counts every link, whatever its certainty. A dependency, hazard or conflict that is only `"sometimes"` or `"unknown"` still orders the steps and keeps them out of one stage: treating it as absent could run two interfering steps at once. `dependencies(certain=True)` keeps the dependencies that hold on every run, and `cycles(certain=True)` the cycles no binding avoids.
+
+A declared path covers what lies below it, since it may be a directory: a step that writes `{root}/raw` and one that reads `{root}/raw/{day}.csv` are linked, and so are two steps that delete a directory and a file in it. A path declared with no conditions at all is kept apart from every path it touches, since its effect is unknown.
+
+A step that creates a file may also make its missing parent directories. The graph assumes it does so idempotently, as `os.makedirs(..., exist_ok=True)` does, unless the step declares the directory as a path of its own: - a path that must exist first is declared with `requires(Exists, Dir)`, and the step then runs after any step that may make it; - a directory made exclusively is declared with `requires(Absent)` and `ensures(Exists, Dir)`.
+
+A `Creatable` or `Writable` check is kept apart from a creation in another step below a directory that may be missing, because making the directory changes what the check finds. Name the directories that exist before the pipeline runs with `existing`, and nothing is made there:
+
+```pycon
+>>> stats = Step(out=(P(root) / "out" / "summary.json").requires(Creatable).ensures(File))
+>>> EffectGraph({"convert": convert, "stats": stats}).stages()
+[['convert'], ['stats']]
+>>> EffectGraph({"convert": convert, "stats": stats}, existing=[P(root) / "out"]).stages()
+[['convert', 'stats']]
+```
+
+The graph promises only what the declarations say. Two steps in one stage cannot interfere through the effects they declare, but a step whose code touches a path it does not declare is outside the graph.
+
+Paths are compared as rendered strings, not as files: a symlink, a `..`, or a relative and an absolute spelling of one file are two paths to the graph ([SEMANTICS.md §15](<https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#15-relations-between-families>)).
+
 ## Errors
 
 Each failed condition raises a `ConditionError`. Its `path` is the rendered path and its `condition` is the condition that failed. Each subclass also derives from the builtin exception for the same failure, so existing handlers keep working. `InvalidBindingError` is a `ValueError`.
@@ -169,5 +225,5 @@ Conditions are checked when the program runs. A type checker sees a `PathExpr`, 
 
 ## Reference
 
-- `wend.conditions`, `Step`, `PathExpr.check`, `PathExpr.confirm`, `wend.errors`
+- `wend.conditions`, `Step`, `PathExpr.check`, `PathExpr.confirm`, `wend.errors`, `relate`, `wend.effects`
 - [SEMANTICS.md §10](<https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#10-conditions>) (conditions), [§11](<https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#11-unions-and-queries>) (unions and `first`) and [§12](<https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#12-schemas>) (schemas)

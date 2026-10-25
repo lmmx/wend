@@ -53,6 +53,7 @@ https://lmmx.github.io/wend/.
 - [wend.infer](<https://lmmx.github.io/wend/reference/api/infer/index.md>): Infer path expressions from an existing directory tree.
 - [wend.schema](<https://lmmx.github.io/wend/reference/api/schema/index.md>): Declare a directory layout as a schema of files and directories, and check trees against it.
 - [wend.lineage](<https://lmmx.github.io/wend/reference/api/lineage/index.md>): Lineage of expressions and of the files made from them.
+- [wend.effects](<https://lmmx.github.io/wend/reference/api/effects/index.md>): Relations between path families, and the effects of a pipeline's steps on each other, before any binding.
 - [wend.query](<https://lmmx.github.io/wend/reference/api/query/index.md>): Queries over discovered paths, with filesystem predicates.
 - [wend.templates](<https://lmmx.github.io/wend/reference/api/templates/index.md>): Ready-made path templates, such as numbered shards.
 - [wend.frame](<https://lmmx.github.io/wend/reference/api/frame/index.md>): Vectorised resolution and matching of path columns with Polars.

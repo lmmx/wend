@@ -702,6 +702,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#across-a-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Across a pipeline
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#errors" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -1193,6 +1204,8 @@
       
         
       
+        
+      
     
     
     
@@ -1445,6 +1458,33 @@
     
   
   wend.lineage
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+                
+              
+                
+                  
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/api/effects/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+  wend.effects
 
     
   </span>
@@ -1930,6 +1970,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#across-a-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        Across a pipeline
+      </span>
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#errors" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2213,6 +2264,76 @@ as a file. A second run fails before its body runs, because <code>dst</code> mus
 <p><a class="autorefs autorefs-internal" title="            effects" href="../../reference/api/conditions/#wend.conditions.Step.effects"><code>effects</code></a> lists what each path declares it is used for: <code>read</code>,
 <code>write</code>, <code>create</code>, <code>list</code> or <code>delete</code>. It reports the declarations, and does not observe
 what the step does.</p>
+<h2 id="across-a-pipeline">Across a pipeline<a class="headerlink" href="#across-a-pipeline" title="Permanent link">&para;</a></h2>
+<p>Because a step declares its paths as expressions, what several steps do to each other can
+be worked out before any of them runs, and before any value is bound.
+<a class="autorefs autorefs-internal" title="            wend.relate" href="../../reference/api/wend/#wend.relate"><code>relate</code></a> says how two families of paths relate: whether they name the same
+path, one inside the other, or neither, for every binding (<code>"always"</code>), for some
+(<code>"sometimes"</code>, with an example), for none (<code>"never"</code>), or <code>"unknown"</code>:</p>
+<div class="language-pycon highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">wend</span><span class="w"> </span><span class="kn">import</span> <span class="n">relate</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">relate</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">dst</span><span class="p">)</span><span class="o">.</span><span class="n">kind</span>
+<span class="go">'disjoint'</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">relate</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">P</span><span class="p">(</span><span class="n">root</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"raw"</span><span class="p">)</span><span class="o">.</span><span class="n">inside</span>
+<span class="go">'always'</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">relate</span><span class="p">(</span><span class="n">src</span><span class="p">,</span> <span class="n">P</span><span class="p">(</span><span class="n">root</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"raw"</span> <span class="o">/</span> <span class="n">T</span><span class="p">(</span><span class="sa">t</span><span class="s2">"</span><span class="si">{</span><span class="n">Param</span><span class="p">(</span><span class="s1">'other'</span><span class="p">)</span><span class="si">}</span><span class="s2">.csv"</span><span class="p">))</span><span class="o">.</span><span class="n">same</span>
+<span class="go">'sometimes'</span>
+</code></pre></div>
+<p>By default a parameter name means one value on both sides, as in one run of a pipeline:
+<code>{root}/raw/{day}.csv</code> and <code>{root}/clean/{day}.csv</code> never meet, whatever <code>root</code> and <code>day</code>
+are. An <a class="autorefs autorefs-internal" title="            EffectGraph" href="../../reference/api/effects/#wend.effects.EffectGraph"><code>EffectGraph</code></a> relates every path of a set of steps:
+which step reads what another writes, which deletes what another reads, and which two
+write one path. From that it gives an order, the steps that may run at once, and why:</p>
+<div class="language-pycon highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="kn">from</span><span class="w"> </span><span class="nn">wend.effects</span><span class="w"> </span><span class="kn">import</span> <span class="n">EffectGraph</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">clean</span> <span class="o">=</span> <span class="n">P</span><span class="p">(</span><span class="n">root</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"clean"</span> <span class="o">/</span> <span class="n">T</span><span class="p">(</span><span class="sa">t</span><span class="s2">"</span><span class="si">{</span><span class="n">day</span><span class="si">}</span><span class="s2">.csv"</span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">report</span> <span class="o">=</span> <span class="n">Step</span><span class="p">(</span>
+<span class="gp">... </span>    <span class="n">src</span><span class="o">=</span><span class="n">clean</span><span class="o">.</span><span class="n">requires</span><span class="p">(</span><span class="n">Readable</span><span class="p">),</span>
+<span class="gp">... </span>    <span class="n">out</span><span class="o">=</span><span class="p">(</span><span class="n">P</span><span class="p">(</span><span class="n">root</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"reports"</span> <span class="o">/</span> <span class="n">T</span><span class="p">(</span><span class="sa">t</span><span class="s2">"</span><span class="si">{</span><span class="n">day</span><span class="si">}</span><span class="s2">.html"</span><span class="p">))</span><span class="o">.</span><span class="n">ensures</span><span class="p">(</span><span class="n">Exists</span><span class="p">),</span>
+<span class="gp">... </span><span class="p">)</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">purge</span> <span class="o">=</span> <span class="n">Step</span><span class="p">(</span><span class="n">old</span><span class="o">=</span><span class="p">(</span><span class="n">P</span><span class="p">(</span><span class="n">root</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"raw"</span> <span class="o">/</span> <span class="n">T</span><span class="p">(</span><span class="sa">t</span><span class="s2">"</span><span class="si">{</span><span class="n">day</span><span class="si">}</span><span class="s2">.csv"</span><span class="p">))</span><span class="o">.</span><span class="n">ensures</span><span class="p">(</span><span class="n">Absent</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">graph</span> <span class="o">=</span> <span class="n">EffectGraph</span><span class="p">({</span><span class="s2">"convert"</span><span class="p">:</span> <span class="n">convert</span><span class="p">,</span> <span class="s2">"report"</span><span class="p">:</span> <span class="n">report</span><span class="p">,</span> <span class="s2">"purge"</span><span class="p">:</span> <span class="n">purge</span><span class="p">})</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">graph</span><span class="o">.</span><span class="n">order</span><span class="p">()</span>
+<span class="go">['convert', 'report', 'purge']</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">graph</span><span class="o">.</span><span class="n">stages</span><span class="p">()</span>
+<span class="go">[['convert'], ['report', 'purge']]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">graph</span><span class="o">.</span><span class="n">independent</span><span class="p">(</span><span class="s2">"report"</span><span class="p">,</span> <span class="s2">"purge"</span><span class="p">)</span>
+<span class="go">True</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">graph</span><span class="o">.</span><span class="n">explain</span><span class="p">(</span><span class="s2">"purge"</span><span class="p">):</span>
+<span class="gp">... </span>    <span class="nb">print</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+<span class="go">purge.old deletes what convert.src reads, on every run, so convert runs first: {root}/raw/{day}.csv (e.g. day='data', root='out': out/raw/data.csv)</span>
+</code></pre></div>
+<p>Every link carries how sure it is, and every query counts every link, whatever its
+certainty. A dependency, hazard or conflict that is only <code>"sometimes"</code> or <code>"unknown"</code> still
+orders the steps and keeps them out of one stage: treating it as absent could run two
+interfering steps at once. <a class="autorefs autorefs-internal" title="            dependencies" href="../../reference/api/effects/#wend.effects.EffectGraph.dependencies"><code>dependencies(certain=True)</code></a>
+keeps the dependencies that hold on every run, and
+<a class="autorefs autorefs-internal" title="            cycles" href="../../reference/api/effects/#wend.effects.EffectGraph.cycles"><code>cycles(certain=True)</code></a> the cycles no binding avoids.</p>
+<p>A declared path covers what lies below it, since it may be a directory: a step that writes
+<code>{root}/raw</code> and one that reads <code>{root}/raw/{day}.csv</code> are linked, and so are two steps that
+delete a directory and a file in it. A path declared with no conditions at all is kept apart
+from every path it touches, since its effect is unknown.</p>
+<p>A step that creates a file may also make its missing parent directories. The graph
+assumes it does so idempotently, as <code>os.makedirs(..., exist_ok=True)</code> does, unless the step
+declares the directory as a path of its own:
+- a path that must exist first is declared with <code>requires(Exists, Dir)</code>, and the step then
+  runs after any step that may make it;
+- a directory made exclusively is declared with <code>requires(Absent)</code> and
+  <code>ensures(Exists, Dir)</code>.</p>
+<p>A <code>Creatable</code> or <code>Writable</code> check is kept apart from a creation in another step below a
+directory that may be missing, because making the directory changes what the check finds.
+Name the directories that exist before the pipeline runs with <code>existing</code>, and nothing is
+made there:</p>
+<div class="language-pycon highlight"><pre><span></span><code><span class="gp">&gt;&gt;&gt; </span><span class="n">stats</span> <span class="o">=</span> <span class="n">Step</span><span class="p">(</span><span class="n">out</span><span class="o">=</span><span class="p">(</span><span class="n">P</span><span class="p">(</span><span class="n">root</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"out"</span> <span class="o">/</span> <span class="s2">"summary.json"</span><span class="p">)</span><span class="o">.</span><span class="n">requires</span><span class="p">(</span><span class="n">Creatable</span><span class="p">)</span><span class="o">.</span><span class="n">ensures</span><span class="p">(</span><span class="n">File</span><span class="p">))</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">EffectGraph</span><span class="p">({</span><span class="s2">"convert"</span><span class="p">:</span> <span class="n">convert</span><span class="p">,</span> <span class="s2">"stats"</span><span class="p">:</span> <span class="n">stats</span><span class="p">})</span><span class="o">.</span><span class="n">stages</span><span class="p">()</span>
+<span class="go">[['convert'], ['stats']]</span>
+<span class="gp">&gt;&gt;&gt; </span><span class="n">EffectGraph</span><span class="p">({</span><span class="s2">"convert"</span><span class="p">:</span> <span class="n">convert</span><span class="p">,</span> <span class="s2">"stats"</span><span class="p">:</span> <span class="n">stats</span><span class="p">},</span> <span class="n">existing</span><span class="o">=</span><span class="p">[</span><span class="n">P</span><span class="p">(</span><span class="n">root</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"out"</span><span class="p">])</span><span class="o">.</span><span class="n">stages</span><span class="p">()</span>
+<span class="go">[['convert', 'stats']]</span>
+</code></pre></div>
+<p>The graph promises only what the declarations say. Two steps in one stage cannot
+interfere through the effects they declare, but a step whose code touches a path it does
+not declare is outside the graph.</p>
+<p>Paths are compared as rendered strings, not as files: a symlink, a <code>..</code>, or a relative and
+an absolute spelling of one file are two paths to the graph
+(<a href="https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#15-relations-between-families">SEMANTICS.md §15</a>).</p>
 <h2 id="errors">Errors<a class="headerlink" href="#errors" title="Permanent link">&para;</a></h2>
 <p>Each failed condition raises a <a class="autorefs autorefs-internal" title="            ConditionError" href="../../reference/api/errors/#wend.errors.ConditionError"><code>ConditionError</code></a>. Its <code>path</code> is the
 rendered path and its <code>condition</code> is the condition that failed. Each subclass also derives
@@ -2285,7 +2406,7 @@ filesystem.</p>
 <ul>
 <li><a class="autorefs autorefs-internal" href="../../reference/api/conditions/#wend.conditions"><code>wend.conditions</code></a>, <a class="autorefs autorefs-internal" title="            Step" href="../../reference/api/conditions/#wend.conditions.Step"><code>Step</code></a>,
   <a class="autorefs autorefs-internal" title="            check" href="../../reference/api/wend/#wend.PathExpr.check"><code>PathExpr.check</code></a>, <a class="autorefs autorefs-internal" title="            confirm" href="../../reference/api/wend/#wend.PathExpr.confirm"><code>PathExpr.confirm</code></a>,
-  <a class="autorefs autorefs-internal" href="../../reference/api/errors/#wend.errors"><code>wend.errors</code></a></li>
+  <a class="autorefs autorefs-internal" href="../../reference/api/errors/#wend.errors"><code>wend.errors</code></a>, <a class="autorefs autorefs-internal" title="            wend.relate" href="../../reference/api/wend/#wend.relate"><code>relate</code></a>, <a class="autorefs autorefs-internal" href="../../reference/api/effects/#wend.effects"><code>wend.effects</code></a></li>
 <li><a href="https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#10-conditions">SEMANTICS.md §10</a>
   (conditions), <a href="https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#11-unions-and-queries">§11</a>
   (unions and <code>first</code>) and <a href="https://github.com/lmmx/wend/blob/master/docs/SEMANTICS.md#12-schemas">§12</a>

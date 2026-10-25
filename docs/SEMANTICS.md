@@ -1097,16 +1097,43 @@ every pair is never, sometimes when one pair shows it, and never always.
    never what an accepted one renders. Defaults are the exception: a name both sides
    give different defaults renders differently when unbound, and is not compared
    equal.
-2. **Prefix cancellation.** Under shared bindings, a head and leading parts that are
+2. **Anchors.** Paths with different anchors are never the same, nor nested. A literal
+   head has one anchor (`""` for a relative path, `/`, or `//`). An `Absolute`
+   parameter renders `/` or `//`: POSIX keeps a leading `//` as an anchor of its own.
+   A name changed by `with_name`, `with_suffix` or `with_stem` keeps its base's anchor.
+   Other heads may render any.
+3. **A changed name is its base's parent and one segment.** When the name is unknown
+   until binding, `with_name`, `with_suffix` and `with_stem` are deferred (§9). Each
+   renders its base's parent, then one segment:
+   - `with_name(n)` renders `n` exactly;
+   - `with_suffix(s)` renders some text, then `s`;
+   - `with_stem(t)` renders `t`, then some text.
+
+   The relation reasons on this *view* of the expression. The view renders what the
+   expression renders, and more, since its text stands for any text. So the view
+   proves `"never"`, nesting by depth (4), and that one operation is the same as itself.
+   It shows `"sometimes"` only through a binding of the expressions themselves. Where
+   the view leaves an answer unknown, the expressions are asked as they are.
+   - An empty stem is no stem: `.csv` has no suffix, so
+     `({root}/raw/{day}.csv).with_suffix(".parquet")` renders `r/raw/.csv.parquet`
+     where `day` is empty.
+   - Its relation to `{root}/raw/{day}.parquet` is therefore `"sometimes"`, not
+     `"always"`, as wend's own deferral of the operation implies.
+4. **Prefix cancellation.** Under shared bindings, a head and leading parts that are
    equal by (1) render one string `s` wherever both expressions render. Joining `s`
    onto a relative remainder is injective and keeps "inside", so `a` and `b` relate
    exactly as their remainders do. Under independent bindings only literal heads and
-   literal segments cancel. Deferred heads never do.
-3. **Structure decides** when the remainders are both empty (the same, always), or
-   one is empty and the other holds a segment (inside or containing, always; a
-   `SubPath` may be empty, so alone it decides nothing), or their first parts are
-   different literal segments (never, all three).
-4. **Otherwise the overlap analysis decides** (`wend._overlap`, §15.5): `same` asks
+   literal segments cancel. Deferred heads never do, except through their view (3).
+5. **Structure decides** when:
+   - the remainders are both empty: the same, always;
+   - one is empty and the other holds a segment: inside or containing, always. A
+     `SubPath` may be empty, so alone it decides nothing;
+   - their first parts are different literal segments: never, all three;
+   - both are segments alone, which decides by depth. A segment renders exactly one
+     segment, never `""`, `.` or a separator (§3), so each remainder renders a fixed
+     number of them. Paths of different depths are never the same, and paths of equal
+     depths are never one inside the other.
+6. **Otherwise the overlap analysis decides** (`wend._overlap`, §15.5): `same` asks
    whether the remainders can render one path; `inside` whether `a`'s can render one
    strictly below `b`'s, built as `b`'s remainder, a segment parameter and a `SubPath`;
    `contains` the reverse. Its NO is `"never"`, except for `inside` and `contains` when
@@ -1211,7 +1238,7 @@ good as the convention that every step spells a file one way.
 
 ### 15.5 The overlap analysis
 
-The engine behind §15.3 (4), private as `wend._overlap`: it asks whether two
+The engine behind §15.3 (6), private as `wend._overlap`: it asks whether two
 expressions can render one path, answering YES with a witness both render, NO when no
 *shape* of one meets a shape of the other, or MAYBE. A shape over-approximates the
 paths an expression renders: an anchor and a sequence of segments drawn from regular

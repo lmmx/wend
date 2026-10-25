@@ -72,6 +72,7 @@ from ._relate import (
     _key,
     _static,
     _value_key,
+    _view,
     either,
     relate,
 )
@@ -454,6 +455,8 @@ class EffectGraph:
         structure says which one it is."""
         if not (isinstance(a, PathExpr) and isinstance(b, PathExpr)):
             return True, None
+        # A changed name lies where its base's does (`wend.relate`'s view).
+        a, b = _view(a, self._memo), _view(b, self._memo)
         k = _common(a, b, self.shared, self._memo)
         if k is None:
             return True, None

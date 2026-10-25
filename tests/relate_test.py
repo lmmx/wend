@@ -9,9 +9,10 @@ import itertools
 import pytest
 from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
-from overlap_test import POOL, expressions
+from overlap_test import PARTS, POOL, expressions, p, q
 
 from wend import Absolute, P, Param, PathExpr, Relation, SubPath, T, relate
+from wend._expr import Deferred
 from wend._relate import lexically
 from wend.errors import WendError
 
@@ -90,6 +91,49 @@ def test_dotdot_makes_a_path_lexically_inside_and_is_never_ruled_out_by_shape():
     assert relate(P("x") / "..", P("x")).inside == "always"
 
 
+def test_a_changed_name_keeps_its_parent_and_what_the_change_fixes():
+    # with_suffix on {day}.csv is deferred: an empty day renders ".csv",
+    # which has no suffix, so the new name is ".csv.parquet", not ".parquet".
+    pq = raw.with_suffix(".parquet")
+    r = relate(pq, P(root) / "raw" / T(t"{day}.parquet"))
+    assert (r.same, r.inside, r.contains) == ("sometimes", "never", "never")
+    assert pq.render(root="r", day="") == "r/raw/.csv.parquet"
+    assert relate(pq, raw).kind == "disjoint"  # it always ends in .parquet
+    assert relate(pq, clean.with_suffix(".parquet")).kind == "disjoint"
+    assert relate(pq, P(root) / "raw").kind == "inside"
+    assert relate(pq, raw.with_suffix(".parquet")).kind == "same"
+    assert relate(raw.with_stem("x"), P(root) / "raw" / "x.csv").same == "sometimes"
+    assert relate(raw.with_stem("x"), P(root) / "raw" / "y.csv").kind == "disjoint"
+    stem = (P("_") / T(t"{other}")).name
+    assert relate(raw.with_stem(stem), P(root) / "raw" / "x.csv").same == "sometimes"
+    assert relate(raw.with_name("a.json"), P(root) / "raw" / "a.json").kind == "same"
+    assert relate(raw.with_name("a.json") / "x", P(root) / "raw").kind == "inside"
+    # A name changed twice: the second change fixes it whatever the first did.
+    assert relate(pq.with_name("a.json"), P(root) / "raw" / "a.json").kind == "same"
+
+
+def test_different_anchors_never_meet():
+    assert relate(P("."), P("/")).kind == "disjoint"
+    assert (
+        relate(P("x") / T(t"{day}.csv"), P("/x") / T(t"{day}.csv")).kind == "disjoint"
+    )
+    assert relate(P(Absolute("ab")) / "x", P("x")).kind == "disjoint"
+    assert relate(P("/x"), P("//x")).kind == "disjoint"
+    # An absolute value may start with "//", which POSIX keeps as an anchor.
+    assert relate(P(Absolute("ab")), P("//x")).same == "sometimes"
+    # Only a changed name keeps its base's anchor: relative_to drops it.
+    assert relate(P(Absolute("ab")).relative_to(P("/")), P("x")).same == "sometimes"
+
+
+def test_paths_of_fixed_depth_nest_only_by_depth():
+    a = P(root) / "raw" / T(t"{day}.csv")
+    b = P(root) / T(t"{other}") / T(t"{day}.parquet")
+    r = relate(a, b)
+    assert (r.inside, r.contains) == ("never", "never")
+    r = relate(P(root) / T(t"{other}"), a)
+    assert (r.same, r.inside) == ("never", "never")
+
+
 def test_strings_and_unions_relate_too():
     assert relate("data/raw", "data/raw/x.csv").kind == "contains"
     r = relate(raw | clean, clean)
@@ -108,13 +152,56 @@ def test_a_relation_reads_as_one_word_and_three_answers():
 # -- every claim against every pooled binding ----------------------------------------
 
 
+NAMES = [
+    ("with_suffix", lambda: ".txt"),
+    ("with_suffix", lambda: ""),
+    ("with_suffix", lambda: ".b"),
+    ("with_stem", lambda: "x"),
+    ("with_stem", lambda: "a"),
+    ("with_stem", lambda: (P("_") / T(t"{p}")).name),
+    ("with_name", lambda: "x.txt"),
+    ("with_name", lambda: (P("_") / T(t"{q}.txt")).name),
+]
+
+
+@st.composite
+def derived(draw):
+    """An expression, its name sometimes changed by ``with_name``,
+    ``with_suffix`` or ``with_stem`` (deferred while the name is unknown),
+    and sometimes joined onto afterwards."""
+    e = draw(expressions())
+    for _ in range(draw(st.integers(0, 2))):
+        op, arg = NAMES[draw(st.integers(0, len(NAMES) - 1))]
+        try:
+            e = getattr(e, op)(arg())
+        except WendError, ValueError, TypeError:
+            break
+    if draw(st.booleans()):
+        e = e / draw(st.sampled_from(["a", "x.txt", ".."]))
+    return e
+
+
 @st.composite
 def pairs(draw):
     """Two expressions, often sharing a prefix (head and parts), as the paths
-    of one pipeline do."""
-    a = draw(expressions())
+    of one pipeline do; sometimes with names changed (`derived`)."""
+    a = draw(derived() if draw(st.booleans()) else expressions())
     if draw(st.booleans()):
-        b = draw(expressions())
+        b = draw(derived() if draw(st.booleans()) else expressions())
+    elif isinstance(a.head, Deferred):
+        # A sibling of the changed name, or another change of it: the pairs
+        # whose names may coincide.
+        base = a.head.base
+        while isinstance(base.head, Deferred):
+            base = base.head.base
+        rest = draw(derived() if draw(st.booleans()) else expressions())
+        b = PathExpr(base.head, base.parts[:-1] + rest.parts)
+        if draw(st.booleans()):
+            op, arg = NAMES[draw(st.integers(0, len(NAMES) - 1))]
+            try:
+                b = getattr(base, op)(arg())
+            except WendError, ValueError, TypeError:
+                pass
     else:
         k = draw(st.integers(0, len(a.parts)))
         rest = draw(expressions())
@@ -129,10 +216,9 @@ def rendered(e, env):
         return None
 
 
-@settings(max_examples=300, deadline=None, suppress_health_check=[HealthCheck.too_slow])
-@given(pair=pairs())
-def test_every_always_and_never_holds_for_every_pooled_binding(pair):
-    a, b = pair
+def assert_sound(a, b):
+    """Every "always" and "never" of relate(a, b), in both modes, holds for
+    every pooled binding (up to 800 shared, 120 x 120 independent)."""
     for shared in (True, False):
         r = relate(a, b, shared=shared)
         check_examples(a, b, r)
@@ -168,6 +254,45 @@ def test_every_always_and_never_holds_for_every_pooled_binding(pair):
                     assert how == h, (h, "always", a.pattern, b.pattern, env, pa, pb)
                 if r[h] == "never":
                     assert how != h, (h, "never", a.pattern, b.pattern, env, pa, pb)
+
+
+@settings(max_examples=300, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(pair=pairs())
+def test_every_always_and_never_holds_for_every_pooled_binding(pair):
+    assert_sound(*pair)
+
+
+@st.composite
+def renamed(draw):
+    """A name changed by ``with_name``, ``with_suffix`` or ``with_stem``, and
+    a path beside it, or the same name changed again: pairs whose names may
+    coincide, which `pairs` draws rarely."""
+    base = draw(expressions())
+    if not base.parts:
+        base = base / "x.txt"
+    op, arg = NAMES[draw(st.integers(0, len(NAMES) - 1))]
+    try:
+        a = getattr(base, op)(arg())
+    except WendError, ValueError, TypeError:
+        a = base
+    if draw(st.booleans()):
+        op, arg = NAMES[draw(st.integers(0, len(NAMES) - 1))]
+        try:
+            b = getattr(base, op)(arg())
+        except WendError, ValueError, TypeError:
+            b = base
+    else:
+        last = PARTS[draw(st.integers(0, len(PARTS) - 1))]()
+        b = PathExpr(base.head, base.parts[:-1]) / last
+    if draw(st.booleans()):
+        a = a / "a"
+    return a, b
+
+
+@settings(max_examples=300, deadline=None, suppress_health_check=[HealthCheck.too_slow])
+@given(pair=renamed())
+def test_changed_names_hold_for_every_pooled_binding(pair):
+    assert_sound(*pair)
 
 
 @settings(max_examples=150, deadline=None, suppress_health_check=[HealthCheck.too_slow])

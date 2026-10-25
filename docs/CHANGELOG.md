@@ -43,6 +43,14 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   order (four "maybe" edges and a false cycle) gets five certain dependencies, an order and
   stages, in about 0.2 ms where the experimental graph took 27 to 40 ms.
 
+- **`relate` proves more** (#119). Paths with different anchors (relative, `/`, `//`) are
+  never related; paths of segments alone nest only by depth; and a name changed by
+  `with_suffix`, `with_stem` or `with_name` while its value is unknown is related as its
+  base's parent and one segment of which the operation fixes the suffix, the stem or
+  the name. Over the property tests' pairs, `"unknown"` answers fall from 15% to 8%,
+  and from 26% to 11% for changed names, with no answer lost. `EffectGraph` gains as
+  much: outputs named after one input by different suffixes are independent.
+
 ### Changed
 
 - The overlap analysis behind `relate` moved from `wend._experimental.overlap` into the

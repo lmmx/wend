@@ -1283,10 +1283,18 @@ directories above it exist and on permissions at that moment, and every creation
 change that (§15.4, parents).
 
 **Which paths a fact is of.** A fact is of the paths the relation proves the same on
-every run (`same` is `"always"`, §15.3), and only those. Two more are derived:
-- a path known to exist that is always *inside* another makes the other exist, as a
-  directory (`exists`, `dir`);
+every run (`same` is `"always"`, §15.3), and only those. More are derived:
+- a passed `read` says the path exists, and a passed `list` that it exists as a
+  directory (§10's table: `Readable` needs the path to exist, `Listable` a directory);
+- a path known to exist (or to be readable or listable) that is always *inside* another
+  makes the other exist, as a directory (`exists`, `dir`);
 - a path known absent makes every path always inside it absent.
+
+**Paths given as existing** (`EffectGraph(..., existing=[...])`, §15.4) are facts from
+the start that no step forgets: the graph refuses a step that may delete one or a
+directory above it, so each exists throughout, and so does every directory above it.
+Such a fact names, as `by`, a port of no step (`by.step == ""`). It says a path exists,
+not that it is a directory: only the directories above it are.
 
 A fact refutes an atom it excludes: `exists` and `absent`, `absent` and `read` or `list`,
 `file` and `list`, and `file` and `dir` of a path known to exist (both hold of a missing

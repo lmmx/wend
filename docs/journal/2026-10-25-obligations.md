@@ -243,3 +243,61 @@ of the whole expressions as well (§4).
 - **[Open]** Freshness in the stronger sense of #114 (a file changed in place with no
   observable trace) is outside the closed-world assumption: the method says what the
   declarations settle, not what another process may do.
+
+## 7. Addendum (#121): what paths given as existing, reads and listings establish
+
+**[Proven]**, under `ASSUMPTIONS`:
+1. **A passed read or listing shows existence.** §10's table: `Readable` holds only of a
+   path that exists, and `Listable` only of a directory. So a passed check of `read`
+   makes `exists` known, and of `list` makes `exists` and `dir` known, for as long as the
+   fact itself lasts (§2, 1). A read says nothing of the kind, since `Readable` holds of a
+   directory too. Each also counts as evidence for the containment rule (§2, 3): a
+   readable path below `p` shows that `p` exists, as a directory.
+2. **A path given as existing exists throughout.** The constructor refuses a graph in
+   which a step may delete such a path or a directory above it (§15.4), so under the
+   declared-effects assumption nothing removes it, and nothing removes a directory above
+   it. Its existence is a fact from the start that no change forgets, unlike a fact a
+   step learns. It says the path exists, not that it is a directory; only the directories
+   above it are, by the containment rule.
+
+**[Fact]** The obligation that cites such a fact names a port of no step (`by.step ==
+""`), which the obligation prints as "given as existing". The literal-prefix index
+(`_apart`) looked ports up by identity, and the first version made these ports afresh
+inside `obligations()`, so the extended oracle's first run raised `KeyError`. They are
+now made once, in the constructor, and indexed with the rest.
+
+**[Measured]** The disk oracle gained two roles, `Readable` alone and `Listable` alone,
+so that the implications are tested apart from `Exists` and `Dir`, and three choices of
+what the graph is told exists: nothing, the root, or the `raw` directory where the tree
+has one. Over 600 derandomised cases, each judged in order and by stages, master
+(`cc964ff`) against this branch:
+
+| status | master | this branch |
+|---|---|---|
+| discharged | 1,353 | 1,738 |
+| refuted | 564 | 566 |
+| at risk | 1,334 | 1,367 |
+| external | 8,209 | 7,789 |
+
+Answer by answer:
+- 372 `"external"` became `"discharged"`;
+- 13 `"at risk"` became `"discharged"`;
+- 2 `"external"` became `"refuted"`;
+- 46 `"external"` became `"at risk"`: a fact now known that may refute them.
+
+No discharged or refuted answer was lost.
+
+**[Measured]** Mutants of the new rules, against `tests/effects_test.py` under seeds 0 and
+1:
+
+| mutant | killed by |
+|---|---|
+| a read shows a directory | `test_a_read_or_listing_says_the_path_exists` |
+| a listing shows no directory | the same |
+| a read or listing below is no evidence above | the same |
+| a path given as existing forgotten like any fact | `test_a_path_given_as_existing_is_a_fact_throughout` |
+| paths given as existing ignored | the same |
+| a path given as existing taken for a directory | the same |
+| a passed `Writable` check shows existence | survived: equivalent. A `Writable` port supplies its path (the verb `write`), so its own step forgets the fact as soon as it is learned, and no later step can use it. It would be unsound otherwise: a missing path may be `Writable` (§10) |
+
+**[Measured]** The extended oracles pass under seeds 0 to 4, 150 cases each.

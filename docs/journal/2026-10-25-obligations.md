@@ -65,32 +65,42 @@ may have broken the atom, or the known fact that may refute it, as a lead, not a
 ## 3. What the comparison found
 
 **[Measured]** The method against the experimental `analyse_families`, atom by atom over
-400 generated pipelines (seed 0), both run in order:
+400 generated pipelines (seed 0), both run in order. First as the method was written,
+then once `relate` cancelled a deferred head (below):
 
-| families says | obligations says | count |
-|---|---|---|
-| known | discharged | 428 |
-| refuted | refuted | 197 |
-| neither | discharged | 66 |
-| neither | refuted | 25 |
-| known | at risk or external | 30 |
-| refuted | at risk | 15 |
+| families says | obligations says | first | after |
+|---|---|---|---|
+| known | discharged | 428 | 458 |
+| known | at risk or external | 30 | 0 |
+| refuted | refuted | 197 | 212 |
+| refuted | at risk | 15 | 0 |
+| neither | discharged | 66 | 66 |
+| neither | refuted | 25 | 25 |
 
 On the families tests' worked pipeline the two agree exactly
 (`test_obligations_agree_with_the_experimental_analysis_on_its_pipeline`).
 
-- **Where the method knows more** (91 atoms), it is through the derived rules (existence
-  of a parent, absence below) and `relate`'s precision since #119: for example
-  `with_suffix({root}/raw/{name}.tmp, ".csv")` listed, then required as a directory.
-- **Where it knew less** (45 atoms), every case involved one family,
+- **Where the method knew less** (45 atoms), every case involved one family,
   `up = parent({root}/{name}/{rel...})`: a `parent` that is deferred because the last part
   is a `SubPath`. `relate(up, up)` was `"sometimes"`, not `"always"`. The experimental
   `must_equal` compares construction, so it saw the two as one.
+- **Where it knows more** (91 atoms, all checked by the disk oracle):
+  - 60 through a sameness `must_equal` does not see. For example, `{root}/raw/{day}.csv` with `day`
+    declared `str`, against the same path with `day` defaulting to `tue`: `must_equal`
+    keeps them apart for the default, but wherever both render, `day` is bound, so they
+    are one string. A step whose path cannot render does not complete, so no fact
+    reaches past it;
+  - 27 through a fact the families analysis forgot. It forgets on any possible overlap,
+    and `relate` since #119 proves `"never"` where it could not: a step writing
+    `{root}/tmp/{day}/x` no longer erases what was known of
+    `with_suffix({root}/raw/{name}.tmp, ".csv")`;
+  - 4 through the derived rules: `{root}/raw` exists, as a directory, once something
+    below it was made.
 
-**[Fact]** That is a gap in `relate`, not in the method: an expression renders one string
-for a binding, so an expression is always itself. `_common` refused to cancel any deferred
-head, so the relation fell through to the overlap engine, whose shapes for a deferred
-`parent` are coarse.
+**[Fact]** The missing 45 were a gap in `relate`, not in the method: an expression renders
+one string for a binding, so an expression is always itself. `_common` refused to cancel
+any deferred head, so the relation fell through to the overlap engine, whose shapes for a
+deferred `parent` are coarse.
 
 **[Proven]** A deferred head is a function of the binding, as a head parameter is: its
 operation is pure string work (`PurePosixPath.parent`, `relative_to`, `with_*`) on what its
@@ -102,10 +112,36 @@ parameters for the defaults check, returned nothing for a deferred head. Both ar
 `_common` cancels alike deferred heads under shared bindings, and `_names` looks inside
 them. Under independent bindings nothing changes: only a root or relative head cancels.
 
-After the change, the 45 atoms the families analysis knew and the method did not are
-OPEN_AFTER.
-
 ## 4. Counterexamples found while building it
+
+- **A soundness defect on master: a changed name may be `..`.** The full suite's run of
+  `test_every_always_and_never_holds_for_every_pooled_binding` found
+  `relate(with_suffix({root}, "")/.., with_suffix({root}, ""), shared=False).same ==
+  "never"`, though `root="a"` and `root="a/.."` render `a/..` on both sides. pathlib
+  keeps the name `..` through `with_suffix("")` (a name of `..` has no suffix), and
+  makes it from the stem `..`, or the stem `.` before the suffix `.`. Two places assumed
+  a new name is never `..`, as a formatted segment never is:
+  - the overlap engine's language for a renamed name (since #89), which gave the
+    example above;
+  - the view of a changed name (#119, §2 of its entry, corrected there in place): for
+    `({root}/{d}).with_stem(".")` against `{root}/..`, "same" was `"never"`, though
+    `d="x."` renders `q/..` on both sides, and likewise for the stem `..` with `d="x"`.
+
+  `relate` is in no release yet (0.3.0 predates #118), so no released answer was wrong.
+  **[Proven]** A new name is `..` only through a literal: a field never renders `.` or
+  `..` (wend rejects them as text), so a stem or name with a field is neither; and a
+  stem `t` before a suffix `x` makes `..` only if `t` is `.` (with `x = "."`) or `..`
+  (with `x = ""`). `with_suffix(s)` makes `..` only from a base named `..` with `s =
+  ""`, and a base renders that name only from a head, never from a field segment. So:
+  - the engine allows `..` in the new name for `with_suffix("")`, and for `with_stem` of
+    a literal `.` or `..`; `with_name("..")` was already exact (a literal);
+  - `with_stem` of a literal `.` or `..` has no view; the `with_suffix` view's base ends in
+    a field segment, which is never `..`, so it stands.
+
+  The pool gained the value `x.`, and the property tests' operations the stems `.` and
+  `..` and the name `..`. Against the code before the fix, the new deterministic test
+  (`test_a_changed_name_may_be_dotdot`) fails under every seed, and the
+  changed-names property test under one seed in two.
 
 - **Exclusion read too broadly.** The method as first written flagged an atom as at risk
   whenever a fact of an excluded atom *touched* its path, where the prototype asked
@@ -116,6 +152,13 @@ OPEN_AFTER.
 - **Lost facts of an excluded atom.** A fact that would have *refuted* the atom, once
   forgotten, was also reported as a risk. Its loss can only help. Only a lost fact that
   would have discharged the atom is a risk now.
+- **The engine is not monotone.** Cancelling a deferred head lost one answer in 1,500
+  pairs below one head: for `with_stem({f}/x.txt, {p})/{sc...}/{p}-{q}` against
+  `with_stem({f}/x.txt, {p})/{p}-{q}/{n}.txt`, "same" went from `"never"` to `"unknown"`.
+  The overlap engine says NO of the whole expressions and MAYBE of what follows their
+  head, though the second question is the first with a common prefix removed. Where a
+  deferred head was cancelled and the remainders leave an answer unknown, the engine is
+  now asked of the whole expressions too, as before.
 - **My expectations, twice.** In tests of hand-made groups I expected `drop`'s
   `exists` to be at risk when `drop` shares a group with `read`, and a later step's
   `exists` to be at risk after the group. The method said discharged, then refuted, and
@@ -135,14 +178,52 @@ disk as its step starts, and every step with a refuted atom fails. Both pass und
 **[Measured]** Mutants of the method, each against `tests/effects_test.py` under seeds 0
 and 1:
 
-MUTANTS_TABLE
+| mutant | killed by |
+|---|---|
+| discharged on a `"sometimes"` relation | the spelling test, both disk oracles |
+| a step's own changes not forgotten | six tests, both disk oracles among them |
+| a group-mate's changes not forgotten | `test_a_group_given_by_hand_may_run_in_any_order` (survived until it was written: `stages()` never groups steps that interfere, so the oracles cannot see it) |
+| a group-mate's promise kept | the hand-made groups test (likewise) |
+| a group-mate's check known before the group ends | the oracle by stages, the worked pipeline |
+| existence read from a path above, not below | the nesting test, the worked pipeline, both oracles |
+| absence read from a path below, not above | the nesting test, the oracle in order |
+| creating and writing kept | `test_creating_and_writing_are_never_discharged` |
+| a port that declares nothing changes nothing | `test_a_port_that_declares_nothing_may_change_its_path` |
+| refuted on a `"sometimes"` relation | the spelling test, both oracles |
+| File and Dir exclusive of a missing path | `test_file_and_dir_exclude_each_other_only_for_a_path_that_exists` (survived its first version, whose `Dir`-only port declared nothing and so forgot its own fact) |
+| no fact lost (at risk never from a lost fact) | the spelling test, the undeclared-port test (precision only) |
+| any schedule accepted | `test_a_schedule_names_every_step_once` |
 
-**[Measured]** Mutants of the deferred-head rule, against `tests/relate_test.py` and the
-fast part of `tests/effects_test.py`:
+**[Measured]** Mutants of the deferred-head rule and of the `..` fix, against
+`tests/relate_test.py` (and, for the first four, the fast part of
+`tests/effects_test.py`; for the last three, `tests/overlap_test.py`):
 
-RELATE_MUTANTS
+| mutant | killed by |
+|---|---|
+| deferred heads never cancel | `test_one_deferred_head_cancels_as_a_prefix` (precision only) |
+| a deferred head's defaults unseen | `test_one_deferred_head_cancels_as_a_prefix` (the property tests' pool binds every name, so no default is ever used) |
+| deferred heads alike by operation alone | both new tests, the general and changed-names property tests |
+| deferred heads cancel under independent bindings | both new tests, the changed-names property test |
+DOT_ROWS
 
-**[Measured]** RELATE_COMPARISON
+**[Measured]** The relation on the same derandomised samples as #119 §4, answered by master
+(`b4a212f`) and by this branch, plus 1,500 pairs below one deferred head
+(`under_one_head`). Each pair is asked `same`, `inside` and `contains`:
+
+| sample | always | sometimes | never | unknown |
+|---|---|---|---|---|
+| 1,500 general pairs, master | 707 | 309 | 3,067 | 417 |
+| the same, this branch | 711 | 305 | 3,075 | 409 |
+| 1,500 changed names, master | 229 | 557 | 3,265 | 449 |
+| the same, this branch | 235 | 551 | 3,273 | 441 |
+| 1,500 pairs below one deferred head, master | 88 | 585 | 967 | 2,860 (63.6%) |
+| the same, this branch | 576 | 193 | 2,247 | 1,484 (33.0%) |
+
+Answer by answer, below one head: 1,280 `"unknown"` became `"never"`, 408 `"sometimes"`
+became `"always"`, 80 `"unknown"` became `"always"` and 16 `"unknown"` became
+`"sometimes"`. On the other two samples, 16 `"unknown"` became `"never"` and 10
+`"sometimes"` became `"always"`. No answer moved the other way, once the engine was asked
+of the whole expressions as well (§4).
 
 ## 6. What it does not do
 

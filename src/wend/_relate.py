@@ -298,6 +298,10 @@ def _view(e: PathExpr, memo: Memo) -> PathExpr:
         pieces = list(h.arg.pieces)
     elif h.op == "with_suffix":
         pieces = [text, h.arg]
+    elif h.arg.literal in (".", ".."):
+        # The stem "..", or "." before the suffix ".", renders the name "..",
+        # which no segment of a view does.
+        return e
     else:
         pieces = [*h.arg.pieces, text]
     return PathExpr(base.head, base.parts[:-1] + (Seg(_norm(pieces)),) + e.parts)
@@ -591,7 +595,12 @@ class Analysis:
             decided = _structurally(ra, rb, how)
             if decided is not None:
                 return decided
-        return self._overlap(a, b, ra, rb, how)
+        answer = self._overlap(a, b, ra, rb, how)
+        if answer == "unknown" and common is not None and isinstance(va.head, Deferred):
+            # The engine is not monotone: it may rule out the whole expressions
+            # where it cannot rule out what follows their deferred head.
+            answer = self._overlap(a, b, va, vb, how)
+        return answer
 
     def _overlap(
         self, a: PathExpr, b: PathExpr, ra: PathExpr, rb: PathExpr, how: How

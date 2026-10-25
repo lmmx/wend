@@ -829,13 +829,14 @@ def test_a_group_given_by_hand_may_run_in_any_order():
 
 
 def test_file_and_dir_exclude_each_other_only_for_a_path_that_exists():
-    # Both hold of a missing path (§10).
+    # Both hold of a missing path (§10): a step that promises a directory
+    # there, and no more, leaves File possible.
     d = R / "d"
-    steps = {"dir": Step(d=d.requires(Dir)), "file": Step(d=d.requires(File))}
+    steps = {"dir": Step(d=d.ensures(Dir)), "file": Step(d=d.requires(File))}
     assert statuses(EffectGraph(steps), ["dir", "file"])[("file", "d")] == {
         "external": {"file"}
     }
-    steps["dir"] = Step(d=d.requires(Dir, Exists))
+    steps["dir"] = Step(d=d.ensures(Dir, Exists))
     assert statuses(EffectGraph(steps), ["dir", "file"])[("file", "d")] == {
         "refuted": {"file"}
     }

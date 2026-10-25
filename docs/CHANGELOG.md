@@ -64,6 +64,16 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
 - **A deferred head is itself** (#120). Two paths below one `parent`, `relative_to` or
   changed name that is not known until binding now cancel it as a shared prefix, so
   `relate(e, e)` is `"same"` for every expression, and what follows the head decides.
+  Over pairs below one such head, `"unknown"` answers fall from 64% to 33%, with no
+  answer lost.
+
+### Fixed
+
+- **A changed name may be `..`** (#120). `relate` could answer `"never"` for paths that
+  meet, where a name changed by binding renders `..`: pathlib keeps the name `..` through
+  `with_suffix("")`, and makes it from the stem `..`, or the stem `.` before the suffix
+  `.`. Neither the overlap analysis nor the view of a changed name (#119) allowed it.
+  `relate` is new since 0.3.0, so no release gave these answers.
 
 ### Changed
 

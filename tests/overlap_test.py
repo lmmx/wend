@@ -261,7 +261,7 @@ ab = Absolute("ab")
 POOL = {
     # Every kind of value builtin_values allows: bool is an int, and an
     # untyped parameter may be bound to any builtin type.
-    "p": ["a", "b", "x", "a.b", "x.txt", "1", "01", "...", 3, 2.5, None, True],
+    "p": ["a", "b", "x", "a.b", "x.txt", "x.", "1", "01", "...", 3, 2.5, None, True],
     "q": ["a", "b", "x.txt", "7", False, 1 + 2j],
     "n": [0, 1, 7, 12, -1, 100, 2026, True, False],
     "c": ["a", "b", "x.txt"],

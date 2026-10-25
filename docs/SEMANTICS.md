@@ -1107,7 +1107,9 @@ every pair is never, sometimes when one pair shows it, and never always.
    renders its base's parent, then one segment:
    - `with_name(n)` renders `n` exactly;
    - `with_suffix(s)` renders some text, then `s`;
-   - `with_stem(t)` renders `t`, then some text.
+   - `with_stem(t)` renders `t`, then some text; there is no view where `t` is `.` or
+     `..`, since the stem `..`, or `.` before the suffix `.`, renders the name `..`,
+     which no segment does (§3).
 
    The relation reasons on this *view* of the expression. The view renders what the
    expression renders, and more, since its text stands for any text. So the view
@@ -1119,6 +1121,9 @@ every pair is never, sometimes when one pair shows it, and never always.
      where `day` is empty.
    - Its relation to `{root}/raw/{day}.parquet` is therefore `"sometimes"`, not
      `"always"`, as wend's own deferral of the operation implies.
+   - A name of `..` has no suffix, so `with_suffix("")` keeps it: `{root}` with the
+     suffix `""` renders `a/..` from `root="a/.."`. The overlap analysis (§15.5) allows
+     `..` wherever a changed name may render it.
 4. **Prefix cancellation.** Under shared bindings, a head and leading parts that are
    equal by (1) render one string `s` wherever both expressions render. That includes a
    deferred head: its operation is pathlib's, applied to what its base renders, so two

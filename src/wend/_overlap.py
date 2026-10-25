@@ -707,7 +707,8 @@ def _deferred_shapes(d: Deferred, assumed: _Assumed) -> list[Shape]:
             b = _Builder()
             b.repeat(ANY, 0 if suffix else 1, None)
             b.lit(suffix)
-            return Item(b.lang(EXCLUDED))
+            # A name of ".." has no suffix, so with_suffix("") keeps it.
+            return Item(b.lang(EXCLUDED if suffix else ("", ".")))
 
         return [x for b in base for x in _rename(b, replaced)]
     if d.op == "with_stem":
@@ -723,7 +724,8 @@ def _deferred_shapes(d: Deferred, assumed: _Assumed) -> list[Shape]:
                     except ValueError:
                         pass
                 return Item(Lang.finite(texts))
-            return Item(_any_segment(EXCLUDED))
+            # The stem "..", or "." before the suffix ".", makes the name "..".
+            return Item(_any_segment(("", ".") if literal in (".", "..") else EXCLUDED))
 
         return [x for b in base for x in _rename(b, restemmed)]
     return [TOP]  # join (an AnyPath operand) and relative_to

@@ -112,6 +112,22 @@ def test_a_changed_name_keeps_its_parent_and_what_the_change_fixes():
     assert relate(pq.with_name("a.json"), P(root) / "raw" / "a.json").kind == "same"
 
 
+def test_a_changed_name_may_be_dotdot():
+    # pathlib keeps the name ".." through with_suffix(""), and makes it from
+    # the stem "..", or the stem "." before the suffix ".": no relation may
+    # rule out a ".." the operation renders.
+    d = Param("d")
+    a = (P(root) / T(t"{d}")).with_stem(".")
+    assert a.render(root="q", d="x.") == "q/.."
+    assert relate(a, P(root) / "..").same != "never"
+    a = (P(root) / T(t"{d}")).with_stem("..")
+    assert a.render(root="q", d="x") == "q/.."
+    assert relate(a, P(root) / "..").same != "never"
+    b = P(root).with_suffix("")
+    assert (b / "..").render(root="a") == b.render(root="a/..") == "a/.."
+    assert relate(b / "..", b, shared=False).same != "never"
+
+
 def test_different_anchors_never_meet():
     assert relate(P("."), P("/")).kind == "disjoint"
     assert (
@@ -161,6 +177,11 @@ NAMES = [
     ("with_stem", lambda: (P("_") / T(t"{p}")).name),
     ("with_name", lambda: "x.txt"),
     ("with_name", lambda: (P("_") / T(t"{q}.txt")).name),
+    # Literal stems and names pathlib may turn into "..": the stem "..", or
+    # "." before the suffix "."; the name "..".
+    ("with_stem", lambda: ".."),
+    ("with_stem", lambda: "."),
+    ("with_name", lambda: ".."),
 ]
 
 

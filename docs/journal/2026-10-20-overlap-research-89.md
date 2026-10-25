@@ -1,5 +1,8 @@
 # 2026-10-20: Symbolic overlap and declared effect graphs (research)
 
+> **Correction, #120.** The table of shapes is revised in place, with its earlier wording
+> kept beside it, marked *Before*: a name changed by binding may be `..`.
+
 This entry covers PR #89, a research prototype stacked on #88. It asks
 two questions:
 
@@ -66,8 +69,15 @@ render. The full list is in the module docstring.
 | Any other field | Any string without `/` or NUL, narrowed only by the field's facts (dot-free, non-empty) |
 | SubPath | A run of segments other than `.` and `..`; the exact set with `choices` |
 | Head parameter | Any anchor and a run of any segments |
-| `parent`, `with_name`, `with_stem`, `with_suffix` of a deferred head | Derived from the base's shapes |
+| `parent`, `with_name`, `with_stem`, `with_suffix` of a deferred head | Derived from the base's shapes; a new name may be `..` (corrected in #120) |
 | `join`, `relative_to` | Any path |
+
+> *Before:* the row read "Derived from the base's shapes", and the new name's language
+> excluded `..`, as a formatted segment's does. pathlib keeps the name `..` through
+> `with_suffix("")`, and makes it from the stem `..`, or the stem `.` before the suffix
+> `.`. So `with_suffix({root}, "")/..` and `with_suffix({root}, "")` were reported never
+> to meet under independent bindings, though `root="a"` and `root="a/.."` render
+> `a/..` on both sides. Found by `tests/relate_test.py`'s property test in #120.
 
 **[Fact]** Two shapes are compared in three steps:
 

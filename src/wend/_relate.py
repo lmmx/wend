@@ -265,9 +265,10 @@ def _plain(e: PathExpr) -> PathExpr:
 
 def _anchors(e: PathExpr) -> frozenset[str] | None:
     """The anchors ``e`` may render (``""`` for a relative path), or None if
-    any: a literal head has one, an absolute parameter ``/`` or ``//``, and a
-    name changed by ``with_name``, ``with_suffix`` or ``with_stem`` keeps its
-    base's."""
+    any: a literal head has one, an absolute parameter ``/`` or ``//``; a
+    name changed by ``with_name``, ``with_suffix`` or ``with_stem``, and a
+    parent, keep their base's; a path made relative has ``""``; and a join
+    has its left side's, or its right side's where that is absolute."""
     h = e.head
     if isinstance(h, _Rel):
         return frozenset({""})
@@ -275,8 +276,18 @@ def _anchors(e: PathExpr) -> frozenset[str] | None:
         return frozenset({h.anchor})
     if isinstance(h, HeadParam) and h.param.kind is ParamKind.ABSOLUTE:
         return frozenset({"/", "//"})
-    if isinstance(h, Deferred) and h.op in _NAME_OPS:
-        return _anchors(h.base)
+    if isinstance(h, Deferred):
+        if h.op in (*_NAME_OPS, "parent"):
+            return _anchors(h.base)
+        if h.op == "relative_to":
+            return frozenset({""})  # pathlib's relative_to is always relative
+        if h.op == "join" and isinstance(h.arg, PathExpr):
+            # Joining keeps the left side's anchor, unless the right side is
+            # absolute, which replaces it with its own.
+            left, right = _anchors(h.base), _anchors(h.arg)
+            if left is None or right is None:
+                return None
+            return (right - {""}) | (left if "" in right else frozenset())
     return None
 
 
@@ -307,7 +318,7 @@ def _view(e: PathExpr, memo: Memo) -> PathExpr:
     return PathExpr(base.head, base.parts[:-1] + (Seg(_norm(pieces)),) + e.parts)
 
 
-def _cases(e: PathExpr) -> list[PathExpr] | None:
+def _cases(e: PathExpr, memo: Memo) -> list[PathExpr] | None:
     """``e``, a suffix or stem changed while its base's name is unknown, as the
     ways pathlib may split that name, each written out with the base's own
     pieces; None where the base's name does not end in literal text with a
@@ -320,6 +331,8 @@ def _cases(e: PathExpr) -> list[PathExpr] | None:
     what the case that holds renders under the same binding, so the cases,
     with the base's parameters, render all it does."""
     h = e.head
+    if isinstance(h, Deferred) and h.op == "parent":
+        return _parents(e, h, memo)
     if not (isinstance(h, Deferred) and h.op in ("with_suffix", "with_stem")):
         return None
     base = h.base
@@ -351,6 +364,28 @@ def _cases(e: PathExpr) -> list[PathExpr] | None:
     if set(literal) <= {"."} and whole:
         cases.append(written(whole))
     return cases
+
+
+def _parents(e: PathExpr, h: Deferred, memo: Memo) -> list[PathExpr] | None:
+    """A parent deferred because its base ends in a SubPath, written out: the
+    base with a SubPath of what precedes the last segment in place of its
+    own, where that renders a segment or more; and the parent of what
+    precedes it, where it renders none. Each keeps the base's prefix."""
+    base = h.base
+    if isinstance(base.head, Deferred) or not base.parts:
+        return None
+    if not isinstance(base.parts[-1], Splice):
+        return None
+    rest = Splice(Param(f"_rest_{abs(hash(_key(h, memo))):x}", ParamKind.SUBPATH))
+    longer = PathExpr(base.head, base.parts[:-1] + (rest,) + e.parts)
+    prefix = base.parts[:-1]
+    if prefix and isinstance(prefix[-1], Seg):
+        shorter = PathExpr(base.head, prefix[:-1] + e.parts)
+    elif not prefix and isinstance(base.head, (Root, _Rel)):
+        shorter = PathExpr(base.head, e.parts)  # "/" and "." are their own parents
+    else:
+        shorter = PathExpr(Deferred("parent", PathExpr(base.head, prefix)), e.parts)
+    return [longer, shorter]
 
 
 def _common(a: PathExpr, b: PathExpr, shared: bool, memo: Memo) -> int | None:
@@ -629,7 +664,7 @@ class Analysis:
         if answer == "unknown":
             # A changed suffix or stem, written out by how its base's name
             # splits: never if no case of one meets a case of the other.
-            ca, cb = _cases(a), _cases(b)
+            ca, cb = _cases(a, self.memo), _cases(b, self.memo)
             if ca is not None or cb is not None:
                 pairs = itertools.product(ca or [va], cb or [vb])
                 if all(self._decide(a, b, x, y, how) == "never" for x, y in pairs):

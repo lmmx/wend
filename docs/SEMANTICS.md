@@ -1124,7 +1124,7 @@ parameter of either expression.
    - `with_suffix(s)` renders some text, then `s`;
    - `with_stem(t)` renders `t`, then some text; there is no view where `t` is `.` or
      `..`, since the stem `..`, or `.` before the suffix `.`, renders the name `..`,
-     which no segment does (§3).
+     which no segment does (§3). Such a stem is written out by cases instead (below).
 
    The relation reasons on this *view* of the expression. The view renders what the
    expression renders, and more, since its text stands for any text. So the view
@@ -1166,6 +1166,13 @@ parameter of either expression.
      `({root}/raw/{rel...}).with_suffix(".csv")` is never `{root}/out/x`, and
      `(data/{sc...}).with_suffix(".b")` is never strictly inside or above
      `data/{sc...}`.
+   - A stem of `.` or `..` given to a name of unknown suffix is written out by cases:
+     the stem, a dot and some text, where the name has a suffix; and the name `..`,
+     which the stem `..` gives a name without a suffix, and the stem `.` a name whose
+     suffix is `.`. pathlib refuses the stem `.` of a name without a suffix. So
+     `({root}/{x}).with_stem("..")` renders `{root}/..` or `{root}/...` then text, and
+     is never `{root}/a`. Where the base ends in a `SubPath`, each of its cases is
+     written out in turn.
    - A name of `..` has no suffix, so `with_suffix("")` keeps it: `{root}` with the
      suffix `""` renders `a/..` from `root="a/.."`. The overlap analysis (§15.5) allows
      `..` wherever a changed name may render it.

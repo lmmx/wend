@@ -433,6 +433,15 @@ def _tagged_cases(e: PathExpr, memo: Memo) -> list[Case] | None:
             return renamed
     if not (isinstance(h, Deferred) and h.op in ("with_suffix", "with_stem")):
         return None
+    split = _suffix_cases(e, h)
+    if split is None and _dot_stem(h):
+        return _dot_stems(e, h, memo)
+    return split
+
+
+def _suffix_cases(e: PathExpr, h: Deferred) -> list[Case] | None:
+    """A suffix or stem changed while its base's name ends in literal text
+    with a dot, written out by how pathlib splits that name (`_tagged_cases`)."""
     base = h.base
     if isinstance(base.head, Deferred) or not base.parts:
         return None
@@ -442,8 +451,8 @@ def _tagged_cases(e: PathExpr, memo: Memo) -> list[Case] | None:
     *before, tail = last.pieces
     if not isinstance(tail, str) or "." not in tail:
         return None
-    if h.op == "with_stem" and h.arg.literal in ("", ".", ".."):
-        return None  # the name "..", which no segment renders (§15.3, 3)
+    if h.op == "with_stem" and h.arg.literal == "":
+        return None
     k = tail.rfind(".")
     if h.op == "with_suffix":
         split = [*before, tail[:k], h.arg]
@@ -458,10 +467,36 @@ def _tagged_cases(e: PathExpr, memo: Memo) -> list[Case] | None:
     cases: list[Case] = [(None, written(split))]
     # No suffix only if every character before the dot is a dot: the fields
     # may render dots alone, so any literal character before it decides.
+    # pathlib refuses the stem "." of a name without a suffix.
     literal = "".join(p for p in before if isinstance(p, str)) + tail[:k]
-    if set(literal) <= {"."} and whole:
+    if set(literal) <= {"."} and whole and whole != ["."]:
         cases.append((None, written(whole)))
     return cases
+
+
+def _dot_stem(h: Deferred) -> bool:
+    return h.op == "with_stem" and h.arg.literal in (".", "..")
+
+
+def _dot_stems(e: PathExpr, h: Deferred, memo: Memo) -> list[Case] | None:
+    """The stem ``.`` or ``..`` given to a name of unknown suffix, written
+    out: the stem then the suffix, a dot and text, where that is not ``..``;
+    and the name ``..``, which the stem ``..`` gives a name without a suffix
+    and the stem ``.`` a name whose suffix is ``.``. Neither has a view, as
+    no segment of one renders ``..`` (§15.3, 3). The suffix's text is named
+    as a view's would be."""
+    base = _view(h.base, memo)
+    if not base.parts or not isinstance(base.parts[-1], Seg):
+        return None
+    text = Field(Param(memo.name("_name_", _fresh_key(h, memo))))
+
+    def written(seg: Seg) -> PathExpr:
+        return PathExpr(base.head, base.parts[:-1] + (seg,) + e.parts)
+
+    return [
+        (None, written(Seg(_norm([*h.arg.pieces, ".", text])))),
+        (None, written(Seg(("..",)))),
+    ]
 
 
 def _split_base(e: PathExpr) -> PathExpr | None:
@@ -524,7 +559,11 @@ def _renamed(e: PathExpr, h: Deferred, memo: Memo) -> list[Case] | None:
             changed = getattr(PathExpr(base.head, parts), h.op)(h.arg)
         except WendError, ValueError:
             continue
-        cases.append((tag, PathExpr(changed.head, changed.parts + e.parts)))
+        case = PathExpr(changed.head, changed.parts + e.parts)
+        dots = None
+        if isinstance(changed.head, Deferred) and _dot_stem(changed.head):
+            dots = _dot_stems(case, changed.head, memo)
+        cases.extend([(tag, x) for _, x in dots] if dots else [(tag, case)])
     return cases
 
 

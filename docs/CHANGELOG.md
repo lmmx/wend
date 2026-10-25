@@ -7,6 +7,8 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
 
 ## Unreleased
 
+## 0.4.0
+
 ### New
 
 - **Relations between families** (#118). `wend.relate(a, b)` says, before any binding,

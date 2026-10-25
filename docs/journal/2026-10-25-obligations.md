@@ -204,7 +204,9 @@ and 1:
 | a deferred head's defaults unseen | `test_one_deferred_head_cancels_as_a_prefix` (the property tests' pool binds every name, so no default is ever used) |
 | deferred heads alike by operation alone | both new tests, the general and changed-names property tests |
 | deferred heads cancel under independent bindings | both new tests, the changed-names property test |
-DOT_ROWS
+| the engine: `with_suffix("")` never keeps `..` | `test_a_changed_name_may_be_dotdot` |
+| the engine: a stem never makes `..` | the same, and the changed-names property test |
+| a view of the stem `.` or `..` | the same, and the changed-names property test |
 
 **[Measured]** The relation on the same derandomised samples as #119 §4, answered by master
 (`b4a212f`) and by this branch, plus 1,500 pairs below one deferred head

@@ -23,7 +23,7 @@ from families_test import (
 )
 from hypothesis import HealthCheck, example, given, settings
 from hypothesis import strategies as st
-from knowledge_test import ROLES, _list, _read
+from knowledge_test import ROLES, _list, _read, snapshot
 from overlap_test import POOL, expressions
 
 from wend import (
@@ -556,14 +556,67 @@ def test_a_pipeline_with_two_writers_in_one_new_directory():
     ]
 
 
+def test_a_step_that_needs_a_directory_makes_nothing_there():
+    src = R / "raw" / T(t"{day}.csv")
+
+    def made(ext):
+        out = R / "raw" / T(t"{day}{ext}")
+        return out.requires(Absent, Creatable).ensures(File)
+
+    a = Step(i=src.requires(Readable), o=made(".a"))
+    b = Step(i=src.requires(Readable), o=made(".b"))
+    # Each reads a file in raw/, so while raw/ is missing each fails, and makes
+    # nothing there: neither can make raw/ for the other.
+    g = EffectGraph({"a": a, "b": b}, existing=[R])
+    assert g.conflicts == [] and g.stages() == [["a", "b"]]
+    # Reading elsewhere proves nothing of raw/.
+    elsewhere = (R / "in" / T(t"{day}.csv")).requires(Readable)
+    g = EffectGraph(
+        {"a": Step(i=elsewhere, o=made(".a")), "b": Step(o=made(".b"))}, existing=[R]
+    )
+    assert [c.via for c in g.conflicts] == ["parent"]
+    # The shared directory is named where the paths part at segments that
+    # differ on every run: {month} and {month}.parquet part below {year}/.
+    year, month = Param("year", type=int), Param("month", type=int)
+    part = R / T(t"{year:04d}") / T(t"{month:02d}")
+    land = Step(o=(part / T(t"{day}.pq")).requires(Absent, Creatable).ensures(File))
+    compact = Step(
+        i=part.requires(Listable),
+        o=(R / T(t"{year:04d}") / T(t"{month:02d}.pq")).requires(Absent, Creatable),
+    )
+    g = EffectGraph({"land": land, "compact": compact}, existing=[R])
+    assert [c.via for c in g.conflicts] == []
+    # Nor does a path inside raw/ on some runs only: {name}/in.csv, where name
+    # is raw.
+    name = Param("name", type=str)
+    sometimes = (R / T(t"{name}") / "in.csv").requires(Readable)
+    g = EffectGraph(
+        {"a": Step(i=sometimes, o=made(".a")), "b": Step(o=made(".b"))}, existing=[R]
+    )
+    assert [c.via for c in g.conflicts] == ["parent"]
+    # Nor does requiring raw/ itself: that step may make it.
+    needs = (R / "raw").requires(Dir, Exists)
+    g = EffectGraph(
+        {"a": Step(d=needs, o=made(".a")), "b": Step(o=made(".b"))}, existing=[R]
+    )
+    assert "parent" in [c.via for c in g.conflicts]
+
+
 def test_without_existing_a_root_may_be_made_by_any_creation():
-    # Every creation check under {root} conflicts with every other creation
-    # there, possibly: and the pipeline's order and stages are unchanged.
+    # Any creation under {root} may make it. A creation check conflicts with
+    # another creation there, possibly, unless one of the two steps needs a
+    # path inside {root}, and so fails while it is missing. In this pipeline
+    # each such pair has one: no parent conflicts, as with {root} existing.
     g, known = EffectGraph(pipeline()), EffectGraph(pipeline(), existing=[R])
-    parents = [c for c in g.conflicts if c.via == "parent"]
-    assert len(parents) == 10
-    assert {(c.certainty, c.parent.pattern) for c in parents} == {("unknown", "{root}")}
+    assert [c for c in g.conflicts if c.via == "parent"] == []
     assert g.edges == known.edges and g.hazards == known.hazards
+    # Without the reads, the ten conflicts remain.
+    bare = {
+        name: Step({e.name: e.expr for e in step.effects() if "read" not in e.verbs})
+        for name, step in pipeline().items()
+    }
+    parents = [c for c in EffectGraph(bare).conflicts if c.via == "parent"]
+    assert {(c.certainty, c.parent.pattern) for c in parents} == {("unknown", "{root}")}
     assert (g.order(), g.stages()) == (known.order(), known.stages())
 
 
@@ -1061,3 +1114,41 @@ def test_obligations_hold_on_disk_when_run_in_order(case):
 def test_obligations_hold_on_disk_when_run_by_stages(case):
     # The same, by stages(): a step's group-mates may run before or after it.
     _obligations_hold_on_disk(case, staged=True)
+
+
+def _stages_commute_on_disk(case):
+    (pipeline_, tree), given = case
+    steps, bodies = build_plus(pipeline_)
+    names = [n for n, _ in steps]
+    existing = {
+        "none": [],
+        "root": [P(root)],
+        "raw": [P(root) / "raw" if tree["raw"] else P(root)],
+    }[given]
+    try:
+        g = EffectGraph(dict(steps), existing=existing)
+    except ValueError:
+        return
+    groups = g.stages()
+    if groups is None:
+        return
+    forward = [names.index(s) for grp in groups for s in grp]
+    reverse = [names.index(s) for grp in groups for s in reversed(grp)]
+    if forward == reverse:
+        return
+    for env0 in ENVS:
+        results = []
+        for order in (forward, reverse):
+            with run_root() as d:
+                env = bound(env0, d)
+                make_tree(Path(d), tree)
+                done = run(Path(d), steps, bodies, env, order=order)
+                results.append((done, snapshot(Path(d))))
+        (d1, t1), (d2, t2) = results
+        assert d1 == d2 and t1 == t2, (groups, env0, d1, d2, t1, t2)
+
+
+@settings(max_examples=150, deadline=None, suppress_health_check=list(HealthCheck))
+@given(case=oracle_cases)
+def test_steps_of_one_stage_commute_on_disk(case):
+    _stages_commute_on_disk(case)

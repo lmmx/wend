@@ -307,6 +307,52 @@ def _view(e: PathExpr, memo: Memo) -> PathExpr:
     return PathExpr(base.head, base.parts[:-1] + (Seg(_norm(pieces)),) + e.parts)
 
 
+def _cases(e: PathExpr) -> list[PathExpr] | None:
+    """``e``, a suffix or stem changed while its base's name is unknown, as the
+    ways pathlib may split that name, each written out with the base's own
+    pieces; None where the base's name does not end in literal text with a
+    dot.
+
+    pathlib takes the suffix from the name less its leading dots. Where the
+    name ends in literal text ``L`` whose last dot is at ``k``, that dot
+    starts the suffix, ``L[k:]``, unless every character before it is a dot,
+    and then there is no suffix. On every binding the expression renders
+    what the case that holds renders under the same binding, so the cases,
+    with the base's parameters, render all it does."""
+    h = e.head
+    if not (isinstance(h, Deferred) and h.op in ("with_suffix", "with_stem")):
+        return None
+    base = h.base
+    if isinstance(base.head, Deferred) or not base.parts:
+        return None
+    last = base.parts[-1]
+    if not isinstance(last, Seg) or not last.pieces:
+        return None
+    *before, tail = last.pieces
+    if not isinstance(tail, str) or "." not in tail:
+        return None
+    if h.op == "with_stem" and h.arg.literal in ("", ".", ".."):
+        return None  # the name "..", which no segment renders (§15.3, 3)
+    k = tail.rfind(".")
+    if h.op == "with_suffix":
+        split = [*before, tail[:k], h.arg]
+        whole = [*last.pieces, h.arg]
+    else:
+        split = [*h.arg.pieces, tail[k:]]
+        whole = list(h.arg.pieces)
+
+    def written(pieces: list[Any]) -> PathExpr:
+        return PathExpr(base.head, base.parts[:-1] + (Seg(_norm(pieces)),) + e.parts)
+
+    cases = [written(split)]
+    # No suffix only if every character before the dot is a dot: the fields
+    # may render dots alone, so any literal character before it decides.
+    literal = "".join(p for p in before if isinstance(p, str)) + tail[:k]
+    if set(literal) <= {"."} and whole:
+        cases.append(written(whole))
+    return cases
+
+
 def _common(a: PathExpr, b: PathExpr, shared: bool, memo: Memo) -> int | None:
     """How many leading parts render alike for every binding, after heads
     that do; None if the heads may not."""
@@ -580,6 +626,14 @@ class Analysis:
             # name's text, which the expressions do not take: the expressions
             # themselves may still be shown, or ruled out, as before.
             answer = self._decide(a, b, a, b, how)
+        if answer == "unknown":
+            # A changed suffix or stem, written out by how its base's name
+            # splits: never if no case of one meets a case of the other.
+            ca, cb = _cases(a), _cases(b)
+            if ca is not None or cb is not None:
+                pairs = itertools.product(ca or [va], cb or [vb])
+                if all(self._decide(a, b, x, y, how) == "never" for x, y in pairs):
+                    return "never"
         return answer
 
     def _decide(
@@ -592,7 +646,8 @@ class Analysis:
         if common is not None:
             ra = PathExpr(REL, va.parts[common:])
             rb = PathExpr(REL, vb.parts[common:])
-            decided = _structurally(ra, rb, how)
+            bad = _conflicting_defaults(va, vb) if self.shared else frozenset()
+            decided = _structurally(ra, rb, how, self.shared, bad, self.memo)
             if decided is not None:
                 return decided
         answer = self._overlap(a, b, ra, rb, how)
@@ -637,7 +692,50 @@ class Analysis:
         return "sometimes"
 
 
-def _structurally(ra: PathExpr, rb: PathExpr, how: How) -> Certainty | None:
+def _tokens(seg: Seg) -> list[Any]:
+    """A segment's pieces with its literal text split into characters."""
+    return [c for p in seg.pieces for c in (p if isinstance(p, str) else (p,))]
+
+
+def _apart_segments(
+    a: Seg, b: Seg, shared: bool, bad: frozenset[str], memo: Memo
+) -> bool:
+    """Whether two segments render different text for every binding under
+    which both render: what remains once equal leading and trailing pieces
+    cancel (a field only under shared bindings, by (1)) must differ in a
+    character, or one side must be empty and the other hold one."""
+
+    def alike(x: Any, y: Any) -> bool:
+        if isinstance(x, str) or isinstance(y, str):
+            return x == y
+        return shared and not (x.param_names & bad) and _key(x, memo) == _key(y, memo)
+
+    ta, tb = _tokens(a), _tokens(b)
+    i = 0
+    while i < min(len(ta), len(tb)) and alike(ta[i], tb[i]):
+        i += 1
+    ta, tb = ta[i:], tb[i:]
+    j = 0
+    while j < min(len(ta), len(tb)) and alike(ta[-1 - j], tb[-1 - j]):
+        j += 1
+    ta, tb = ta[: len(ta) - j], tb[: len(tb) - j]
+    if not ta or not tb:
+        # One renders "" here: the other differs if it holds a character.
+        return any(isinstance(t, str) for t in (*ta, *tb))
+    # Cancellation stopped at a pair that is not alike: two characters differ.
+    first = isinstance(ta[0], str) and isinstance(tb[0], str)
+    last = isinstance(ta[-1], str) and isinstance(tb[-1], str)
+    return first or last
+
+
+def _structurally(
+    ra: PathExpr,
+    rb: PathExpr,
+    how: How,
+    shared: bool = True,
+    bad: frozenset[str] = frozenset(),
+    memo: Memo | None = None,
+) -> Certainty | None:
     """The answer from the remainders' structure alone, or None."""
     if not ra.parts and not rb.parts:
         return "always" if how == "same" else "never"
@@ -645,9 +743,13 @@ def _structurally(ra: PathExpr, rb: PathExpr, how: How) -> Certainty | None:
         return "always" if how == "contains" else "never"
     if not rb.parts and any(isinstance(p, Seg) for p in ra.parts):
         return "always" if how == "inside" else "never"
-    if ra.parts and rb.parts:
-        fa, fb = ra.parts[0], rb.parts[0]
-        if _static(fa) and _static(fb) and fa.literal != fb.literal:
+    # Divergence: the remainders start at one position, so while both hold
+    # segments their k-th parts render their k-th segments, which must be one
+    # for any of the three relations.
+    for fa, fb in zip(ra.parts, rb.parts, strict=False):
+        if not (isinstance(fa, Seg) and isinstance(fb, Seg)):
+            break
+        if _apart_segments(fa, fb, shared, bad, {} if memo is None else memo):
             return "never"
     # Depth: a segment renders exactly one segment (never "", "." or a
     # separator), so remainders of segments alone render a fixed count of

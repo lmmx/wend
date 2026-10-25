@@ -13,7 +13,7 @@ from overlap_test import PARTS, POOL, expressions, p, q, s, sc
 
 from wend import Absolute, P, Param, PathExpr, Relation, SubPath, T, relate
 from wend._expr import Deferred
-from wend._relate import lexically
+from wend._relate import _cases, lexically
 from wend.errors import WendError
 
 
@@ -148,6 +148,59 @@ def test_paths_of_fixed_depth_nest_only_by_depth():
     assert (r.inside, r.contains) == ("never", "never")
     r = relate(P(root) / T(t"{other}"), a)
     assert (r.same, r.inside) == ("never", "never")
+
+
+def test_segments_that_differ_on_every_run_never_meet():
+    s = Param("s", type=str)
+    R = P(root)
+    # Equal pieces at either end cancel; what remains differs in a character.
+    for a, b in [
+        (R / T(t"{day}.csv"), R / T(t"{day}.csv.gz")),
+        (R / T(t"{s}-a"), R / T(t"{s}-b")),
+        (R / T(t"run{s}") / "x", R / T(t"run{s}.log")),
+        (R / T(t"{day}.csv") / "x", R / T(t"{day}.tsv")),
+    ]:
+        assert relate(a, b).kind == "disjoint", (a, b)
+    # Different parameters, or one bound apart, may render alike.
+    assert relate(R / T(t"{day}.csv"), R / T(t"{s}.csv")).same == "sometimes"
+    assert relate(R / T(t"a{s}x"), R / T(t"a{s}")).same == "never"
+    # Bound apart, a{s}x is a{s} for the other's s ending in x.
+    d = P("data")
+    assert relate(d / T(t"a{s}x"), d / T(t"a{s}"), shared=False).same == "sometimes"
+    # A name with a different default on each side renders differently when
+    # unbound: unbound, both render xx.
+    a = R / T(t"{Param('n', default='x')}x.")
+    b = R / T(t"{Param('n', default='xx')}.")
+    assert relate(a, b).same != "never"
+    # A lone field is a segment-valued parameter, which a str subclass may
+    # render apart from its value in text: no cancellation across roles.
+    assert relate(R / T(t"{s}.json"), R / T(t"{s}")).same == "unknown"
+
+
+def test_names_changed_from_one_base_are_written_out_by_its_split():
+    raw = P(root) / "raw" / T(t"{day}.csv")
+    parquet, summary = raw.with_suffix(".parquet"), raw.with_stem("summary")
+    # {day}.parquet or .csv.parquet, against summary.csv or summary.
+    assert relate(parquet, summary).kind == "disjoint"
+    assert relate(parquet, raw.with_suffix(".json")).kind == "disjoint"
+    # With day empty, .csv has no suffix: each case is a real rendering.
+    assert parquet.render(root="r", day="") == "r/raw/.csv.parquet"
+    assert relate(parquet, P(root) / "raw" / ".csv.parquet").same == "sometimes"
+    assert summary.render(root="r", day="") == "r/raw/summary"
+    assert relate(summary, P(root) / "raw" / "summary").same == "sometimes"
+    # A day named summary: the stem changed to its own value.
+    assert relate(summary, raw).same == "sometimes"
+    # The suffix starts at the last dot: {day}.tar.gz becomes {day}.tar.zip.
+    tgz = P(root) / T(t"{day}.tar.gz")
+    assert (
+        relate(tgz.with_suffix(".zip"), P(root) / T(t"{day}.tar.zip")).same != "never"
+    )
+    assert relate(tgz.with_suffix(".zip"), P(root) / T(t"{day}.zip")).same == "never"
+    # A literal character before the dot leaves one case: a.{day}.csv always
+    # has the suffix .csv.
+    lit = P(root) / T(t"a.{day}.csv")
+    assert relate(lit.with_stem("b"), P(root) / "b").same == "never"
+    assert relate(raw.with_stem("b"), P(root) / "raw" / "b").same == "sometimes"
 
 
 def test_strings_and_unions_relate_too():
@@ -368,6 +421,45 @@ def test_one_deferred_head_cancels_as_a_prefix():
     assert relate(x, y).same == "sometimes"
     # Or the two sides are bound independently.
     assert relate(up, up, shared=False).same == "sometimes"
+
+
+TAILS = [
+    lambda: T(t"{p}.csv"),
+    lambda: T(t"{p}.tar.gz"),
+    lambda: T(t"{p}{q}.x"),
+    lambda: T(t"a.{p}.b"),
+    lambda: T(t"{p}."),
+    lambda: "x.txt",
+]
+
+
+@st.composite
+def split_names(draw):
+    """A suffix or stem changed on a base whose name ends in text with a dot."""
+    base = draw(expressions()) / TAILS[draw(st.integers(0, len(TAILS) - 1))]()
+    op, arg = NAMES[draw(st.integers(0, len(NAMES) - 1))]
+    assume(op != "with_name")
+    try:
+        e = getattr(base, op)(arg())
+    except WendError, ValueError, TypeError:
+        assume(False)
+    assume(_cases(e) is not None)
+    return e
+
+
+@settings(max_examples=200, deadline=None, suppress_health_check=list(HealthCheck))
+@given(e=split_names())
+def test_the_cases_of_a_changed_name_render_all_it_renders(e):
+    # What the case split rests on (§15.3, 3): on every binding, the change
+    # renders what one of its cases renders under the same binding.
+    cases = _cases(e)
+    assert cases is not None
+    names = sorted(e.param_names)
+    for combo in itertools.islice(itertools.product(*(POOL[k] for k in names)), 400):
+        env = dict(zip(names, combo, strict=True))
+        path = rendered(e, env)
+        if path is not None:
+            assert path in {rendered(c, env) for c in cases}, (e.pattern, env, path)
 
 
 @settings(max_examples=150, deadline=None, suppress_health_check=[HealthCheck.too_slow])

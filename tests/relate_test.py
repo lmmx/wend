@@ -7,9 +7,9 @@ hostile values; each "sometimes" against its example."""
 import itertools
 
 import pytest
-from hypothesis import HealthCheck, given, settings
+from hypothesis import HealthCheck, assume, given, settings
 from hypothesis import strategies as st
-from overlap_test import PARTS, POOL, expressions, p, q
+from overlap_test import PARTS, POOL, expressions, p, q, s, sc
 
 from wend import Absolute, P, Param, PathExpr, Relation, SubPath, T, relate
 from wend._expr import Deferred
@@ -112,6 +112,22 @@ def test_a_changed_name_keeps_its_parent_and_what_the_change_fixes():
     assert relate(pq.with_name("a.json"), P(root) / "raw" / "a.json").kind == "same"
 
 
+def test_a_changed_name_may_be_dotdot():
+    # pathlib keeps the name ".." through with_suffix(""), and makes it from
+    # the stem "..", or the stem "." before the suffix ".": no relation may
+    # rule out a ".." the operation renders.
+    d = Param("d")
+    a = (P(root) / T(t"{d}")).with_stem(".")
+    assert a.render(root="q", d="x.") == "q/.."
+    assert relate(a, P(root) / "..").same != "never"
+    a = (P(root) / T(t"{d}")).with_stem("..")
+    assert a.render(root="q", d="x") == "q/.."
+    assert relate(a, P(root) / "..").same != "never"
+    b = P(root).with_suffix("")
+    assert (b / "..").render(root="a") == b.render(root="a/..") == "a/.."
+    assert relate(b / "..", b, shared=False).same != "never"
+
+
 def test_different_anchors_never_meet():
     assert relate(P("."), P("/")).kind == "disjoint"
     assert (
@@ -161,6 +177,11 @@ NAMES = [
     ("with_stem", lambda: (P("_") / T(t"{p}")).name),
     ("with_name", lambda: "x.txt"),
     ("with_name", lambda: (P("_") / T(t"{q}.txt")).name),
+    # Literal stems and names pathlib may turn into "..": the stem "..", or
+    # "." before the suffix "."; the name "..".
+    ("with_stem", lambda: ".."),
+    ("with_stem", lambda: "."),
+    ("with_name", lambda: ".."),
 ]
 
 
@@ -293,6 +314,60 @@ def renamed(draw):
 @given(pair=renamed())
 def test_changed_names_hold_for_every_pooled_binding(pair):
     assert_sound(*pair)
+
+
+HEAD_OPS = [
+    lambda e: e.parent,
+    lambda e: e.relative_to(P(p)),
+    lambda e: e.relative_to(P(root)),
+    *(lambda e, op=op, arg=arg: getattr(e, op)(arg()) for op, arg in NAMES),
+]
+
+
+@st.composite
+def under_one_head(draw):
+    """Two paths below one deferred head (a parent below a SubPath, a path
+    relative to a parameter, a changed name), built twice, or below two such
+    heads made from one base: the pairs whose shared prefix cancels only
+    through a deferred head."""
+    base = draw(expressions())
+    if draw(st.booleans()):
+        base = base / draw(st.sampled_from([s, sc]))
+    elif not base.parts:
+        base = base / "x.txt"
+    i = draw(st.integers(0, len(HEAD_OPS) - 1))
+    j = i if draw(st.booleans()) else draw(st.integers(0, len(HEAD_OPS) - 1))
+    try:
+        ha, hb = HEAD_OPS[i](base), HEAD_OPS[j](base)
+    except WendError, ValueError, TypeError:
+        assume(False)
+    assume(isinstance(ha.head, Deferred) or isinstance(hb.head, Deferred))
+    ra = draw(expressions()).parts
+    rb = ra[: draw(st.integers(0, len(ra)))] + draw(expressions()).parts
+    return PathExpr(ha.head, ha.parts + ra), PathExpr(hb.head, hb.parts + rb)
+
+
+@settings(max_examples=100, deadline=None, suppress_health_check=list(HealthCheck))
+@given(pair=under_one_head())
+def test_paths_below_one_deferred_head_hold_for_every_pooled_binding(pair):
+    assert_sound(*pair)
+
+
+def test_one_deferred_head_cancels_as_a_prefix():
+    # A parent below a SubPath is not known until binding; spelt twice, it
+    # renders one string, so what follows it decides.
+    up = (P(root) / T(t"{other}") / SubPath("rel")).parent
+    assert relate(up, up).kind == "same"
+    assert relate(up / "a", up).kind == "inside"
+    assert relate(up / T(t"{day}.csv"), up / T(t"{day}.parquet")).kind == "disjoint"
+    rel = (P(root) / "a" / T(t"{day}.csv")).relative_to(P(Param("base")))
+    assert relate(rel, rel).kind == "same"
+    # Unless the head's parameters may render differently: a default each.
+    x = (P(root) / T(t"{Param('n', default='x')}") / SubPath("rel")).parent
+    y = (P(root) / T(t"{Param('n', default='y')}") / SubPath("rel")).parent
+    assert relate(x, y).same == "sometimes"
+    # Or the two sides are bound independently.
+    assert relate(up, up, shared=False).same == "sometimes"
 
 
 @settings(max_examples=150, deadline=None, suppress_health_check=[HealthCheck.too_slow])

@@ -264,6 +264,30 @@ made there:
 [['convert', 'stats']]
 ```
 
+[`obligations`][wend.effects.EffectGraph.obligations] says, for each condition a step
+requires, whether the steps before it settle it. A check that passed, or a postcondition
+a step confirmed, is known of its path however the path is spelt, until a step that may
+run in between declares a change that may touch it. A *discharged* condition holds
+whenever the steps before it completed, and a *refuted* one makes the step fail. Anything
+else is *at risk* or *external*: for the world to provide.
+
+```pycon
+>>> audit = Step(out=(P(root) / "clean").joinpath(T(t"{day}.csv")).requires(File, Exists))
+>>> late = Step(src=src)
+>>> graph = EffectGraph({"convert": convert, "audit": audit, "purge": purge, "late": late})
+>>> for o in graph.obligations(["convert", "audit", "purge", "late"]):
+...     if o.status in ("discharged", "refuted"):
+...         print(o)
+audit.out requires exists of {root}/clean/{day}.csv: discharged by convert.dst
+audit.out requires file of {root}/clean/{day}.csv: discharged by convert.dst
+late.src requires exists of {root}/raw/{day}.csv: refuted by purge.old, so the check fails
+late.src requires read of {root}/raw/{day}.csv: refuted by purge.old, so the check fails
+```
+
+That a path was checked is not that it is still true: the answer rests on nothing outside
+the steps changing their paths, and on each step doing what it declares
+([`ASSUMPTIONS`][wend.effects.ASSUMPTIONS]).
+
 The graph promises only what the declarations say. Two steps in one stage cannot
 interfere through the effects they declare, but a step whose code touches a path it does
 not declare is outside the graph.

@@ -1107,7 +1107,9 @@ every pair is never, sometimes when one pair shows it, and never always.
    renders its base's parent, then one segment:
    - `with_name(n)` renders `n` exactly;
    - `with_suffix(s)` renders some text, then `s`;
-   - `with_stem(t)` renders `t`, then some text.
+   - `with_stem(t)` renders `t`, then some text; there is no view where `t` is `.` or
+     `..`, since the stem `..`, or `.` before the suffix `.`, renders the name `..`,
+     which no segment does (§3).
 
    The relation reasons on this *view* of the expression. The view renders what the
    expression renders, and more, since its text stands for any text. So the view
@@ -1119,11 +1121,17 @@ every pair is never, sometimes when one pair shows it, and never always.
      where `day` is empty.
    - Its relation to `{root}/raw/{day}.parquet` is therefore `"sometimes"`, not
      `"always"`, as wend's own deferral of the operation implies.
+   - A name of `..` has no suffix, so `with_suffix("")` keeps it: `{root}` with the
+     suffix `""` renders `a/..` from `root="a/.."`. The overlap analysis (§15.5) allows
+     `..` wherever a changed name may render it.
 4. **Prefix cancellation.** Under shared bindings, a head and leading parts that are
-   equal by (1) render one string `s` wherever both expressions render. Joining `s`
-   onto a relative remainder is injective and keeps "inside", so `a` and `b` relate
-   exactly as their remainders do. Under independent bindings only literal heads and
-   literal segments cancel. Deferred heads never do, except through their view (3).
+   equal by (1) render one string `s` wherever both expressions render. That includes a
+   deferred head: its operation is pathlib's, applied to what its base renders, so two
+   deferred heads of equal structure render one string, unless a parameter inside them
+   has a different default on each side. Joining `s` onto a relative remainder is
+   injective and keeps "inside", so `a` and `b` relate exactly as their remainders do,
+   and every expression is always itself. Under independent bindings only literal heads
+   and literal segments cancel.
 5. **Structure decides** when:
    - the remainders are both empty: the same, always;
    - one is empty and the other holds a segment: inside or containing, always. A
@@ -1246,3 +1254,56 @@ languages, or runs of them, built from the expression's literals, fields, finite
 domains, `SubPath`s and heads. Every rule keeps every path the contract lets the
 expression render, so disjoint shapes are disjoint paths. Its derivation, measurements
 and limits are in `docs/journal/2026-10-20-overlap-research-89.md`.
+
+### 15.6 What a requirement relies on
+
+`EffectGraph.obligations(schedule=None)` says, for every atom a port requires, whether
+the pipeline itself establishes it. The atoms are those of §10's conditions: `exists`,
+`absent`, `file`, `dir`, `read`, `list`, `create` and `write`. A schedule is an order of
+step names, or a list of groups whose steps may run in any order or at once; the default
+is `stages()`, and a graph with a cycle needs one given. Each `Obligation` has one of
+four statuses:
+
+| status | means | what is promised |
+|---|---|---|
+| `"discharged"` | an earlier fact (`by`) makes the atom true of the port's path | on every run where every step of an earlier group completed, the atom holds when the step starts |
+| `"refuted"` | an earlier fact (`by`) makes the atom false of the path | on every such run, the step's check fails |
+| `"at risk"` | a fact that may make it false is known (`by`), or a step (`by`) may have changed a fact that made it true | nothing |
+| `"external"` | nothing in the pipeline bears on it | nothing: the world must provide it |
+
+**Facts and how long they last.** A run knows an atom of a path from the moment a check
+of it passes: a step's precondition when the step starts, or its postcondition once it
+completes. The fact lasts until a declared change that may touch the path: a port of a
+step that may run in between, which supplies or deletes a path touching it (§15.4, all
+three relations), or declares nothing of its path. Within a group, a step's own
+judgement uses only what was known before the group, less anything another step of the
+group may change; what a group's steps check or promise is known from the next group on.
+`create` and `write` are never kept: whether a path may be created depends on which
+directories above it exist and on permissions at that moment, and every creation may
+change that (§15.4, parents).
+
+**Which paths a fact is of.** A fact is of the paths the relation proves the same on
+every run (`same` is `"always"`, §15.3), and only those. Two more are derived:
+- a path known to exist that is always *inside* another makes the other exist, as a
+  directory (`exists`, `dir`);
+- a path known absent makes every path always inside it absent.
+
+A fact refutes an atom it excludes: `exists` and `absent`, `absent` and `read` or `list`,
+`file` and `list`, and `file` and `dir` of a path known to exist (both hold of a missing
+path, §10).
+
+**Identity is not freshness.** Two spellings the relation proves the same name one string
+on every run, so a check of one is a check of the other, at the moment it ran. Whether it
+still holds is a separate question, answered by what may run in between: the fact is kept
+only while no step that may run in between declares a change that may touch either. The
+answers rest on three assumptions, `wend.effects.ASSUMPTIONS`:
+- **closed world**: nothing outside the steps changes their paths while they run;
+- **declared effects**: each step's declarations describe what its code does;
+- **lexical identity**: two spellings of one file, which the relation sees as two paths
+  (§15.4), do not occur.
+
+`tests/effects_test.py` checks the promise against the disk: random pipelines over
+families whose bindings collide (`tests/families_test.py`'s generator), each run in a
+real directory under four bindings, in order and by stages (a group's steps in both
+orders). Wherever every earlier group completed, every discharged atom holds when its
+step starts, and every step with a refuted atom fails.

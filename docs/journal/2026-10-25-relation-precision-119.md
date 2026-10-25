@@ -1,5 +1,8 @@
 # 2026-10-25: A more precise relation: anchors, depth, and names changed by binding (#119)
 
+> **Correction, #120.** §2's view of a changed name is revised in place, with its earlier
+> wording kept beside it, marked *Before*: a stem of `.` or `..` can make the name `..`.
+
 After #118, `wend.relate` answered `"unknown"` for about one question in six over the
 property tests' pairs, and for one in four over names changed with `with_suffix`,
 `with_stem` and `with_name`. An `"unknown"` is safe, since every query counts it as a
@@ -60,10 +63,18 @@ one segment (`_view`):
 The text's parameter is named from the operation's render key, so one operation viewed
 twice is alike, and `relate(e, e)` is `"same always"` for a deferred `e`.
 
-**[Proven]** The view renders every path the expression renders: the operation keeps
-its base's parent, and its new name has the stated form. So a "never" proved on the
-views holds of the expressions. A "sometimes" is still shown only by a binding of the
+**[Proven]** The view renders every path the expression renders, except where the new
+name may be `..`: the operation keeps its base's parent, and its new name has the stated
+form. A segment never renders `..` (§3), but pathlib makes the name `..` from the stem
+`..`, or from the stem `.` before the suffix `.`, so `with_stem` with a literal `.` or
+`..` has no view (corrected in #120; its journal, §4). So a "never" proved on the views
+holds of the expressions. A "sometimes" is still shown only by a binding of the
 expressions themselves (`_search`), and a view's text is never cancelled as a prefix.
+
+> *Before:* "**[Proven]** The view renders every path the expression renders: the
+> operation keeps its base's parent, and its new name has the stated form." It does
+> not: `({root}/{d}).with_stem(".")` renders `q/..` from `d="x."`, which the view
+> `{root}/.{text}` cannot, and the relation answered "never" against `{root}/..`.
 
 ## 3. Counterexamples found while building it
 

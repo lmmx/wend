@@ -7,6 +7,8 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
 
 ## Unreleased
 
+## 0.5.0
+
 ### New
 
 - **What paths given as existing, reads and listings establish** (#121).

@@ -571,6 +571,25 @@ def test_a_fact_does_not_pass_between_names_defaulted_apart():
     assert o.status == "discharged"
 
 
+def test_a_graph_never_names_a_view_after_one_of_its_parameters():
+    # The graph builds views itself (to find a shared directory), so it
+    # reserves every parameter name of its steps before naming one.
+    # Here `a` is first compared with `c`, which names a view of `a`'s path
+    # before `b`, whose parameter is `_name_0`, is reached.
+    x, taken = Param("x"), Param("_name_0")
+    steps = {
+        "a": Step(o=(R / x).with_suffix(".csv").requires(Writable).ensures(File)),
+        "c": Step(o=(R / "c.csv").requires(Writable).ensures(File)),
+        "b": Step(o=(R / T(t"{taken}.csv")).requires(Writable).ensures(File)),
+    }
+    g = EffectGraph(steps)
+    assert sorted(str(c) for c in g.conflicts) == [
+        "<a.o x b.o: sometimes>",
+        "<a.o x c.o: sometimes>",
+        "<c.o x b.o: sometimes>",
+    ]
+
+
 def test_builtin_values_relates_a_shard_directory_and_its_manifest():
     # `{split}` alone in a segment is segment-valued; in `{split}.json` it is
     # formatted. Only for builtin values are the two known to render alike.

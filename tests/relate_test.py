@@ -5,6 +5,9 @@ Each "always" and "never" is checked against every binding of a pool of
 hostile values; each "sometimes" against its example."""
 
 import itertools
+import os
+import subprocess
+import sys
 import time
 from pathlib import PurePosixPath
 
@@ -267,6 +270,59 @@ def test_a_field_renders_its_value_alike_in_a_segment_and_in_text():
         assert r.same in ("sometimes", "unknown"), (text, r)
     # Without a field in each role, no answer rests on the assumption.
     assert relate(shard, P(root) / "x", builtin_values=True).assumptions == set()
+
+
+_HASHED = """
+from wend import P, Param, SubPath, T, relate
+p, q, root, rel = Param("p"), Param("q"), Param("root"), SubPath("rel")
+c = Param("c", choices={"a", "b", "x.txt", "y", "z.txt"})
+pairs = [
+    (P("/") / T(t"{c}.txt") / T(t"{p}{q}"),
+     P("/") / T(t"{c}.txt") / T(t"{c}.txt") / T(t"{p}{q}")),
+    ((P("/") / T(t"{p}.txt") / "b" / c).with_stem("a") / T(t"{p}.txt") / q / c,
+     P("/") / T(t"{p}.txt") / "b" / T(t"{q}.txt") / T(t"{p}.txt") / q / c),
+    ((P(root) / T(t"{p}.csv")).with_suffix(".x"), (P(root) / T(t"{q}.csv")).with_stem("y")),
+    ((P(root) / rel).parent / "x", (P(root) / "raw" / rel).parent),
+]
+for a, b in pairs:
+    for shared in (True, False):
+        r = relate(a, b, shared=shared)
+        print(r, r.examples)
+"""
+
+
+def test_answers_do_not_depend_on_string_hashing():
+    # The samples tried for an example once followed a frozenset of choices,
+    # and views named their text by hash(): which example was found, and so
+    # "sometimes" or "unknown", changed with PYTHONHASHSEED.
+    runs = {
+        subprocess.run(
+            [sys.executable, "-c", _HASHED],
+            env={**os.environ, "PYTHONHASHSEED": str(seed)},
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+        for seed in (0, 1, 2, 3)
+    }
+    assert len(runs) == 1, runs
+
+
+def test_a_view_never_takes_a_name_of_the_expressions():
+    # A view's text and a parent's SubPath get names of their own. Were one
+    # to share a name with a parameter of the other side, shared bindings
+    # would tie them: the view "{root}/{_name_0}.csv" is then the other side
+    # itself, and would read "always".
+    x, taken = Param("x"), Param("_name_0")
+    a = (P(root) / x).with_suffix(".csv")
+    b = P(root) / T(t"{taken}.csv")
+    env = {"root": "r", "x": "f", "_name_0": "g"}
+    assert (a.render(env), b.render(env)) == ("r/f.csv", "r/g.csv")
+    assert relate(a, b).same == "sometimes"
+    assert relate(b, a).same == "sometimes"
+    rest = SubPath("_rest_0")
+    up = (P(root) / "raw" / SubPath("rel")).parent
+    assert relate(up, P(root) / "raw" / rest).same != "never"
 
 
 def test_finite_choices_that_multiply_shapes_stay_quick():

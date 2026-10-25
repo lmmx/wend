@@ -19,6 +19,13 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
 
 ### Fixed
 
+- **`relate` gives the same answers whatever `PYTHONHASHSEED` is** (#126). Whether a
+  bounded search found an example, and so `"sometimes"` or `"unknown"`, could depend on
+  string hashing. A parameter's `choices` were tried in set order, and the names `relate`
+  makes up for its own reasoning came from `hash()`. Choices are now tried in a fixed
+  order, and those names are numbered. They also never take the name of a parameter of
+  either expression, which `hash()` made unlikely but did not rule out.
+
 - **`relate` no longer takes minutes over many finite choices** (#125). With
   `builtin_values=True`, each `SubPath` or parameter with `choices` multiplies the
   shapes the overlap analysis pairs, and keeping its candidate paths took quadratic

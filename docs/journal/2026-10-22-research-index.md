@@ -81,7 +81,8 @@ its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #
 | 20 | [A field in either role, for builtin values](2026-10-25-builtin-roles.md): segment-valued and formatted fields cancel under `builtin_values=True` | #125 | bae21fb | `tests/relate_test.py` (both modes of `builtin_values`), `tests/effects_test.py` (the disk oracles with it), `bench/effects_corpus.py --builtin` |
 | 21 | [Answers that do not depend on string hashing](2026-10-25-determinism.md): choices in a fixed order, made-up names numbered and never a parameter's | #126 | daa6a93 | `tests/relate_test.py` (under four hash seeds; a name clash), `tests/effects_test.py` |
 | 22 | [Names changed below a SubPath, written out](2026-10-25-renamed-subpaths.md): the change of the last segment or of what precedes the SubPath, and correlated cases | #127 | 02a5a3e | `tests/relate_test.py` (the cases render all it renders) |
-| 23 | [Stems of `.` and `..`, written out](2026-10-25-dot-stems.md): the stem, a dot and the suffix's text, or the name `..` | #128 | on the PR's branch | `tests/relate_test.py` (the cases render all it renders; pooled bindings) |
+| 23 | [Stems of `.` and `..`, written out](2026-10-25-dot-stems.md): the stem, a dot and the suffix's text, or the name `..` | #128 | bf5edfb | `tests/relate_test.py` (the cases render all it renders; pooled bindings) |
+| 24 | [An exact oracle for relate under independent bindings](2026-10-26-language-oracle.md): each expression's renderings as a regular language, with rendered witnesses; and where the work sits in the Future Paths essays | #ORACLE | on the PR's branch | `tests/lang_oracle_test.py`, `bench/relate_oracle.py` |
 
 ## How the discoveries build on one another
 

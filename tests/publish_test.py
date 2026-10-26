@@ -258,7 +258,71 @@ def test_exchange_with_expect_undoes_a_lost_update_but_was_visible(root, monkeyp
             mine.publish("final.csv", policy="exchange", expect=expected)
         assert final.read_bytes() == b"theirs"  # their update survives
         assert glimpsed[0] == b"mine"  # but ours was briefly the file
-        assert not mine.spent
+        assert not mine.spent and not mine.nameable
+    finally:
+        io.close()
+
+
+def test_a_reused_inode_number_passes_for_the_object_observed(root):
+    # An expect of (st_dev, st_ino) names a number. Once the object observed
+    # is gone, the filesystem gives the number to a new object, and an
+    # exchange expecting the old one accepts the new: with only two writers,
+    # an update is lost. The inode's generation tells the two apart.
+    final = root / "out" / "final.csv"
+    final.write_bytes(b"v0")
+    st = final.stat()
+    stale = (st.st_dev, st.st_ino)
+    import fcntl
+
+    fd = os.open(final, os.O_RDONLY)
+    try:
+        fcntl.ioctl(fd, pub.FS_IOC_GETVERSION, bytes(8))
+    except OSError:
+        pytest.skip("this filesystem keeps no inode generation")
+    finally:
+        os.close(fd)
+    observed = pub.identity(str(final))
+    assert observed is not None and observed[:2] == stale
+    assert observed[2] is not None
+    io = Confined(str(root))
+    try:
+        # They replace v0, which is then gone, and publish again from a draft
+        # the filesystem gave v0's number.
+        theirs = Draft(io, "out")
+        theirs.write(b"theirs")
+        theirs.publish("final.csv", policy="replace")
+        again, spare = None, []
+        for _ in range(64):
+            d = Draft(io, "out")
+            if os.fstat(d.fd).st_ino == stale[1]:
+                again = d
+                break
+            spare.append(d)
+        for d in spare:
+            d.abandon()
+        if again is None:
+            pytest.skip("this filesystem did not give the inode number again")
+        again.write(b"theirs, again")
+        again.publish("final.csv", policy="replace")
+        now = pub.identity(str(final))
+        assert now is not None and now[:2] == stale and now != observed
+        # With the generation, their publication is seen, and ours undone.
+        mine = Draft(io, "out")
+        mine.write(b"mine")
+        with pytest.raises(Conflict):
+            mine.publish("final.csv", policy="exchange", expect=observed)
+        assert final.read_bytes() == b"theirs, again"
+        # A draft that had a name and lost it cannot be named again.
+        with pytest.raises(ValueError, match="lost it"):
+            mine.publish("final.csv", policy="exchange", expect=observed)
+        mine.abandon()
+        # With the number alone, the object there passes for v0: their
+        # second update is replaced, and we are told it was not there.
+        mine = Draft(io, "out")
+        mine.write(b"mine")
+        p = mine.publish("final.csv", policy="exchange", expect=stale)
+        assert final.read_bytes() == b"mine"
+        assert p.previous == stale
     finally:
         io.close()
 

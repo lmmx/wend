@@ -116,6 +116,11 @@ def test_exchange_and_validate_loses_an_update_with_three_writers(
     final = tmp_path / "out" / "final.csv"
     final.write_bytes(b"X0")
     x0 = (final.stat().st_dev, final.stat().st_ino)
+    # X0 stays open, so its inode number is not given to another writer's
+    # draft once A unlinks it: that reuse is a failure of its own
+    # (publish_test::test_a_reused_inode_number_passes_for_the_object_observed),
+    # and it would change which writer believes what.
+    held = os.open(final, os.O_RDONLY)
 
     def publish(io, name):
         d = Draft(io, "out")
@@ -130,7 +135,10 @@ def test_exchange_and_validate_loses_an_update_with_three_writers(
     # wrong object, and undo with a second, unconditional exchange. Each
     # undo swaps out whatever is there now, and the cleanup unlinks it.
     scheduled_exchanges(monkeypatch, [("A", 1), ("B", 1), ("C", 1), ("B", 2), ("C", 2)])
-    beliefs = writers(tmp_path, "ABC", publish)
+    try:
+        beliefs = writers(tmp_path, "ABC", publish)
+    finally:
+        os.close(held)
     assert beliefs == {"A": "published", "B": "conflict", "C": "conflict"}
     assert final.read_bytes() == b"B"  # the writer told it failed
     assert os.listdir(tmp_path / "out") == ["final.csv"]  # A's version is gone

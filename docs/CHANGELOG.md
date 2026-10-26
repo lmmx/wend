@@ -76,6 +76,14 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   whose `"never"` answers pipelines rely on. On #119's samples it decides 4,419
   of 4,500 pairs, finds no contradiction with `relate`, and settles 892 of its
   `"unknown"` answers.
+- **Exchange-and-validate is fooled by a reused inode number** (#ABA). `publish`'s
+  `expect=(st_dev, st_ino)` names a number, which ext4 gives to a new object once the
+  observed one is gone, so a writer can replace another's update, told nothing changed:
+  with two writers. `publish.identity()` adds the inode's generation, and an `expect`
+  given as an identity tells the two apart. A draft whose exchange or replacement
+  failed after its link can no longer be named, and `publish` now refuses it with that
+  reason instead of a later `ENOENT`. The three-writer test failed in 38 of 40 runs on
+  ext4 for this reason; it now holds the observed object open.
 
 ## 0.5.0
 

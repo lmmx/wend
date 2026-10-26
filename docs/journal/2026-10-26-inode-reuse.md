@@ -1,4 +1,4 @@
-# 2026-10-26: Two load-sensitive failures, and an inode number reused (#ABA)
+# 2026-10-26: Two load-sensitive failures, and an inode number reused (#133)
 
 During #130, two tests failed under heavy load, each passing on a re-run:
 - `synthesis_test.py::test_exchange_and_validate_loses_an_update_with_three_writers`;

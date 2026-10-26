@@ -46,6 +46,7 @@ from __future__ import annotations
 
 import dataclasses
 import itertools
+from collections import Counter
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import PurePosixPath
@@ -371,6 +372,52 @@ def _anchors(e: PathExpr) -> frozenset[str] | None:
                 return None
             return (right - {""}) | (left if "" in right else frozenset())
     return None
+
+
+def _depth(e: PathExpr) -> tuple[int, list[Any]] | None:
+    """How many segments ``e`` renders, as a count of segments and the parts
+    whose own count varies (SubPaths, and heads other than a literal one);
+    None where that is not known. A name changed by ``with_name``,
+    ``with_suffix`` or ``with_stem`` keeps its base's count: pathlib replaces
+    the last segment, and refuses where there is none. A parent has one
+    fewer, where its base renders a segment of its own."""
+    h = e.head
+    n, atoms = 0, list[Any]()
+    if isinstance(h, Deferred) and h.op in (*_NAME_OPS, "parent"):
+        base = _depth(h.base)
+        if base is None or (h.op == "parent" and base[0] < 1):
+            return None
+        n = base[0] - (h.op == "parent")
+        atoms.extend(base[1])
+    elif not isinstance(h, (Root, _Rel)):
+        atoms.append(h)
+    for p in e.parts:
+        if isinstance(p, Seg):
+            n += 1
+        elif isinstance(p, Splice):
+            atoms.append(p)
+        else:
+            return None
+    return n, atoms
+
+
+def _depths_never(a: PathExpr, b: PathExpr, how: How, shared: bool, memo: Memo) -> bool:
+    """Whether ``a`` and ``b`` never relate by ``how`` for their depths alone:
+    where each part of varying count on one side is alike one on the other
+    (§15.3, 1), they render one count on both, so the depths differ by the
+    counts of segments. Paths of different depths are never one, nor of
+    equal depths one inside the other."""
+    da, db = _depth(a), _depth(b)
+    if da is None or db is None:
+        return False
+    (n, xs), (k, ys) = da, db
+    if xs or ys:
+        bad = _conflicting_defaults(a, b)
+        if not shared or any(_names(x) & bad for x in (*xs, *ys)):
+            return False
+        if Counter(_key(x, memo) for x in xs) != Counter(_key(y, memo) for y in ys):
+            return False
+    return not {"same": n == k, "inside": n > k, "contains": n < k}[how]
 
 
 def _view(e: PathExpr, memo: Memo) -> PathExpr:
@@ -858,6 +905,8 @@ class Analysis:
         # Paths with different anchors are never one, nor nested.
         aa, ab = _anchors(a), _anchors(b)
         if aa is not None and ab is not None and not aa & ab:
+            return "never"
+        if _depths_never(a, b, how, self.shared, self.memo):
             return "never"
         va, vb = _view(a, self.memo), _view(b, self.memo)
         answer = self._decide(a, b, va, vb, how)

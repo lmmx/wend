@@ -82,6 +82,7 @@ its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #
 | 21 | [Answers that do not depend on string hashing](2026-10-25-determinism.md): choices in a fixed order, made-up names numbered and never a parameter's | #126 | daa6a93 | `tests/relate_test.py` (under four hash seeds; a name clash), `tests/effects_test.py` |
 | 22 | [Names changed below a SubPath, written out](2026-10-25-renamed-subpaths.md): the change of the last segment or of what precedes the SubPath, and correlated cases | #127 | 02a5a3e | `tests/relate_test.py` (the cases render all it renders) |
 | 23 | [Stems of `.` and `..`, written out](2026-10-25-dot-stems.md): the stem, a dot and the suffix's text, or the name `..` | #128 | on the PR's branch | `tests/relate_test.py` (the cases render all it renders; pooled bindings) |
+| 24 | [Depths through shared SubPaths and changed names](2026-10-25-depths.md): a SubPath, head parameter or deferred head alike on both sides renders one count of segments | #129 | on the PR's branch | `tests/relate_test.py` (a depth counts the segments rendered) |
 
 ## How the discoveries build on one another
 

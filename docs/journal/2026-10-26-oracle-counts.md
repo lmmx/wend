@@ -1,4 +1,4 @@
-# 2026-10-26: Counting characters and segments in the oracle (#COUNTS)
+# 2026-10-26: Counting characters and segments in the oracle (#135)
 
 #132 left 1,016 of `relate(shared=True)`'s `"never"` answers unconfirmed: the oracle
 answered `"undecided"`. An unconfirmed answer is not wrong, but it is not independently

@@ -87,7 +87,7 @@ its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #
 | 26 | [Depths through SubPaths and deferred operations](2026-10-26-depths.md): a count of segments with signed parts, bounding `same`, `inside` and `contains` | #131 | 426b16e | `tests/relate_test.py` (`_depth` against every pooled rendering; the oracle) |
 | 27 | [The oracle under shared bindings](2026-10-26-shared-oracle.md): names tied across both sides, names defaulted on both decided bound and unbound, and a shared prefix cancelled | #132 | e93845b | `tests/lang_oracle_test.py` (shared bindings), `bench/relate_oracle.py --shared` |
 | 28 | [Two load-sensitive failures, and an inode number reused](2026-10-26-inode-reuse.md): exchange-and-validate fooled by a reused `st_ino`; the inode generation; a draft that lost its name | #133 | 2aaadf4 | `tests/publish_test.py` (a reused inode number), `tests/synthesis_test.py` |
-| 29 | [Counting characters and segments in the oracle](2026-10-26-oracle-counts.md): what the answers mean where nothing renders; tied uses' counts as a Farkas certificate on the intersection automaton | #COUNTS | on the PR's branch | `tests/lang_oracle_test.py` (counts), `bench/relate_oracle.py --shared` |
+| 29 | [Counting characters and segments in the oracle](2026-10-26-oracle-counts.md): what the answers mean where nothing renders; tied uses' counts as a Farkas certificate on the intersection automaton | #135 | on the PR's branch | `tests/lang_oracle_test.py` (counts), `bench/relate_oracle.py --shared` |
 
 ## How the discoveries build on one another
 

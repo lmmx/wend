@@ -61,6 +61,18 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   time. An expression with five `SubPath`s of three choices took longer than two
   minutes; it now takes a third of a second, and no answer changes.
 
+- **`relate` no longer runs out of memory on many equal segments** (#BUILTIN). The
+  overlap analysis searched every language of segments an alignment holds equal at once,
+  a product of all their states: `relate(..., shared=False, builtin_values=True)` on one
+  pair of #119's samples, with eleven uses of `{n:02d}`, raised `MemoryError` past 6 GB.
+  It now meets them two at a time, each product trimmed, a language met twice once, and
+  past 100,000 states decides that alignment neither way. That pair takes 4.5 s; every
+  answer on #119's samples is as before, in 60% of the time.
+- **`thorough=True` with `builtin_values=True` reads values as builtin** (#BUILTIN). A
+  field alone in a segment and the same field plainly in text are one text for a builtin
+  value, and a field of a name typed `int` renders digits: the oracle behind `thorough`
+  now knows both. THOROUGHRESULT
+
 ### Research, in the repository but not the wheel
 
 - **An exact oracle for `relate(shared=False)`** (#129). `src/wend/_experimental/lang_oracle.py` turns

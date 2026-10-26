@@ -1248,7 +1248,14 @@ parameter of either expression.
    a language every rendering of which relates. The binding's values render each
    piece's text: a `str` where one does, otherwise a value of a type of wend's making,
    which formats as the binding needs (and compares equal to a choice, where `choices`
-   are declared). With `builtin_values=True` only a binding of builtin values counts.
+   are declared). With `builtin_values=True` the languages are read for builtin values
+   alone: a field alone in a segment and the same field plainly in text (no spec, no
+   conversion but `!s`) render one text, `str` of the value, so they are one use of one
+   name, as in (1); a field of a name typed `int`, with no spec or a plain width (`d`,
+   `03d`, `3d`), renders padding, a sign and digits, or `True` and `False` with no spec;
+   and a binding counts only if its values are of builtin types. A head parameter or a
+   `SubPath` stays apart from text: the value `.` renders no character as a head, and one
+   in text.
 
    The work is bounded by a count of steps (states made, edges built and followed),
    not by time, so answers stay a function of the expressions and options. Past it,
@@ -1374,6 +1381,13 @@ languages, or runs of them, built from the expression's literals, fields, finite
 domains, `SubPath`s and heads. Every rule keeps every path the contract lets the
 expression render, so disjoint shapes are disjoint paths. Its derivation, measurements
 and limits are in `docs/journal/2026-10-20-overlap-research-89.md`.
+
+Segments an alignment holds equal (one parameter's uses, under shared bindings) must
+take a text in every one of their languages. The engine meets those languages two at a
+time, each product trimmed to the states that can still accept, and a language met
+twice once. Where one product passes 100,000 states, that alignment is decided neither
+way: it cannot give a NO, and the answer is MAYBE unless a witness is found. The bound is
+a count of states, so answers stay a function of the expressions.
 
 ### 15.6 What a requirement relies on
 

@@ -1,6 +1,6 @@
 """Precision of wend.effects.EffectGraph on realistic pipelines.
 
-Run with: uv run python bench/effects_corpus.py [--builtin]
+Run with: uv run python bench/effects_corpus.py [--builtin] [--thorough]
 
 Eight pipelines of the shapes data and build pipelines take: the example's
 seven steps, date-partitioned files compacted by month, training checkpoints
@@ -10,7 +10,7 @@ directory, and a mirror kept by SubPaths. For each: its links by certainty,
 its stages, its obligations by status, and every link that stays unknown.
 A link left unknown is one the graph could neither prove nor rule out: the
 count to bring down, where it can be, soundly. ``--builtin`` builds each graph
-with builtin_values=True.
+with builtin_values=True, and ``--thorough`` with thorough=True.
 """
 
 import collections
@@ -135,12 +135,14 @@ PIPES["subpaths"] = {
 }
 # --builtin assumes bound values are of builtin types (builtin_values=True).
 builtin = "--builtin" in sys.argv
+thorough = "--thorough" in sys.argv
 tot = collections.Counter()
 for k, steps in PIPES.items():
     g = EffectGraph(
         steps,
         existing=[R] if k not in ("build", "checkpoints") else [],
         builtin_values=builtin,
+        thorough=thorough,
     )
     links = [*g.edges, *g.hazards, *g.conflicts]
     c = collections.Counter(l.certainty for l in links)

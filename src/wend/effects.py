@@ -300,7 +300,9 @@ class EffectGraph:
     every step; ``shared=False`` relates every binding of one step to every
     binding of another, as when steps run with bindings of their own.
     ``builtin_values=True`` assumes bound values are of builtin types, which
-    proves more paths apart (`wend.relate`).
+    proves more paths apart (`wend.relate`). ``thorough=True`` relates each
+    pair as ``relate(..., thorough=True)`` does, settling more of what the
+    rules leave ``"unknown"`` at a cost of up to seconds a pair.
 
     ``existing`` names paths (expressions or strings) that exist before the
     pipeline runs and that no step deletes: no step makes them, or a
@@ -316,11 +318,13 @@ class EffectGraph:
         *,
         shared: bool = True,
         builtin_values: bool = False,
+        thorough: bool = False,
         existing: Iterable[PathExpr | str] = (),
     ) -> None:
         self.steps: dict[str, Step] = dict(steps)
         self.shared = shared
         self.builtin_values = builtin_values
+        self.thorough = thorough
         self.existing: list[PathExpr] = [
             e if isinstance(e, PathExpr) else P(e) for e in existing
         ]
@@ -485,6 +489,7 @@ class EffectGraph:
                 b,
                 shared=self.shared,
                 builtin_values=self.builtin_values,
+                thorough=self.thorough,
                 memo=self._memo,
             )
         return self._analyses[key]

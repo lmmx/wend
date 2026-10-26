@@ -1,4 +1,4 @@
-# 2026-10-26: An exact oracle for relate under independent bindings (#ORACLE)
+# 2026-10-26: An exact oracle for relate under independent bindings (#129)
 
 `relate` proves relations with a growing set of rules (views, cases, depths), and
 checks them against pooled bindings, which try finitely many values. This entry builds

@@ -47,7 +47,7 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
 
 ### Research, in the repository but not the wheel
 
-- **An exact oracle for `relate(shared=False)`** (#ORACLE). `src/wend/_experimental/lang_oracle.py` turns
+- **An exact oracle for `relate(shared=False)`** (#129). `src/wend/_experimental/lang_oracle.py` turns
   an expression into the regular language of the paths it renders, built from wend's
   interpreter and pathlib's rules, and nothing of `relate`'s. On the expressions that
   use no name twice, it decides each relation exactly, with bindings that wend renders

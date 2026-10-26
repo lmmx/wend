@@ -15,15 +15,18 @@ segment or more, and ``always`` where every pair relates.
 
 Every edge also records which parameter emitted its character, including
 the characters an operation consumes and drops (``with_suffix`` drops the old
-suffix). So every path the oracle says is possible comes with a binding, and
-`witness_bindings` returns it: rendering it with wend itself confirms the
-answer.
+suffix). So every relation the oracle finds possible comes with bindings
+(`Answer.examples`), which wend renders to confirm it.
 
 The fragment, with ``builtin_values=False``:
 
-- **Linear expressions.** A name used twice in one expression (``{p}/{p}``)
-  renders one value twice, and that set is not regular in general; such
-  expressions raise `Unsupported`.
+- **Names used twice.** Rendering is a function of structure (SEMANTICS
+  §15.3, 1): two uses of a name render one text where they render it the
+  same way, its *shape* (as a path or segment, or formatted with one
+  conversion and spec). That set is not regular in general (``{p}/{p}``), so
+  `language` refuses it; `relate_independent` reads the uses apart and then
+  holds them to each text a use can take, and says ``"undecided"`` where
+  that does not settle it.
 - **Values are any objects.** A value's ``__format__`` may return any text,
   and an object may compare equal to a choice, so neither a spec nor
   ``choices`` narrows a field's text beyond what rendering enforces: no
@@ -50,7 +53,6 @@ from wend._expr import (
     PathExpr,
     Root,
     Seg,
-    Splice,
     Text,
     _Rel,
     format_field,
@@ -533,18 +535,9 @@ FINITE_TYPES = {bool: (False, True)}
 
 
 def _value_text(p: Param, key: Any, render: Any) -> NFA:
-    """What ``p`` renders through ``render`` (a value to text, raising where
-    the value is refused), tagged with ``key``."""
-    finite = FINITE_TYPES.get(p.type)
-    if finite is not None:
-        branches = []
-        for v in finite:
-            try:
-                s = render(v)
-            except Exception:  # noqa: BLE001 (a value the field refuses renders nothing)
-                continue
-            branches.append(_chosen(tag(text(s), key), key, v))
-        return union(*branches) if branches else empty()
+    """Any text, emitted by ``key``: a value's ``__format__`` and
+    ``__fspath__`` may return anything. A declared type narrows nothing,
+    as long as it may be subclassed."""
     if p.type is not None:
         try:
             type("_Sub", (p.type,), {})
@@ -563,13 +556,50 @@ def _chosen(n: NFA, key: Any, v: Any) -> NFA:
     return out
 
 
-def _field(f: Field, side: str) -> NFA:
+# A use's shape is how its text is derived from the value: through
+# os.fspath or format(v, "") alone in a segment, a SubPath or a head
+# ("fspath"); by format after a conversion with a spec in text; by the value
+# itself for a type of two values. Rendering is a function of structure
+# (docs/SEMANTICS.md §15.3, 1), so uses of one shape render one text, while
+# a value of a type of its own may render different shapes apart.
+FSPATH = ("fspath",)
+FINITE = ("finite",)
+
+
+@dataclass
+class Side:
+    """Who emits a side's characters: keys ``(side, name, shape, use)``,
+    with each use of a name in a shape numbered. ``fixed`` holds a text a
+    (name, shape) is held to."""
+
+    name: str
+    fixed: dict[tuple[str, Any], Any] = field(default_factory=dict)
+    uses: dict[tuple[str, Any], int] = field(default_factory=dict)
+
+    def key(self, param: str, shape: Any) -> tuple[str, str, Any, int]:
+        i = self.uses.get((param, shape), 0)
+        self.uses[(param, shape)] = i + 1
+        return (self.name, param, shape, i)
+
+    @property
+    def repeated(self) -> bool:
+        return any(n > 1 for n in self.uses.values())
+
+
+def _held(lang: NFA, side: Side, param: str, shape: Any, words: NFA) -> NFA:
+    """``lang``, held to ``words`` where the (name, shape) is fixed."""
+    return product(lang, words) if (param, shape) in side.fixed else lang
+
+
+def _field(f: Field, side: Side) -> NFA:
     src = f.source
     if f.role == "segment":
         if not isinstance(src, Param):
             raise Unsupported("segment field of a non-parameter")
-        key = (side, src.name)
-        return product(_value_text(src, key, lambda v: format(v, "")), NAME_OK)
+        if src.type in FINITE_TYPES:
+            return _finite(src, side, lambda v: format(v, ""), NAME_OK)
+        lang = product(_value_text(src, side.key(src.name, FSPATH), None), NAME_OK)
+        return _held(lang, side, src.name, FSPATH, _fixed_text(side, src.name, FSPATH))
     if isinstance(src, Const):
         if f.static_spec is None:
             raise Unsupported("constant with a dynamic spec")
@@ -585,24 +615,47 @@ def _field(f: Field, side: str) -> NFA:
         raise Unsupported("a conversion with a spec formats a str")
     if f.conversion == "a":
         raise Unsupported("ascii conversion")
-    key = (side, src.name)
     spec = f.static_spec
     if src.type in FINITE_TYPES:
-        return _value_text(src, key, lambda v: format_field(f, v, spec))
-    base = _value_text(src, key, None)
+        return _finite(src, side, lambda v: format_field(f, v, spec), None)
+    shape = ("format", f.conversion, spec)
+    base = _value_text(src, side.key(src.name, shape), None)
     dot_free, non_empty = f.facts
     if dot_free:
         base = product(base, star(word([NONDOT])))
-    return product(base, NONEMPTY) if non_empty else base
+    if non_empty:
+        base = product(base, NONEMPTY)
+    return _held(base, side, src.name, shape, _fixed_text(side, src.name, shape))
 
 
-def _pieces(pieces: tuple[Any, ...], side: str) -> NFA:
+def _fixed_text(side: Side, param: str, shape: Any) -> NFA:
+    t = side.fixed.get((param, shape))
+    return text(t) if isinstance(t, str) else empty()
+
+
+def _finite(p: Param, side: Side, render: Any, within: NFA | None) -> NFA:
+    """A field of a type of two values: each value's text, chosen outright."""
+    key = side.key(p.name, FINITE)
+    branches = []
+    for v in FINITE_TYPES[p.type]:
+        if (p.name, FINITE) in side.fixed and side.fixed[(p.name, FINITE)] is not v:
+            continue
+        try:
+            t = render(v)
+        except Exception:  # noqa: BLE001 (a value the field refuses renders nothing)
+            continue
+        lang = _chosen(tag(text(t), key), key, v)
+        branches.append(product(lang, within) if within is not None else lang)
+    return union(*branches) if branches else empty()
+
+
+def _pieces(pieces: tuple[Any, ...], side: Side) -> NFA:
     return compact(
         concat(*(text(p) if isinstance(p, str) else _field(p, side) for p in pieces))
     )
 
 
-def _seg(part: Seg, side: str) -> NFA:
+def _seg(part: Seg, side: Side) -> NFA:
     if part.literal is not None:
         return concat(text(part.literal), word([SEP]))
     lang = _pieces(part.pieces, side)
@@ -613,14 +666,31 @@ def _seg(part: Seg, side: str) -> NFA:
     return concat(lang, word([SEP]))
 
 
-def _head_param(p: Param, side: str) -> NFA:
+def _head_param(p: Param, side: Side) -> NFA:
     if p.type is not None:
         raise Unsupported("typed path parameter")
     anchors = ["/", "//"] if p.kind is Kind.ABSOLUTE else ["", "/", "//"]
-    return tag(
+    lang = tag(
         concat(union(*(word([ANCHORS[a]]) for a in anchors)), star(CANON_SEG)),
-        (side, p.name),
+        side.key(p.name, FSPATH),
     )
+    t = side.fixed.get((p.name, FSPATH))
+    return _held(
+        lang, side, p.name, FSPATH, word(encode(t)) if isinstance(t, str) else empty()
+    )
+
+
+def _splice(p: Param, side: Side) -> NFA:
+    if p.type is not None:
+        raise Unsupported("typed SubPath")
+    lang = tag(star(SPLICE_SEG), side.key(p.name, FSPATH))
+    t = side.fixed.get((p.name, FSPATH))
+    held = empty()
+    if isinstance(t, str):
+        held = concat(
+            *(concat(text(x), word([SEP])) for x in t.split("/") if x not in ("", "."))
+        )
+    return _held(lang, side, p.name, FSPATH, held)
 
 
 def _with_name(n: NFA, name: NFA) -> NFA:
@@ -688,60 +758,19 @@ def _with_stem(n: NFA, stem: NFA) -> NFA:
 # -- expressions -------------------------------------------------------------------
 
 
-def _names(e: PathExpr) -> list[str]:
-    """Every parameter name use in ``e``, with repeats."""
-    out: list[str] = []
-
-    def field_names(f: Field) -> None:
-        for s in f.spec:
-            if isinstance(s, Param):
-                out.append(s.name)
-        src = f.source
-        if isinstance(src, Param):
-            out.append(src.name)
-        elif isinstance(src, Text):
-            for p in src.pieces:
-                if isinstance(p, Field):
-                    field_names(p)
-        elif not isinstance(src, Const):
-            out.append(f"<{type(src).__name__}>")
-
-    def pieces(ps: tuple[Any, ...]) -> None:
-        for p in ps:
-            if isinstance(p, Field):
-                field_names(p)
-
-    def walk(x: PathExpr) -> None:
-        h = x.head
-        if isinstance(h, HeadParam):
-            out.append(h.param.name)
-        elif isinstance(h, Deferred):
-            walk(h.base)
-            if isinstance(h.arg, PathExpr):
-                walk(h.arg)
-            elif isinstance(h.arg, Text):
-                pieces(h.arg.pieces)
-        for part in x.parts:
-            if isinstance(part, Splice):
-                out.append(part.param.name)
-            else:
-                pieces(part.pieces)
-
-    walk(e)
-    return out
-
-
 def language(e: PathExpr, side: str = "a") -> NFA:
     """Every path ``e`` renders, over all bindings, as an automaton whose
-    edges record which of ``e``'s parameters (keyed ``(side, name)``) emit
-    each character."""
-    names = _names(e)
-    if len(names) != len(set(names)):
+    edges record which of ``e``'s parameters emit each character. Raises
+    `Unsupported` where a name is used twice in one shape: its uses render
+    one text, and the set is not regular in general."""
+    sd = Side(side)
+    lang = _lang(e, sd)
+    if sd.repeated:
         raise Unsupported("a name used twice")
-    return _lang(e, side)
+    return lang
 
 
-def _lang(e: PathExpr, side: str) -> NFA:
+def _lang(e: PathExpr, side: Side) -> NFA:
     h = e.head
     if isinstance(h, _Rel):
         head = word([ANCHORS[""]])
@@ -758,13 +787,11 @@ def _lang(e: PathExpr, side: str) -> NFA:
         if isinstance(part, Seg):
             parts.append(_seg(part, side))
         else:
-            if part.param.type is not None:
-                raise Unsupported("typed SubPath")
-            parts.append(tag(star(SPLICE_SEG), (side, part.param.name)))
+            parts.append(_splice(part.param, side))
     return compact(concat(head, *parts))
 
 
-def _arg_text(arg: Any, side: str) -> NFA:
+def _arg_text(arg: Any, side: Side) -> NFA:
     if isinstance(arg, str):
         return text(arg)
     if isinstance(arg, Text):
@@ -776,11 +803,11 @@ ABSOLUTE = concat(union(word([ANCHORS["/"]]), word([ANCHORS["//"]])), star(SEGME
 RELATIVE = concat(word([ANCHORS[""]]), star(SEGMENT))
 
 
-def _deferred(h: Deferred, side: str) -> NFA:
+def _deferred(h: Deferred, side: Side) -> NFA:
     return compact(_deferred_raw(h, side))
 
 
-def _deferred_raw(h: Deferred, side: str) -> NFA:
+def _deferred_raw(h: Deferred, side: Side) -> NFA:
     base = _lang(h.base, side)
     if h.op == "parent":
         anchor_only = union(*(word([t]) for t in ANCHORS.values()))
@@ -812,85 +839,74 @@ def _deferred_raw(h: Deferred, side: str) -> NFA:
 
 
 class _Shows:
-    """A value that formats, prints and converts to ``text`` whatever the spec."""
+    """A value that renders its text for each shape: through ``__fspath__``,
+    and through ``__format__``, ``__str__`` and ``__repr__`` for each spec
+    and conversion."""
 
-    def __init__(self, text: str) -> None:
-        self.text = text
+    def __init__(self, texts: dict[Any, str]) -> None:
+        self.texts = texts
+
+    def _for(self, shape: Any) -> str:
+        return self.texts.get(shape, "")
 
     def __format__(self, spec: str) -> str:
-        return self.text
+        return self._for(("format", None, spec))
 
     def __str__(self) -> str:
-        return self.text
+        return self._for(("format", "s", ""))
 
     def __repr__(self) -> str:
-        return self.text
+        return self._for(("format", "r", ""))
 
     def __fspath__(self) -> str:
-        return self.text
+        return self._for(FSPATH)
 
 
-def _value(p: Param, text: str, chosen: Any, role: str) -> Any:
-    """A value of ``p`` that renders ``text`` where it is used."""
-    if chosen is not _UNSET:
-        return chosen
-    if role == "path":
-        if p.choices is None:
-            return text
-        cls = type("_Path", (_Shows,), {})  # os.PathLike by its __fspath__
-    elif role == "segment" and p.type is None and p.choices is None:
-        return text
-    else:
-        bases: tuple[type, ...] = (_Shows,) if p.type is None else (_Shows, p.type)
-        cls = type("_Value", bases, {})
+def _value(p: Param, texts: dict[Any, str]) -> Any:
+    """A value of ``p`` that renders ``texts[shape]`` in each shape it is
+    used in. A plain str does where only its path text is used; otherwise an
+    object of its own, of ``p``'s type and equal to a choice where declared."""
+    if p.type is None and p.choices is None and set(texts) <= {FSPATH}:
+        return texts.get(FSPATH, "")
+    bases: tuple[type, ...] = (_Shows,) if p.type is None else (_Shows, p.type)
+    cls = type("_Value", bases, {})
     if p.choices is not None:
         c = next(iter(p.choices))
         cls.__hash__ = lambda self, c=c: hash(c)  # type: ignore[method-assign]
         cls.__eq__ = lambda self, o: True  # type: ignore[method-assign,assignment]
-    v = cls.__new__(cls) if p.type is not None else cls(text)
-    if p.type is not None:
-        _Shows.__init__(v, text)
+    if p.type is None:
+        return cls(texts)
+    try:  # a str subclass's own text is its path text
+        v = p.type.__new__(cls, texts.get(FSPATH, ""))
+    except Exception:  # noqa: BLE001 (a type that is not built from text)
+        v = p.type.__new__(cls)
+    _Shows.__init__(v, texts)
     return v
 
 
-_UNSET = object()
+def _params(e: PathExpr) -> dict[str, Param]:
+    return {p.name: p for p in e.params.values()}
 
 
-def _roles(e: PathExpr) -> dict[str, tuple[Param, str]]:
-    """Each parameter of ``e`` with how it renders: a path, a segment, a value."""
-    out: dict[str, tuple[Param, str]] = {}
+@dataclass
+class _Reading:
+    """What a witness gives each side: a value per name, where each shape's
+    uses agree, and the texts of a (name, shape)'s uses where they do not."""
 
-    def pieces(ps: tuple[Any, ...]) -> None:
-        for p in ps:
-            if isinstance(p, Field) and isinstance(p.source, Param):
-                out[p.source.name] = (
-                    p.source,
-                    "segment" if p.role == "segment" else "value",
-                )
+    envs: dict[str, dict[str, Any]]
+    conflicts: dict[str, dict[tuple[str, Any], set[Any]]]
 
-    def walk(x: PathExpr) -> None:
-        h = x.head
-        if isinstance(h, HeadParam):
-            out[h.param.name] = (h.param, "path")
-        elif isinstance(h, Deferred):
-            walk(h.base)
-            if isinstance(h.arg, PathExpr):
-                walk(h.arg)
-            elif isinstance(h.arg, Text):
-                pieces(h.arg.pieces)
-        for part in x.parts:
-            if isinstance(part, Splice):
-                out[part.param.name] = (part.param, "path")
-            else:
-                pieces(part.pieces)
 
-    walk(e)
-    return out
+def _path_text(t: str) -> str:
+    """A path's text as its characters spell it: anchor, then segments each
+    followed by "/"; as rendered."""
+    return t.rstrip("/") or ("." if not t else t)
 
 
 def _bindings(
-    edges: list[tuple[Label | None, tuple[Effect, ...]]], sides: dict[str, PathExpr]
-) -> dict[str, dict[str, Any]]:
+    edges: list[tuple[Label | None, tuple[Effect, ...]]],
+    sides: dict[str, tuple[PathExpr, Side]],
+) -> _Reading:
     texts: dict[Any, list[str]] = {}
     chosen: dict[Any, Any] = {}
     for lab, fx in edges:
@@ -900,18 +916,37 @@ def _bindings(
                 continue
             shown = lab if how is None else how
             assert isinstance(shown, Chars | Tok)  # an effect's edge reads one
-            c = pick(shown)
-            texts.setdefault(key, []).append(c)
-    out: dict[str, dict[str, Any]] = {}
-    for side, e in sides.items():
+            texts.setdefault(key, []).append(pick(shown))
+    envs: dict[str, dict[str, Any]] = {}
+    conflicts: dict[str, dict[tuple[str, Any], set[Any]]] = {}
+    for side, (e, sd) in sides.items():
         env: dict[str, Any] = {}
-        for name, (p, role) in _roles(e).items():
-            t = "".join(texts.get((side, name), []))
-            if role == "path":
-                t = t.rstrip("/") or ("." if not t else t)
-            env[name] = _value(p, t, chosen.get((side, name), _UNSET), role)
-        out[side] = env
-    return out
+        for name, p in _params(e).items():
+            per_shape: dict[Any, Any] = {}
+            for (n, shape), count in sd.uses.items():
+                if n != name:
+                    continue
+                seen = set()
+                for use in range(count):
+                    key = (side, name, shape, use)
+                    if shape == FINITE:
+                        seen.add(chosen.get(key))
+                        continue
+                    t = "".join(texts.get(key, []))
+                    # A path's text ends in "/" (or is empty), a segment's
+                    # never: both are its value's os.fspath.
+                    seen.add(_path_text(t) if shape == FSPATH else t)
+                if len(seen) == 1:
+                    per_shape[shape] = next(iter(seen))
+                else:
+                    conflicts.setdefault(side, {})[(name, shape)] = seen
+            if any(k[0] == name for k in conflicts.get(side, {})):
+                continue
+            env[name] = (
+                per_shape[FINITE] if FINITE in per_shape else _value(p, per_shape)
+            )
+        envs[side] = env
+    return _Reading(envs, conflicts)
 
 
 # -- relations -----------------------------------------------------------------------
@@ -968,52 +1003,201 @@ def _not_word(w: list[Label], below: bool) -> NFA:
 
 @dataclass(frozen=True)
 class Answer:
+    """Each relation: ``"never"``, ``"sometimes"`` or ``"always"``, exactly;
+    ``"possible"`` where a binding shows it but whether it always holds is
+    not decided; ``"undecided"`` where neither is shown."""
+
     same: str
     inside: str
     contains: str
-    # for each relation that may hold, bindings of each side showing it
+    # for each relation shown to hold, bindings of each side showing it
     examples: dict[str, dict[str, dict[str, Any]]]
 
     def __getitem__(self, how: str) -> str:
         return getattr(self, how)
 
 
-def relate_independent(a: PathExpr, b: PathExpr) -> Answer:
-    """The exact relation of ``a`` and ``b`` under independent bindings."""
-    la, lb = language(a, "a"), language(b, "b")
+POSSIBLE = ("sometimes", "always", "possible")
+HOWS = ("same", "inside", "contains")
+
+
+def _shows(a: PathExpr, b: PathExpr, how: str, envs: dict[str, dict[str, Any]]) -> bool:
+    from wend._relate import lexically  # how two rendered strings relate
+
+    try:
+        pa, pb = a.render(envs["a"]), b.render(envs["b"])
+    except Exception:  # noqa: BLE001 (a binding either side refuses)
+        return False
+    return lexically(pa, pb) == how
+
+
+Fixed = dict[str, dict[tuple[str, Any], Any]]
+
+
+def relate_independent(
+    a: PathExpr, b: PathExpr, *, depth: int = 2, fixed: Fixed | None = None
+) -> Answer:
+    """The relation of ``a`` and ``b`` under independent bindings.
+
+    Each use of a name is read on its own, so where a name is used twice in
+    one shape the language is larger than what renders, and ``"never"``
+    stays exact. A witness counts only where each shape's uses of a name
+    agree, which rendering confirms. Failing that, the texts a disagreeing
+    (name, shape) can take are fixed one by one (``depth`` times over) and
+    decided again; where those were all its texts and none shows the
+    relation, it never holds. ``fixed`` holds a side's (name, shape) to a
+    text, or a value for a type of two values."""
+    fixed = fixed or {}
+    sa, sb = Side("a", dict(fixed.get("a", {}))), Side("b", dict(fixed.get("b", {})))
+    la, lb = _lang(a, sa), _lang(b, sb)
+    exact = not (sa.repeated or sb.repeated)
     if not nonempty(la) or not nonempty(lb):
         # No binding renders both: every relation is vacuously never (§15.1).
         return Answer("never", "never", "never", {})
-    sides = {"a": a, "b": b}
-    examples = {}
-    out = {}
+    sides = {"a": (a, sa), "b": (b, sb)}
+    examples: dict[str, dict[str, dict[str, Any]]] = {}
+    out: dict[str, str] = {}
     for how, x, y in (
         ("same", la, lb),
         ("inside", la, concat(lb, BELOW)),
         ("contains", concat(la, BELOW), lb),
     ):
-        w = path(product(x, y))
+        both = product(x, y)
+        w = path(both)
         if w is None:
             out[how] = "never"
             continue
-        out[how] = "sometimes"
-        examples[how] = _bindings(w, sides)
-    sa, sb = _singleton(la), _singleton(lb)
-    if sa is not None and sb is not None and sa == sb:
-        out["same"] = "always"
-    if (
-        out["inside"] == "sometimes"
-        and sb is not None
-        and not nonempty(product(la, _not_word(sb, below=True)))
-    ):
-        out["inside"] = "always"
-    if (
-        out["contains"] == "sometimes"
-        and sa is not None
-        and not nonempty(product(lb, _not_word(sa, below=True)))
-    ):
-        out["contains"] = "always"
+        reading = _bindings(w, sides)
+        if not reading.conflicts and _shows(a, b, how, reading.envs):
+            out[how] = "sometimes"
+            examples[how] = reading.envs
+            continue
+        verdict, envs = "undecided", None
+        if reading.conflicts and depth > 0:
+            verdict, envs = _substitute(
+                a, b, how, _candidates(both, reading, sides), fixed, depth
+            )
+        out[how] = "sometimes" if verdict == "possible" else verdict
+        if envs is not None:
+            examples[how] = envs
+    # always: every pair relates. Decided on the languages, which are exact
+    # without repeats; with them, only where some pair was shown to relate.
+    sa_w, sb_w = _singleton(la), _singleton(lb)
+    always = {
+        "same": sa_w is not None and sb_w is not None and sa_w == sb_w,
+        "inside": sb_w is not None
+        and not nonempty(product(la, _not_word(sb_w, below=True))),
+        "contains": sa_w is not None
+        and not nonempty(product(lb, _not_word(sa_w, below=True))),
+    }
+    for how in HOWS:
+        if out[how] == "sometimes":
+            if always[how]:
+                out[how] = "always"
+            elif not exact:
+                out[how] = "possible"
     return Answer(out["same"], out["inside"], out["contains"], examples)
+
+
+def _projection(n: NFA, key: Any, limit: int = 64) -> set[str] | None:
+    """The texts ``key`` emits on the words of ``n``, if there are at most
+    ``limit`` of them; None if there are more (or infinitely many)."""
+    m = NFA(start=n.start, finals=set(n.finals))
+    for es in n.edges:
+        row: list[Edge] = []
+        for lab, t, fx in es:
+            shown = [lab if how is None else how for k, how in fx if k == key]
+            shown = [x for x in shown if isinstance(x, Chars | Tok)]
+            if len(shown) == 1:
+                row.append((shown[0], t, ()))
+            else:
+                row.append((None, t, ()))
+        m.edges.append(row)
+    m = compact(m)
+    # finite exactly when no cycle reads a label
+    out: set[str] = set()
+    todo: list[tuple[int, str, frozenset[int]]] = [(m.start, "", frozenset())]
+    seen_states: dict[tuple[int, str], None] = {}
+    while todo:
+        s, txt, onpath = todo.pop()
+        if (s, txt) in seen_states:
+            continue
+        seen_states[(s, txt)] = None
+        if s in m.finals:
+            out.add(txt)
+            if len(out) > limit:
+                return None
+        for lab, t, _ in m.edges[s]:
+            if lab is None:
+                if t in onpath:
+                    continue
+                todo.append((t, txt, onpath | {s}))
+                continue
+            if isinstance(lab, Chars) and (lab.co or len(lab.chars) > 1):
+                return None  # more texts than we enumerate
+            if len(txt) > 64:
+                return None  # a cycle reads a label: infinitely many
+            todo.append((t, txt + pick(lab), frozenset()))
+    return out
+
+
+def _candidates(
+    both: NFA, reading: _Reading, sides: dict[str, tuple[PathExpr, Side]]
+) -> list[tuple[str, tuple[str, Any], list[Any], bool]]:
+    """For each (name, shape) whose uses disagreed: the texts to hold it to,
+    and whether they are all it can render where the relation holds. Each
+    use can emit only texts it emits on some word of ``both``; where one use
+    can emit finitely many, the (name, shape)'s text is one of them."""
+    out = []
+    for side, groups in reading.conflicts.items():
+        _, sd = sides[side]
+        for (name, shape), seen in groups.items():
+            if shape == FINITE:
+                p = _params(sides[side][0])[name]
+                out.append((side, (name, shape), list(FINITE_TYPES[p.type]), True))
+                continue
+            finite: set[str] | None = None
+            for use in range(sd.uses[(name, shape)]):
+                texts = _projection(both, (side, name, shape, use))
+                if texts is None:
+                    continue
+                if shape == FSPATH:
+                    texts = {_path_text(t) for t in texts}
+                finite = texts if finite is None else finite & texts
+            if finite is not None:
+                out.append((side, (name, shape), sorted(finite), True))
+            else:
+                out.append((side, (name, shape), sorted(seen, key=repr), False))
+    return out
+
+
+def _substitute(
+    a: PathExpr,
+    b: PathExpr,
+    how: str,
+    cands: list[tuple[str, tuple[str, Any], list[Any], bool]],
+    fixed: Fixed,
+    depth: int,
+    limit: int = 64,
+) -> tuple[str, dict[str, dict[str, Any]] | None]:
+    """Hold each disagreeing (name, shape) to each of its candidates and
+    decide again: ``("possible", bindings)`` where one shows ``how``;
+    ``("never", None)`` where the candidates were all its texts and none
+    can; otherwise ``("undecided", None)``."""
+    combos = list(
+        itertools.islice(itertools.product(*(vs for _, _, vs, _ in cands)), limit + 1)
+    )
+    complete = all(c for _, _, _, c in cands) and len(combos) <= limit
+    for combo in combos[:limit]:
+        held = {s: dict(fixed.get(s, {})) for s in ("a", "b")}
+        for (side, group, _, _), v in zip(cands, combo, strict=True):
+            held[side][group] = v
+        r = relate_independent(a, b, depth=depth - 1, fixed=held)
+        if r[how] in POSSIBLE:
+            return "possible", r.examples[how]
+        if r[how] != "never":
+            complete = False
+    return ("never", None) if complete else ("undecided", None)
 
 
 __all__ = [

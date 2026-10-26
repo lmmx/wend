@@ -29,6 +29,14 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   the name `..`. They are now written out as the stem, a dot and the suffix's text, or
   the name `..`, so `({root}/{x}).with_stem("..")` is never `{root}/a`. On #119's
   samples, 552 more `"unknown"` answers are now `"never"`.
+- **Depths decide through `SubPath`s and deferred operations** (#DEPTHS). A path's
+  depth is its count of segments plus what its `SubPath`s, head parameters and deferred
+  heads render. Changed names keep their base's depth, parents have one fewer, paths made
+  relative drop the other's and joins add theirs. Under shared bindings a part both
+  sides share cancels, and every part renders no segments or more, so depths bound the
+  relations: `({root}/{n:d}.{p}/{s...}).with_suffix("")` is never
+  `{root}/{n:d}.{p}/{n:d}.{p}/{s...}`. On #119's samples, 282 more `"unknown"` answers
+  are now `"never"`.
 
 ### Fixed
 

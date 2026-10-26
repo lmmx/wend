@@ -16,7 +16,10 @@ it through ``/proc``: read it, write it, name it (see `Draft`).
   so sees the object it replaced. With ``expect``, the object the caller
   last observed there, it is *exchange-and-validate*, an optimistic
   protocol and **not** a compare-and-swap: if another writer published in
-  between, the exchange is undone and `Conflict` raised. Readers may see
+  between, the exchange is undone and `Conflict` raised. An ``expect`` of
+  ``(st_dev, st_ino)`` names an inode number, which the filesystem gives
+  to a new object once the observed one is gone; `identity` adds the
+  inode's generation, where the filesystem keeps one. Readers may see
   the withdrawn version meanwhile, and with three or more concurrent
   writers the undo, itself an unconditional exchange, can remove another
   writer's publication (docs/journal/2026-10-22-synthesis.md has the
@@ -45,6 +48,7 @@ import fcntl
 import hashlib
 import os
 import secrets
+import sys
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Literal
@@ -69,6 +73,7 @@ __all__ = [
     "Version",
     "VersionDraft",
     "invalidated",
+    "identity",
     "renameat2",
 ]
 
@@ -94,6 +99,55 @@ def renameat2(olddirfd: int, old: str, newdirfd: int, new: str, flags: int) -> N
     ):
         e = ctypes.get_errno()
         raise OSError(e, os.strerror(e), new)
+
+
+FS_IOC_GETVERSION = 0x80087601  # _IOR('v', 1, long): the inode's generation
+
+Identity = tuple[int, int, int | None]
+
+
+def identity(path: str, *, dir_fd: int | None = None) -> Identity | None:
+    """The object ``path`` names: its device, inode number and generation, or
+    None if nothing is there.
+
+    An inode number is given to a new object once the old one is gone, so
+    ``(st_dev, st_ino)`` can name an object other than the one observed. The
+    generation, where the filesystem keeps one (ext4), is drawn anew for
+    each object, and tells the two apart. Elsewhere it is None, and the
+    number alone is compared."""
+    try:
+        fd = os.open(
+            path,
+            os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+            dir_fd=dir_fd,
+        )
+    except FileNotFoundError:
+        return None
+    except OSError:  # not openable for reading: a symlink, or no permission
+        try:
+            st = os.stat(path, dir_fd=dir_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return None
+        return (st.st_dev, st.st_ino, None)
+    try:
+        st = os.fstat(fd)
+        try:
+            buf = fcntl.ioctl(fd, FS_IOC_GETVERSION, bytes(8))
+            gen: int | None = int.from_bytes(buf[:4], sys.byteorder)  # an int
+        except OSError:  # this filesystem keeps none
+            gen = None
+        return (st.st_dev, st.st_ino, gen)
+    finally:
+        os.close(fd)
+
+
+def _same(now: Identity | None, expect: tuple[int, int] | Identity) -> bool:
+    """Whether the object observed now is the one ``expect`` names: by device
+    and inode number, and by generation where both have one."""
+    if now is None or now[:2] != expect[:2]:
+        return False
+    gen = expect[2] if len(expect) == 3 else None
+    return gen is None or now[2] is None or now[2] == gen
 
 
 def _name(name: str) -> str:
@@ -151,6 +205,10 @@ class Draft:
     dirfd: int = field(init=False)
     fd: int = field(init=False)
     spent: bool = field(init=False, default=False)
+    # Whether the object can still be given a name. linkat names an
+    # O_TMPFILE object only until it has had a name: once linked and then
+    # unlinked, as a failed "replace" or "exchange" leaves it, it never can.
+    nameable: bool = field(init=False, default=True)
 
     def __post_init__(self) -> None:
         if self.held is None:
@@ -183,13 +241,23 @@ class Draft:
         *,
         policy: Policy = "create",
         durable: bool = True,
-        expect: tuple[int, int] | None = None,
+        expect: tuple[int, int] | Identity | None = None,
     ) -> Published:
         """Give the draft ``name`` in its directory, in one system call, and
         spend the capability. Raises ``FileExistsError`` for ``"create"`` if
         the name is taken, or `Conflict` for ``"exchange"`` if the object
-        there is not ``expect``; the draft is then unpublished, and live."""
+        there is not ``expect``; the draft is then unpublished. After a
+        refused ``"create"`` it can be published again. After a `Conflict`,
+        or any failure once it was linked under its fresh name, it can still
+        be written, read and abandoned, but not named (`nameable`): write a
+        new draft. ``expect`` is ``(st_dev, st_ino)``, or an `identity`,
+        which also tells a reused inode number from the object observed."""
         self._live()
+        if not self.nameable:
+            raise ValueError(
+                "this draft had a name and lost it: the kernel will not name its"
+                " object again (linkat refuses an O_TMPFILE once unlinked)"
+            )
         name = _name(name)
         if durable:
             os.fsync(self.fd)
@@ -207,7 +275,9 @@ class Draft:
                 else:
                     renameat2(self.dirfd, tmp, self.dirfd, name, RENAME_EXCHANGE)
                     previous = self._ident_of(tmp)
-                    if expect is not None and previous != expect:
+                    if expect is not None and not _same(
+                        identity(tmp, dir_fd=self.dirfd), expect
+                    ):
                         renameat2(self.dirfd, tmp, self.dirfd, name, RENAME_EXCHANGE)
                         raise Conflict(f"{name!r} changed since it was observed")
                     os.unlink(tmp, dir_fd=self.dirfd)
@@ -216,6 +286,7 @@ class Draft:
                     os.unlink(tmp, dir_fd=self.dirfd)
                 except FileNotFoundError:
                     pass
+                self.nameable = False
                 raise
         if durable:
             os.fsync(self.dirfd)

@@ -948,7 +948,18 @@ root. `publish(name, policy)` changes the target name in one system call. For
   swap. It is not a compare-and-swap:
   - a reader can see the withdrawn version;
   - with three or more writers it can lose an update and report the survivor as the
-    failure (`synthesis_test::test_exchange_and_validate_over_every_schedule`).
+    failure (`synthesis_test::test_exchange_and_validate_over_every_schedule`);
+  - an `expect` of `(st_dev, st_ino)` names an inode *number*. Once the object observed
+    is gone, the filesystem may give that number to a new object (ext4 does at once),
+    which then passes for it: with only two writers, an update is lost.
+    `publish.identity()` adds the inode's generation where the filesystem keeps one
+    (ext4), and with it the new object is told apart
+    (`publish_test::test_a_reused_inode_number_passes_for_the_object_observed`).
+
+  A draft that was linked under its fresh name and then unlinked (a `Conflict`, or any
+  failure after that link) cannot be named again: `linkat` names an `O_TMPFILE` object
+  only until it has had a name. It stays writable and can be abandoned, and `publish`
+  refuses it.
 
 A draft's file is synced, then published, then its directory synced (`durable=True`).
 A crash then leaves the new version, in the one crash model tested.

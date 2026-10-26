@@ -20,6 +20,8 @@ from relate_test import pairs, renamed, under_one_head  # noqa: E402
 from wend import relate  # noqa: E402
 from wend._experimental.lang_oracle import (  # noqa: E402
     Unsupported,
+    language,
+    nonempty,
     relate_independent,
     relate_shared,
 )
@@ -36,6 +38,16 @@ def confirmed(a, b, how, env):
     except Exception as e:  # noqa: BLE001
         return f"render failed: {type(e).__name__}: {e}"
     return True if lexically(pa, pb) == how else f"renders {pa!r}, {pb!r}"
+
+
+def renders_nothing(e):
+    """Whether ``e`` renders on no binding: its language, which holds every
+    rendering, is empty. Then every relation is vacuously "always" and
+    "never" at once (SEMANTICS §15.2)."""
+    try:
+        return not nonempty(language(e))
+    except Unsupported:  # a name used twice in one shape: not decided here
+        return False
 
 
 def run(n, shared=False):
@@ -88,6 +100,12 @@ def run(n, shared=False):
                     or (mine == "always" and exact in ("never", "sometimes"))
                     or (mine == "sometimes" and exact == "never")
                 )
+                if wrong and mine == "always" and exact == "never":
+                    if renders_nothing(a) or renders_nothing(b):
+                        tally[
+                            (name, "relate always, oracle never: renders nothing")
+                        ] += 1
+                        continue
                 if wrong:
                     kind = f"CONTRADICTION relate {mine}, oracle {exact}"
                     detail = (

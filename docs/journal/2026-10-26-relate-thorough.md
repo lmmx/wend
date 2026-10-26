@@ -89,7 +89,7 @@ it took 347 s, against 3,348 s for #135's version (on a machine running about ei
 jobs) and 1,845 s for #132's (idle). This run shared the machine with the full suite and
 the seeds, three jobs on four cores.
 
-**[Measured]** Steps on those pairs, after: median 15,794; 95th percentile 875,472;
+**[Measured]** Steps on the 301 pairs of the table, after: median 15,794; 95th percentile 875,472;
 99th 2,543,766; greatest 5,124,312. At 5,000,000, one pair runs out, and none of the
 relations it settles is lost (it settles none the rules left `"unknown"`).
 

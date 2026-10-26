@@ -168,8 +168,7 @@ the code having no such handler;
 - **The cost.** Mostly the under-one-head sample's deferred heads, read as automata of
   some thousands of states. A cache of each expression's language, across the pairs of
   an `EffectGraph`, would save the most, since a graph relates each port many times.
-- **`EffectGraph` measured.** `bench/effects_corpus.py` has not been run with
-  `thorough=True`.
+- **`EffectGraph` on the corpus.** Measured below (§9).
 
 ## 8. #135's out-of-memory bench, rerun
 
@@ -184,3 +183,26 @@ at 13.7 GB was, as far as the record shows, this code on these pairs.
 under-one-head sample, which neither rerun reached. It is not established. The final
 version of the counts completed all 4,500 under the same limit, and this PR's projection
 makes the oracle's slowest step linear; the question is left there.
+
+## 9. `EffectGraph` on the corpus
+
+**[Measured]** `bench/effects_corpus.py`, eight pipelines, 42 links, in each mode:
+
+| mode | always | sometimes | unknown | seconds |
+|---|---|---|---|---|
+| plain | 30 | 6 | 6 | 0.13 |
+| `builtin_values=True` | 30 | 6 | 3 | 0.12 |
+| `thorough=True` | 30 | 9 | 3 | 0.30 |
+| both | 30 | 6 | 3 | 0.26 |
+
+`thorough` settles the shards pipeline's three unknowns as `"sometimes"`: a value of a
+type of its own may render `{split}` alone in a segment as its manifest's name, so a
+shard and its manifest may meet. With builtin values they never do, as #125 found, and
+with both options the graph is as with builtin values alone. The stages are the same in
+every mode.
+
+**[Fact]** The three left `"unknown"` in every mode are not relations of two paths. Each
+is a directory a step may make as a missing parent: `features/`, which `featurise` and
+`stats` may each make; `build/`, which `compile` may make and `clean` requires to
+exist; `{root}/tmp/{job}`, which `work` may make and `tidy` requires. They are settled
+by `existing=`, not by `relate`.

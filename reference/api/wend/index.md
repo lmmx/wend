@@ -736,7 +736,12 @@ The result is a snapshot. It includes fields no expression uses; those are ignor
 
 ```python
 relate(
-    a: Any, b: Any, *, shared: bool = True, builtin_values: bool = False
+    a: Any,
+    b: Any,
+    *,
+    shared: bool = True,
+    builtin_values: bool = False,
+    thorough: bool = False,
 ) -> Relation
 ```
 
@@ -744,7 +749,7 @@ How the paths `a` and `b` render relate, before any binding.
 
 The paths are compared as strings (lexically), not as filesystem objects: `"never"` means never the same string, and a symlink or a `..` can still make two strings name one file.
 
-`a` and `b` are expressions, unions or path strings. With `shared=True` (the default) a parameter name common to both takes one value, as the paths of one run of a pipeline do; `shared=False` relates every binding of `a` to every binding of `b`. `builtin_values=True` assumes bound values are of builtin types, which proves more paths apart (docs/SEMANTICS.md §15).
+`a` and `b` are expressions, unions or path strings. With `shared=True` (the default) a parameter name common to both takes one value, as the paths of one run of a pipeline do; `shared=False` relates every binding of `a` to every binding of `b`. `builtin_values=True` assumes bound values are of builtin types, which proves more paths apart (docs/SEMANTICS.md §15). `thorough=True` settles what the rules leave `"unknown"` (or only `"sometimes"`) on the languages of the two expressions, at a cost of up to seconds a pair (§15.3, 7).
 
 > > > from wend import P, Param, T root, day = Param("root"), Param("day") raw = P(root) / "raw" / T(t"{day}.csv") relate(raw, P(root) / "clean" / T(t"{day}.csv")).kind 'disjoint' relate(raw, P(root) / "raw").inside 'always'
 

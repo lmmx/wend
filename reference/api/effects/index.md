@@ -134,13 +134,14 @@ EffectGraph(
     *,
     shared: bool = True,
     builtin_values: bool = False,
+    thorough: bool = False,
     existing: Iterable[PathExpr | str] = (),
 )
 ```
 
 What a set of named steps declare they do to their paths, related before any binding (see the module docstring).
 
-`shared=True` (the default) gives a parameter name one value across every step; `shared=False` relates every binding of one step to every binding of another, as when steps run with bindings of their own. `builtin_values=True` assumes bound values are of builtin types, which proves more paths apart (`wend.relate`).
+`shared=True` (the default) gives a parameter name one value across every step; `shared=False` relates every binding of one step to every binding of another, as when steps run with bindings of their own. `builtin_values=True` assumes bound values are of builtin types, which proves more paths apart (`wend.relate`). `thorough=True` relates each pair as `relate(..., thorough=True)` does, settling more of what the rules leave `"unknown"` at a cost of up to seconds a pair.
 
 `existing` names paths (expressions or strings) that exist before the pipeline runs and that no step deletes: no step makes them, or a directory above them, as a missing parent. Without it, any directory above a created path may be missing, except the anchor (`/` or the working directory). A step that may delete one of them, or a directory above it, raises ValueError.
 
@@ -160,6 +161,12 @@ shared = shared
 
 ```python
 builtin_values = builtin_values
+```
+
+### thorough
+
+```python
+thorough = thorough
 ```
 
 ### existing
@@ -580,7 +587,12 @@ Whether the two rendered paths never meet nor nest, as strings: no path is both,
 
 ```python
 relate(
-    a: Any, b: Any, *, shared: bool = True, builtin_values: bool = False
+    a: Any,
+    b: Any,
+    *,
+    shared: bool = True,
+    builtin_values: bool = False,
+    thorough: bool = False,
 ) -> Relation
 ```
 
@@ -588,6 +600,6 @@ How the paths `a` and `b` render relate, before any binding.
 
 The paths are compared as strings (lexically), not as filesystem objects: `"never"` means never the same string, and a symlink or a `..` can still make two strings name one file.
 
-`a` and `b` are expressions, unions or path strings. With `shared=True` (the default) a parameter name common to both takes one value, as the paths of one run of a pipeline do; `shared=False` relates every binding of `a` to every binding of `b`. `builtin_values=True` assumes bound values are of builtin types, which proves more paths apart (docs/SEMANTICS.md §15).
+`a` and `b` are expressions, unions or path strings. With `shared=True` (the default) a parameter name common to both takes one value, as the paths of one run of a pipeline do; `shared=False` relates every binding of `a` to every binding of `b`. `builtin_values=True` assumes bound values are of builtin types, which proves more paths apart (docs/SEMANTICS.md §15). `thorough=True` settles what the rules leave `"unknown"` (or only `"sometimes"`) on the languages of the two expressions, at a cost of up to seconds a pair (§15.3, 7).
 
 > > > from wend import P, Param, T root, day = Param("root"), Param("day") raw = P(root) / "raw" / T(t"{day}.csv") relate(raw, P(root) / "clean" / T(t"{day}.csv")).kind 'disjoint' relate(raw, P(root) / "raw").inside 'always'

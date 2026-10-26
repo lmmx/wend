@@ -1575,6 +1575,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#wend.effects.EffectGraph.thorough" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;thorough
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#wend.effects.EffectGraph.existing" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -2824,6 +2835,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#wend.effects.EffectGraph.thorough" class="md-nav__link">
+    <span class="md-ellipsis">
+      <span class="md-typeset">
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;thorough
+      </span>
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#wend.effects.EffectGraph.existing" class="md-nav__link">
     <span class="md-ellipsis">
       <span class="md-typeset">
@@ -4033,6 +4055,7 @@ path or as a directory above one it creates.</p>
     <span class="o">*</span><span class="p">,</span>
     <span class="n">shared</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
     <span class="n">builtin_values</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">thorough</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
     <span class="n">existing</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="collections.abc.Iterable" href="https://docs.python.org/3/library/collections.abc.html#collections.abc.Iterable">Iterable</a></span><span class="p">[</span><span class="n"><a class="autorefs autorefs-internal" title="            wend.PathExpr
 
 
@@ -4052,7 +4075,9 @@ before any binding (see the module docstring).</p>
 every step; <code>shared=False</code> relates every binding of one step to every
 binding of another, as when steps run with bindings of their own.
 <code>builtin_values=True</code> assumes bound values are of builtin types, which
-proves more paths apart (<code>wend.relate</code>).</p>
+proves more paths apart (<code>wend.relate</code>). <code>thorough=True</code> relates each
+pair as <code>relate(..., thorough=True)</code> does, settling more of what the
+rules leave <code>"unknown"</code> at a cost of up to seconds a pair.</p>
 <p><code>existing</code> names paths (expressions or strings) that exist before the
 pipeline runs and that no step deletes: no step makes them, or a
 directory above them, as a missing parent. Without it, any directory
@@ -4148,6 +4173,33 @@ above it, raises ValueError.</p>
 
 <a href="#wend.effects.EffectGraph.builtin_values" class="headerlink" title="Permanent link">&para;</a></h3>
 <div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">builtin_values</span> <span class="o">=</span> <span class="n"><span title="wend.effects.EffectGraph(builtin_values)">builtin_values</span></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+    </div>
+
+</div>
+
+
+
+
+
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="wend.effects.EffectGraph.thorough" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">thorough</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-instance-attribute"><code>instance-attribute</code></small>
+  </span>
+
+<a href="#wend.effects.EffectGraph.thorough" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="language-python doc-signature highlight"><pre><span></span><code><span class="n">thorough</span> <span class="o">=</span> <span class="n"><span title="wend.effects.EffectGraph(thorough)">thorough</span></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -6019,7 +6071,12 @@ path is both, nor one inside the other. Two spellings of one file
 
 <a href="#wend.effects.relate" class="headerlink" title="Permanent link">&para;</a></h2>
 <div class="language-python doc-signature highlight"><pre><span></span><code><span class="nf">relate</span><span class="p">(</span>
-    <span class="n">a</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">shared</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span> <span class="n">builtin_values</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">a</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span>
+    <span class="n">b</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" title="typing.Any" href="https://docs.python.org/3/library/typing.html#typing.Any">Any</a></span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">shared</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+    <span class="n">builtin_values</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+    <span class="n">thorough</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-external" href="https://docs.python.org/3/builtins/functions.html#bool">bool</a></span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
 <span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            Relation
 
 
@@ -6039,7 +6096,9 @@ objects: <code>"never"</code> means never the same string, and a symlink or a
 value, as the paths of one run of a pipeline do; <code>shared=False</code> relates
 every binding of <code>a</code> to every binding of <code>b</code>. <code>builtin_values=True</code>
 assumes bound values are of builtin types, which proves more paths apart
-(docs/SEMANTICS.md §15).</p>
+(docs/SEMANTICS.md §15). <code>thorough=True</code> settles what the rules leave
+<code>"unknown"</code> (or only <code>"sometimes"</code>) on the languages of the two
+expressions, at a cost of up to seconds a pair (§15.3, 7).</p>
 <blockquote>
 <blockquote>
 <blockquote>

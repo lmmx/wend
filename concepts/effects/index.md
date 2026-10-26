@@ -150,6 +150,16 @@ Because a step declares its paths as expressions, what several steps do to each 
 'sometimes'
 ```
 
+`"unknown"` is what wend's rules leave undecided. With `thorough=True`, `relate` (and `EffectGraph`) decides more of it on automata of what each side can render, at a cost of up to seconds a pair. A name that begins with `x` keeps its `x` when its suffix goes:
+
+```pycon
+>>> stem = (P(root) / "raw" / T(t"x{Param('p')}")).with_suffix("")
+>>> relate(stem, P(root) / "raw" / "a").same
+'unknown'
+>>> relate(stem, P(root) / "raw" / "a", thorough=True).same
+'never'
+```
+
 A name changed with `with_suffix`, `with_stem` or `with_name` stays in its directory and keeps what the change fixes, even while the name itself is unknown. `{day}.csv` with the suffix `.parquet` is never the CSV. It is `{day}.parquet` only when `day` is not empty: an empty `day` renders `.csv`, which has no suffix, so the change gives `.csv.parquet`.
 
 ```pycon

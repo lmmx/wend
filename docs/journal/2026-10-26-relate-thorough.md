@@ -89,12 +89,78 @@ relations it settles is lost (it settles none the rules left `"unknown"`).
 
 ## 5. Results
 
-RESULTS
+**[Measured]** `bench/relate_thorough.py 1500` on #119's three samples, 1,500 pairs each,
+in each of the four modes. In every mode:
+- no answer fails to refine the rules';
+- every example renders and shows its relation.
+
+What the rules left `"unknown"`, and what `thorough` made of it (all three relations,
+summed over the samples):
+
+| mode | `"unknown"` | → `"never"` | → `"sometimes"` | → `"always"` | still `"unknown"` |
+|---|---|---|---|---|---|
+| shared | 1,210 | 244 | 751 | 2 | 213 |
+| shared, builtin values | 954 | 226 | 215 | 0 | 513 |
+| independent | 3,573 | 331 | 2,987 | 2 | 253 |
+| independent, builtin values | 3,093 | 304 | 842 | 0 | 1,947 |
+
+A `"sometimes"` became `"always"` once in each mode, twice independent with builtin
+values. Under shared bindings `thorough` settles 82% of the unknowns. With builtin values
+it settles less, because most of the oracle's witnesses bind a value of a type of its own:
+1,241 of the under-one-head sample's independent examples did. Its `"never"`s carry over
+whole, its witnesses only where plain.
+
+**[Measured]** Cost, the whole bench (rules then `thorough`, 4,500 pairs a mode), on a
+4-core machine running about eight other jobs, so the times are high:
+
+| mode | rules | with `thorough` | pairs over 2 s | budget run out |
+|---|---|---|---|---|
+| shared | 19.4 s | 243.1 s | 22 | 5 |
+| shared, builtin values | 16.9 s | 189.1 s | 17 | 3 |
+| independent | 139.2 s | 467.7 s | 34 | 1 |
+| independent, builtin values | 128.6 s | 441.8 s | 32 | 1 |
+
+Under shared bindings that is 54 ms a pair on average with `thorough`, against 4 ms
+without; under-one-head pairs cost most.
 
 ## 6. Mutants
 
-MUTANTS
+**[Measured]** Mutants, against `tests/relate_test.py -k thorough` for `relate` and
+`tests/lang_oracle_test.py` for the oracle, under seed 0, each run on this branch's code:
+
+| mutant | killed by |
+|---|---|
+| the oracle's `"never"` ignored | `test_thorough_settles_what_the_rules_leave_unknown` |
+| `"possible"` taken as `"always"` | that, `test_thorough_counts_only_builtin_values_where_assumed`, and the pooled property test |
+| the `builtin_values` filter dropped | `test_thorough_refines_the_rules_and_holds_for_pooled_bindings` |
+| the oracle's binding not rendered | the three above |
+| the budget never spent | `test_thorough_within_its_budget_or_not_at_all` |
+| `_projection` reading finals of the state alone, not of its closure | the shared pooled-binding and agreement tests |
+| `_projection` reading labels of the state alone | six tests, the pooled-binding ones among them |
+| a constant's text built inside its handler | survived: unreachable, as §3 says |
+| an exhaustion inside the counts caught and dropped | survived: equivalent on every input tried |
+
+**[Measured]** The last survivor was probed, not assumed. With the drop instrumented, the
+oracle ran on two tied pairs, in `_relate` and `relate_shared`, under every budget up to
+the first that suffices: 1,538 exhaustions were dropped, and each one raised again before
+an answer. Out of budget, every later step raises, and in each case tried the oracle
+did more work after the counts. That is not shown in general: a relation decided last,
+with no disagreeing name to substitute, could return straight after them. The guard is
+the code having no such handler;
+`test_an_exhausted_budget_is_never_an_answer` would catch one that changed an answer.
 
 ## 7. What is left
 
-LEFT
+- **What `thorough` leaves.** 213 unknowns under shared bindings, mostly word equations
+  the counts cannot settle (§5 of the counting entry), and 1,947 independent with
+  builtin values, where a witness needs a plain value the oracle does not look for: it
+  makes up a value per text, and only then tries a `str`. Searching the oracle's
+  language for a word whose texts a builtin value renders would close much of the
+  second.
+- **Examples of values of wend's making.** Correct, and accepted by wend, but they read
+  oddly: a value whose `__fspath__` and `__format__` differ. `Example` could say so.
+- **The cost.** Mostly the under-one-head sample's deferred heads, read as automata of
+  some thousands of states. A cache of each expression's language, across the pairs of
+  an `EffectGraph`, would save the most, since a graph relates each port many times.
+- **`EffectGraph` measured.** `bench/effects_corpus.py` has not been run with
+  `thorough=True`.

@@ -47,8 +47,10 @@ difference zero, and the relation never holds. This is a Farkas certificate for 
 integer program of the counts, with the connectivity of the walk relaxed. Relaxing only
 widens what is feasible, so a certificate stays a proof.
 
-The least weight is a shortest path, Bellman-Ford's, and -∞ where a negative cycle lies
-on an accepting walk. The automaton is trimmed first, so every cycle does.
+The least weight is a shortest path (Bellman-Ford, by a queue: SPFA), and -∞ where a
+negative cycle lies on an accepting walk. The automaton is trimmed first, so every cycle
+does. A component whose internal edges weigh at most zero, one of them less, holds such
+a cycle, and is found first.
 
 The oracle tries each `y` in {-1, 0, 1}^m for up to four differences. Beyond that it
 tries each difference alone, and the sums of each measure. `//{p}{q}` against
@@ -106,4 +108,44 @@ oracle right and the test wrong.
 
 ## 5. What is left
 
-LEFT
+**[Measured]** The 145 answers left unconfirmed on this sample (138 `"never"`, 7
+`"always"`; recorded by `record_bench.py`, which wraps the oracle without changing the
+bench, so the pairs are the same):
+- 138 relate a deferred operation (`with_stem`, `with_suffix`, `with_name`, `parent`,
+  `relative_to`) of a base that ends in a `SubPath`, to the same base or a second
+  operation of it. `relate` writes such a base out by how the `SubPath` splits, and
+  pairs only cases where it splits alike on both sides (#127). The oracle reads each use
+  of the `SubPath` apart, and ties the uses only by their counts, which do not say how
+  the text splits. Typical: `with_suffix({sc...}/{sc...}, '.b')` is never strictly
+  inside `{sc...}/{sc...}`.
+- 7 others. Four are word equations that tie lengths across positions the counts do
+  not align: `{root}/{q}/{c}/{q}` is never `/{c}/{p}-{q}/x.txt`, since `q` and `c`
+  would both be `x.txt` and `c` also `p-x.txt`. Three hold the same name in two shapes
+  (`{n}` and `{n:d}`), which the oracle keeps apart (#130).
+
+**[Fact]** None of the 145 is known to be wrong. They are unconfirmed, not refuted: no
+pooled binding contradicts them (the property tests and the bench check every answer
+against renderings), and no other argument confirms them.
+
+What would settle them:
+- **Both uses of one `SubPath` read at once.** A product of the two operations'
+  transducers over one copy of the base, rather than two copies tied by counts. This is
+  the oracle's next step.
+- **Counts per position.** Lengths tied between aligned segments, not only per name.
+- **The oracle in `relate`.** #THOROUGH offers it as `relate(..., thorough=True)`,
+  measured there. It needs the oracle kept a check: `relate`'s default never calls it.
+
+**[Measured]** The out-of-memory bench. With the counts' first version (753a7a1), the
+1,500-pair bench reached 13.7 GB and was killed by the kernel. The final version
+(b2e3295) completed the same bench, under an 8 GB limit: the bench and its tests did not
+change between the two, so Hypothesis drew the same pairs. Three probes, each relating
+1,500 pairs of one sample with the first version, logged each pair; none ran out of
+memory, but their pairs were drawn differently, since Hypothesis derives a derandomized
+seed from the source of the function it runs.
+
+**[Fact]** The cause is not established. Between the two versions only the least walk
+changed: a queue (SPFA) for rounds over every state, and a test of each component's
+cycles, which skips a walk where a cycle surely weighs less than zero. Both keep one
+distance per state, so neither obviously bounds memory. Either a skipped walk was the
+one that grew, or the killed run was not of exactly 753a7a1. The first version is being
+rerun on the bench's own pairs, under a limit, logging each pair.

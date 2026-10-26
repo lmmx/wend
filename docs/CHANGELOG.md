@@ -84,6 +84,15 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   failed after its link can no longer be named, and `publish` now refuses it with that
   reason instead of a later `ENOENT`. The three-writer test failed in 38 of 40 runs on
   ext4 for this reason; it now holds the observed object open.
+- **The oracle counts characters and segments** (#135). Uses of one name in one
+  shape render one text, so they emit as many characters, and as many separators where
+  both render segments. Where some weighting of their differences is positive on every
+  walk of the intersection automaton, the relation never holds. The bench now sorts
+  each pair where `relate` says `"always"` and the oracle `"never"`: a contradiction
+  where a pooled binding renders both; vacuous where a side's language proves that
+  nothing renders it; otherwise unresolved. On #119's samples the oracle now
+  confirms 9,565 of `relate(shared=True)`'s 9,703 `"never"` answers, where it confirmed
+  8,670 of the same pairs before, and contradicts none.
 
 ## 0.5.0
 

@@ -18,6 +18,7 @@ from wend._languages import (
     _count_dims,
     _lang,
     _least_walk,
+    _relate,
     accepts,
     budget,
     chars,
@@ -416,3 +417,18 @@ def test_an_exhausted_budget_is_never_an_answer():
                 answered = True
                 assert got == whole, (k, a.pattern, b.pattern, got, whole)
             assert k > 0
+    # Exhaustion sticks: once out of budget, every later step raises again.
+    # Here the counts are the last proof `contains` needs, two names tied, and
+    # still, were an exhaustion inside them dropped, what follows would raise.
+    a, b = P("d") / T(t"{p}{q}"), P("d") / T(t"{p}-{q}") / "x"
+    tied = frozenset({"p", "q"})
+    whole = seen(_relate(a, b, 2, {}, tied))
+    assert whole[:3] == ("never", "never", "never")
+    for k in range(10**6):
+        try:
+            with budget(k):
+                got = seen(_relate(a, b, 2, {}, tied))
+        except Exhausted:
+            continue
+        assert got == whole, (k, got)
+        break

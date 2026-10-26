@@ -69,6 +69,11 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   conversion and spec. Read apart, then held to each text a use can take, such pairs are
   decided as well, and `"never"` stays exact. On #119's samples the oracle now decides
   4,427 of 4,500 pairs, and finds no contradiction with `relate` in 13,281 answers.
+- **The oracle under shared bindings** (#SHARED). `relate_shared` ties each name of
+  both sides as one name's uses, and decides a name both sides default both bound and
+  unbound. Where both begin with the same head and parts, it also decides what follows,
+  since in a free monoid a shared prefix cancels. That checks `relate`'s default mode,
+  whose `"never"` answers pipelines rely on. SHAREDRESULT
 
 ## 0.5.0
 

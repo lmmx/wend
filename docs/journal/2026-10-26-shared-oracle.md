@@ -50,7 +50,20 @@ MUTANTS
 
 ## 4. Next
 
-- A count of segments or characters settles most of what is left: `{x}/a/{x}` against
-  `{x}/{x}` asks `|x| + 2 = 2|x|`. That is a question about the Parikh image of the
-  intersection, with one equation per tied name, which integer programming decides.
-- `builtin_values=True`, where a spec does narrow a value's text.
+**[Measured]** On a sample of 60 pairs per sample, cancellation leaves 21 of `relate`'s
+`"never"` answers undecided, against 143 without it. They are of three kinds:
+- **An equation inside a segment.** `//{p}{q}` against `//{p}-{q}` asks whether
+  `pq = p-q` for one `p` and one `q`: never, since the two sides differ in length by
+  one. A count of characters per tied name settles it: one linear equation per tied
+  (name, shape) over the Parikh image of the intersection, which an integer program
+  decides.
+- **A deferred head on one side only.** `with_suffix({ab}/a/{sc...}, "")` against
+  `{ab}/a/{sc...}`: the heads differ, so nothing cancels, though the change of a suffix
+  keeps the parent. Cancellation could run inside a deferred operation that keeps its
+  base's parent (changed names), as `relate`'s views do.
+- **Two deferred heads of one base.** `parent(x)/..` against `with_name(x, "x.txt")/..`:
+  both rewrite the same base, at its last segment.
+
+The first is the general one: under shared bindings the question is a word equation
+with regular constraints, decidable (Makanin; Plandowski; Jeż) but not cheaply in
+general. Counting characters and segments is the cheap, sound half of it.

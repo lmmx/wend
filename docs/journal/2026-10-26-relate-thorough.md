@@ -164,3 +164,17 @@ the code having no such handler;
   an `EffectGraph`, would save the most, since a graph relates each port many times.
 - **`EffectGraph` measured.** `bench/effects_corpus.py` has not been run with
   `thorough=True`.
+
+## 8. #135's out-of-memory bench, rerun
+
+**[Measured]** #135's first version (753a7a1) was rerun on the bench's own pairs
+(`bench/relate_oracle.py --shared`, unchanged, with the oracle wrapped to log each pair
+and the peak resident memory before relating it), under an 8 GB limit. Twice the
+container was reclaimed while idle and the run lost; the longer run related 3,574 pairs,
+all of the first two samples and 574 of the third, and peaked at 124 MB. The bench killed
+at 13.7 GB was, as far as the record shows, this code on these pairs.
+
+**[Fact]** So the culprit, if this version had one, lies in the last 926 pairs of the
+under-one-head sample, which neither rerun reached. It is not established. The final
+version of the counts completed all 4,500 under the same limit, and this PR's projection
+makes the oracle's slowest step linear; the question is left there.

@@ -14,7 +14,7 @@ investigates and what it has not established.
   Superseded by `wend.effects`, which relates the paths by `wend.relate`.
 - `wend._experimental.choices`: prototypes of proposed rules for
   ``choices=``: reading members back, and faithful rendering.
-- `wend._experimental.lang_oracle`: a decision procedure for
-  ``relate(..., shared=False)``, exact where it answers, built from the
-  interpreter alone, to check `wend.relate` against.
+- `wend._experimental.lang_oracle`: a decision procedure for `wend.relate`,
+  exact where it answers, built from the interpreter alone. Now the private
+  `wend._languages`, behind ``relate(..., thorough=True)``.
 """

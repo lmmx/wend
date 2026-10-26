@@ -452,13 +452,13 @@ def rendered(e, env):
         return None
 
 
-def assert_sound(a, b):
+def assert_sound(a, b, thorough=False):
     """Every "always" and "never" of relate(a, b), in both modes, holds for
     every pooled binding (up to 800 shared, 120 x 120 independent). The pool's
     values are of builtin types, so the answers under builtin_values=True
     must hold too."""
     for shared, builtin in itertools.product((True, False), (False, True)):
-        r = relate(a, b, shared=shared, builtin_values=builtin)
+        r = relate(a, b, shared=shared, builtin_values=builtin, thorough=thorough)
         check_examples(a, b, r)
         if shared:
             names = sorted(a.param_names | b.param_names)
@@ -1046,3 +1046,64 @@ def test_relate_is_symmetric_with_inside_and_contains_swapped(shared):
     for a, b in itertools.product([raw, clean, P(root) / "raw", P(root)], repeat=2):
         r, s = relate(a, b, shared=shared), relate(b, a, shared=shared)
         assert (r.same, r.inside, r.contains) == (s.same, s.contains, s.inside)
+
+
+# -- thorough: the languages settle what the rules leave (§15.3, 7) ----------------
+
+REFINES = {
+    "always": {"always"},
+    "never": {"never"},
+    "sometimes": {"sometimes", "always"},
+    "unknown": {"always", "sometimes", "never", "unknown"},
+}
+
+
+def test_thorough_settles_what_the_rules_leave_unknown():
+    # A name changed to have no suffix keeps the stem, which begins with "x".
+    a = (P("data") / T(t"x{p}")).with_suffix("")
+    assert relate(a, P("data") / "a").same == "unknown"
+    assert relate(a, P("data") / "a", thorough=True).kind == "disjoint"
+    # The stem ".." gives "data" the name "..", which "../a" lies inside.
+    b = P("data").with_stem(p)
+    assert relate(P("..") / "a", b).inside == "unknown"
+    r = relate(P("..") / "a", b, thorough=True)
+    assert r.inside == "sometimes"
+    check_examples(P("..") / "a", b, r)
+    assert [(ex.a_path, ex.b_path, ex.b_bindings) for ex in r.examples] == [
+        ("../a", "..", {"p": ".."})
+    ]
+
+
+def test_thorough_counts_only_builtin_values_where_assumed():
+    # Shared, `q` renders ".txt" alone in a segment and "" in text only if its
+    # value is of a type of its own (§15.3, 1).
+    a = P("data") / T(t"{p}.txt") / T(t"{q}.txt")
+    b = P("data") / T(t"{p}.txt") / q
+    r = relate(a, b, thorough=True)
+    assert r.same == "sometimes"
+    check_examples(a, b, r)
+    assert not isinstance(r.examples[0].a_bindings["q"], str)
+    assert relate(a, b, thorough=True, builtin_values=True).same == "never"
+
+
+def test_thorough_within_its_budget_or_not_at_all(monkeypatch):
+    a = (P("data") / T(t"x{p}")).with_suffix("")
+    monkeypatch.setattr("wend._relate._BUDGET", 10)
+    assert relate(a, P("data") / "a", thorough=True).same == "unknown"
+
+
+@settings(max_examples=60, deadline=None, suppress_health_check=list(HealthCheck))
+@given(pair=pairs())
+def test_thorough_refines_the_rules_and_holds_for_pooled_bindings(pair):
+    a, b = pair
+    for shared, builtin in itertools.product((True, False), (False, True)):
+        plain = relate(a, b, shared=shared, builtin_values=builtin)
+        r = relate(a, b, shared=shared, builtin_values=builtin, thorough=True)
+        for h in ("same", "inside", "contains"):
+            assert r[h] in REFINES[plain[h]], (h, a.pattern, b.pattern, plain, r)
+        check_examples(a, b, r)
+        if builtin:
+            for ex in r.examples:
+                for v in (*ex.a_bindings.values(), *ex.b_bindings.values()):
+                    assert type(v) in (str, int, float, bool), (ex, v)
+    assert_sound(a, b, thorough=True)

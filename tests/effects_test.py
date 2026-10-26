@@ -615,6 +615,18 @@ def test_builtin_values_relates_a_shard_directory_and_its_manifest():
     assert trusting.stages() == [["shard"], ["manifest"]]
 
 
+def test_thorough_drops_a_conflict_the_rules_leave_unknown():
+    # Without its suffix, a name that begins with "x" is never "a" (§15.3, 7).
+    p = Param("p")
+    steps = {
+        "stem": Step(o=(R / "raw" / T(t"x{p}")).with_suffix("").ensures(File)),
+        "a": Step(o=(R / "raw" / "a").ensures(File)),
+    }
+    plain = EffectGraph(steps, existing=[R])
+    assert [str(c) for c in plain.conflicts] == ["<stem.o x a.o: unknown>"]
+    assert EffectGraph(steps, existing=[R], thorough=True).conflicts == []
+
+
 def test_a_step_that_needs_a_directory_makes_nothing_there():
     src = R / "raw" / T(t"{day}.csv")
 

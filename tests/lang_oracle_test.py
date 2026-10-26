@@ -12,12 +12,14 @@ from wend import P, Param, SubPath, T, relate
 from wend._languages import (
     NFA,
     POSSIBLE,
+    Exhausted,
     Side,
     Unsupported,
     _count_dims,
     _lang,
     _least_walk,
     accepts,
+    budget,
     chars,
     encode,
     language,
@@ -376,3 +378,41 @@ def test_a_bool_used_twice_is_not_counted():
     assert {d[1][1] for d in dims} == {"x"}
     o = relate_shared(e, P("d") / "    1" / "True" / "k" / "k")
     assert o.same in POSSIBLE
+
+
+def test_an_exhausted_budget_is_never_an_answer():
+    # Under every budget the oracle answers as without one, or raises
+    # Exhausted: work cut short is never read as a value refused, or as a
+    # language that is empty.
+    p, q, f = Param("p"), Param("q"), Param("f", type=bool)
+    cases = [
+        (P("d") / T(t"x{p}"), P("d") / T(t"x{q}")),
+        (P("d") / T(t"{f:>5}") / p, P("d") / "    1" / T(t"{f}")),
+        (P("d") / T(t"{p}{q}"), P("d") / T(t"{q}-{p}")),
+        ((P("d") / T(t"x{p}")).with_suffix(""), P("d") / "a"),
+    ]
+
+    def seen(r):  # an answer, with each value made by the oracle read as its texts
+        def text(v):
+            return sorted(v.texts.items(), key=repr) if hasattr(v, "texts") else v
+
+        envs = {
+            h: {side: {k: text(v) for k, v in env.items()} for side, env in e.items()}
+            for h, e in r.examples.items()
+        }
+        return r.same, r.inside, r.contains, envs
+
+    for a, b in cases:
+        for decide in (relate_shared, relate_independent):
+            whole = seen(decide(a, b))
+            k, answered = 0, False
+            while not answered:
+                try:
+                    with budget(k):
+                        got = seen(decide(a, b))
+                except Exhausted:
+                    k += 1
+                    continue
+                answered = True
+                assert got == whole, (k, a.pattern, b.pattern, got, whole)
+            assert k > 0

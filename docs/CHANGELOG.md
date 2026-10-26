@@ -37,6 +37,12 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   relations: `({root}/{n:d}.{p}/{s...}).with_suffix("")` is never
   `{root}/{n:d}.{p}/{n:d}.{p}/{s...}`. On #119's samples, 282 more `"unknown"` answers
   are now `"never"`.
+- **`relate(..., thorough=True)`** (#THOROUGH). Where wend's rules leave a relation
+  `"unknown"`, or only `"sometimes"`, it is decided on automata of what each side can
+  render (the language oracle of #129 to #COUNTS, now `wend._languages`). Its `"never"`
+  is a proof; its `"sometimes"` and `"always"` come with a binding wend renders. The work
+  is bounded by a count of steps, not a time, so answers stay a function of the
+  expressions. `EffectGraph(..., thorough=True)` relates its ports so. THOROUGHRESULT
 
 ### Fixed
 

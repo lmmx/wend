@@ -1,4 +1,5 @@
-"""An exact decision procedure for ``relate(a, b, shared=False)`` on a fragment.
+"""An exact decision procedure for ``relate(a, b)`` on a fragment, behind
+``relate(..., thorough=True)``.
 
 It shares nothing with ``wend._relate`` or ``wend._overlap``: it reads an
 expression's structure and mirrors the interpreter (``wend._expr``'s

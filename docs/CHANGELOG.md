@@ -45,6 +45,18 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   time. An expression with five `SubPath`s of three choices took longer than two
   minutes; it now takes a third of a second, and no answer changes.
 
+### Research, in the repository but not the wheel
+
+- **An exact oracle for `relate(shared=False)`** (#129). `src/wend/_experimental/lang_oracle.py` turns
+  an expression into the regular language of the paths it renders, built from wend's
+  interpreter and pathlib's rules, and nothing of `relate`'s. On the expressions that
+  use no name twice, it decides each relation exactly, with bindings that wend renders
+  to show every relation it finds possible. `tests/lang_oracle_test.py` checks the
+  oracle against rendering and `relate` against the oracle. `bench/relate_oracle.py`
+  compares them on #119's samples. Over 8,688 answers, `relate`
+  contradicts the oracle nowhere, and leaves 1,575 to settle, 1,402 of them `"sometimes"`
+  answers its search misses.
+
 ## 0.5.0
 
 ### New

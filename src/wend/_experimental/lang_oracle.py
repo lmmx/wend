@@ -1271,21 +1271,85 @@ def _count_dims(
 
 def _least_walk(n: NFA, w: dict[tuple[int, int], int]) -> float:
     """The least total weight of a walk from ``n``'s start to a final state,
-    over ``n`` trimmed; -inf where a negative cycle lies on one."""
+    over ``n`` trimmed; -inf where a negative cycle lies on one. Bellman-Ford
+    by a queue (SPFA): a state is relaxed only after its distance fell, and
+    a state queued more often than there are states lies on a negative
+    cycle."""
     dist: dict[int, float] = {n.start: 0}
-    for _ in range(len(n.edges)):
-        changed = False
-        for s, d in list(dist.items()):
-            for i, (_, t, _) in enumerate(n.edges[s]):
-                nd = d + w.get((s, i), 0)
-                if nd < dist.get(t, float("inf")):
-                    dist[t] = nd
-                    changed = True
-        if not changed:
-            break
-    else:
-        return float("-inf")
+    queued, times = deque([n.start]), {n.start: 1}
+    waiting = {n.start}
+    limit = len(n.edges)
+    while queued:
+        s = queued.popleft()
+        waiting.discard(s)
+        d = dist[s]
+        for i, (_, t, _) in enumerate(n.edges[s]):
+            nd = d + w.get((s, i), 0)
+            if nd < dist.get(t, float("inf")):
+                dist[t] = nd
+                if t not in waiting:
+                    times[t] = times.get(t, 0) + 1
+                    if times[t] > limit:
+                        return float("-inf")
+                    waiting.add(t)
+                    queued.append(t)
     return min((dist[f] for f in n.finals if f in dist), default=float("inf"))
+
+
+def _components(n: NFA) -> list[int]:
+    """Each state's strongly connected component, by number (Tarjan's,
+    iteratively)."""
+    index: dict[int, int] = {}
+    low: dict[int, int] = {}
+    comp = [-1] * len(n.edges)
+    stack: list[int] = []
+    on: set[int] = set()
+    counter = 0
+    for root in range(len(n.edges)):
+        if root in index:
+            continue
+        work = [(root, 0)]
+        while work:
+            v, i = work.pop()
+            if i == 0:
+                index[v] = low[v] = counter
+                counter += 1
+                stack.append(v)
+                on.add(v)
+            es = n.edges[v]
+            while i < len(es):
+                t = es[i][1]
+                i += 1
+                if t not in index:
+                    work.append((v, i))
+                    work.append((t, 0))
+                    break
+                if t in on:
+                    low[v] = min(low[v], index[t])
+            else:
+                if low[v] == index[v]:
+                    c = v
+                    while True:
+                        x = stack.pop()
+                        on.discard(x)
+                        comp[x] = c
+                        if x == v:
+                            break
+                if work:
+                    u = work[-1][0]
+                    low[u] = min(low[u], low[v])
+    return comp
+
+
+def _cycles_below(comp: list[int], w: dict[tuple[int, int], int], n: NFA) -> bool:
+    """Whether some cycle of ``n`` (trimmed) surely weighs less than zero: a
+    component whose internal edges weigh at most zero, one of them less. Any
+    edge inside a component lies on a cycle within it."""
+    signs: dict[int, set[int]] = {}
+    for (s, i), x in w.items():
+        if x and comp[s] == comp[n.edges[s][i][1]]:
+            signs.setdefault(comp[s], set()).add(1 if x > 0 else -1)
+    return any(v == {-1} for v in signs.values())
 
 
 def _counted_never(
@@ -1321,6 +1385,7 @@ def _counted_never(
     if not vec:
         return False
     m = len(index)
+    comp = _components(n)
     if m <= 4:
         ys = [
             y
@@ -1335,8 +1400,9 @@ def _counted_never(
         w = {e: sum(a * b for a, b in zip(y, v, strict=True)) for e, v in vec.items()}
         if not any(w.values()):
             continue
-        if _least_walk(n, w) > 0 or _least_walk(n, {e: -x for e, x in w.items()}) > 0:
-            return True
+        for v in (w, {e: -x for e, x in w.items()}):
+            if not _cycles_below(comp, v, n) and _least_walk(n, v) > 0:
+                return True
     return False
 
 

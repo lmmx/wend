@@ -1,9 +1,9 @@
-"""relate(shared=False) against the language oracle (src/wend/_experimental/lang_oracle.py) on
-#119's samples: how many pairs the oracle decides, where the two disagree, and
+"""relate against the language oracle (src/wend/_experimental/lang_oracle.py) on
+#119's samples, under independent bindings or, with --shared, shared ones: how many pairs the oracle decides, where the two disagree, and
 how many "unknown" answers the oracle settles. Every possible relation the
 oracle reports comes with bindings, rendered here by wend itself.
 
-    PYTHONPATH=src:tests python bench/relate_oracle.py [examples] [out.json]
+    PYTHONPATH=src:tests python bench/relate_oracle.py [--shared] [examples] [out.json]
 """
 
 import collections
@@ -18,7 +18,11 @@ sys.path.insert(0, "tests")
 from relate_test import pairs, renamed, under_one_head  # noqa: E402
 
 from wend import relate  # noqa: E402
-from wend._experimental.lang_oracle import Unsupported, relate_independent  # noqa: E402
+from wend._experimental.lang_oracle import (  # noqa: E402
+    Unsupported,
+    relate_independent,
+    relate_shared,
+)
 from wend._relate import lexically  # noqa: E402
 
 
@@ -27,13 +31,15 @@ HOWS = ("same", "inside", "contains")
 
 def confirmed(a, b, how, env):
     try:
-        pa, pb = a.render(env["a"]), b.render(env["b"])
+        pa = a.render({k: v for k, v in env["a"].items() if k in a.param_names})
+        pb = b.render({k: v for k, v in env["b"].items() if k in b.param_names})
     except Exception as e:  # noqa: BLE001
         return f"render failed: {type(e).__name__}: {e}"
     return True if lexically(pa, pb) == how else f"renders {pa!r}, {pb!r}"
 
 
-def run(n):
+def run(n, shared=False):
+    decide = relate_shared if shared else relate_independent
     tally = collections.Counter()
     rows = []
     for strategy in (pairs, renamed, under_one_head):
@@ -51,10 +57,10 @@ def run(n):
             a, b = pair
             name = strategy.__name__
             tally[(name, "pairs")] += 1
-            r = relate(a, b, shared=False)
+            r = relate(a, b, shared=shared)
             t0 = time.perf_counter()
             try:
-                o = relate_independent(a, b)
+                o = decide(a, b)
             except Unsupported as e:
                 tally[(name, "unsupported")] += 1
                 tally[("unsupported", str(e))] += 1
@@ -109,11 +115,13 @@ def run(n):
 
 
 if __name__ == "__main__":
-    n = int(sys.argv[1]) if len(sys.argv) > 1 else 1500
-    tally, rows = run(n)
+    shared = "--shared" in sys.argv
+    args = [x for x in sys.argv[1:] if x != "--shared"]
+    n = int(args[0]) if args else 1500
+    tally, rows = run(n, shared)
     for k, v in sorted(tally.items(), key=lambda kv: str(kv[0])):
         print(k, round(v, 2) if isinstance(v, float) else v)
-    if len(sys.argv) > 2:
-        json.dump(rows, open(sys.argv[2], "w"), indent=1)
+    if len(args) > 1:
+        json.dump(rows, open(args[1], "w"), indent=1)
     for r in rows[:30]:
         print(r)

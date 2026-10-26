@@ -1,6 +1,6 @@
 # 2026-10-26: The oracle behind `relate(..., thorough=True)` (#THOROUGH)
 
-#129 to #COUNTS built an oracle for `relate`, kept out of the wheel in
+#129 to #135 built an oracle for `relate`, kept out of the wheel in
 `wend._experimental`, to check `relate` against. On #119's samples it decides most of
 what `relate` leaves `"unknown"`. This entry makes it available to users, as an option,
 and keeps it able to check `relate`.

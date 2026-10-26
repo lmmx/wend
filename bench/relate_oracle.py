@@ -19,8 +19,9 @@ from relate_test import pairs, renamed, under_one_head  # noqa: E402
 
 from wend import relate  # noqa: E402
 from wend._experimental.lang_oracle import (  # noqa: E402
+    Side,
     Unsupported,
-    language,
+    _lang,
     nonempty,
     relate_independent,
     relate_shared,
@@ -41,12 +42,12 @@ def confirmed(a, b, how, env):
 
 
 def renders_nothing(e):
-    """Whether ``e`` renders on no binding: its language, which holds every
-    rendering, is empty. Then every relation is vacuously "always" and
-    "never" at once (SEMANTICS §15.2)."""
+    """Whether ``e`` renders on no binding: its language, read with each use
+    of a name apart, holds every rendering and is empty. Then every relation
+    is vacuously "always" and "never" at once (SEMANTICS §15.2)."""
     try:
-        return not nonempty(language(e))
-    except Unsupported:  # a name used twice in one shape: not decided here
+        return not nonempty(_lang(e, Side("a")))
+    except Unsupported:
         return False
 
 

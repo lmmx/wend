@@ -44,9 +44,66 @@ rendered by wend, where what follows says `"never"`, would raise: none has.
 
 ## 3. Tests and measurements
 
-RESULTS
+**[Measured]** `bench/relate_oracle.py --shared` on #119's samples, 1,500 pairs each,
+against `relate(shared=True)` as it was before #131. The oracle decides 4,423 of the
+4,500 pairs (the 77 left out have a typed path parameter), 13,269 answers:
 
-MUTANTS
+| | without cancellation | with it |
+|---|---|---|
+| contradictions | 0 | 0 |
+| witnesses that fail to render | 0 | 0 |
+| `relate`'s `"never"` left undecided | 3,296 | 802 |
+| `"unknown"` settled as `"never"` | 219 | 238 |
+| `"unknown"` settled as `"sometimes"` or `"possible"` | 724 | 724 |
+| `"unknown"` left undecided | 470 | 451 |
+
+Each run flags one pair, `with_stem(with_stem(//{n:d}.{p}/{p}, .), .)` against itself,
+where `relate` answers `"always"` and the oracle `"never"`. Its language is empty, which
+proves that nothing renders it (the stem `.` of `..y` is refused), and no pooled binding
+does. Both answers hold vacuously (SEMANTICS §15.2); the bench now reports such pairs
+apart.
+
+**[Measured]** The same, against `relate(shared=True)` with #131's depth rule, which
+turns 282 more `"unknown"` answers into `"never"`. #131 also changed the generators, so
+the 4,419 pairs decided are drawn differently, and the two runs are not compared pair
+by pair:
+- **0 contradictions**, and no witness that fails to render;
+- `relate`'s `"never"` left undecided: 1,016 (#131's depth arguments are counts, which
+  the oracle does not make, §4);
+- `"unknown"` settled: 124 as `"never"`, 169 as `"sometimes"`, 596 as `"possible"`,
+  3 as `"always"`; 216 left undecided.
+
+Three pairs over `with_stem({root}/x{p}/{p}{q}/{f}, .)`, with `f` a `bool`, are flagged
+as before, and are vacuous for the same reason: `True` and `False` have no suffix, so
+the stem `.` is refused. The language with each use read apart, which holds every
+rendering, is empty. The bench now asks that language, which also covers names used
+twice.
+
+**[Measured]** Found while measuring: `relate_shared(e, e)` for an `e` that renders
+nowhere answered `"always"` with no example, since cancellation leaves `"."` against
+`"."`, which is always the same. Every possible answer must come with bindings.
+`test_every_possible_shared_relation_renders` failed on it under seed 0, and so did the
+bench. Now `"always"` is raised only from an answer a binding has shown.
+`test_shared_bindings_tie_a_name_across_sides` holds the case.
+
+**[Measured]** The oracle's tests, with the three property tests for shared bindings,
+pass under seeds 0 to 4.
+
+**[Measured]** Mutants, against the shared tests in `tests/lang_oracle_test.py` under
+seed 0:
+
+| mutant | killed by |
+|---|---|
+| no name tied across sides | all four shared tests |
+| defaults not split | `test_shared_bindings_tie_a_name_across_sides` |
+| different heads cancelled | all four, the pooled-binding test among them |
+| unequal parts cancelled | all four, the pooled-binding test among them |
+| a `"never"` in one case taken for all | `test_shared_bindings_tie_a_name_across_sides` |
+| `"always"` after the prefix over the whole's answer | `test_every_possible_shared_relation_renders`, `test_shared_bindings_tie_a_name_across_sides` |
+
+The first four ran before the fix above, the last two after it. Where a test that killed
+one of the first four reads the examples, its failure could be the bug's, so the table
+counts only the other tests.
 
 ## 4. Next
 

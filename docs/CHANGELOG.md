@@ -73,7 +73,9 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   both sides as one name's uses, and decides a name both sides default both bound and
   unbound. Where both begin with the same head and parts, it also decides what follows,
   since in a free monoid a shared prefix cancels. That checks `relate`'s default mode,
-  whose `"never"` answers pipelines rely on. SHAREDRESULT
+  whose `"never"` answers pipelines rely on. On #119's samples it decides 4,419
+  of 4,500 pairs, finds no contradiction with `relate`, and settles 892 of its
+  `"unknown"` answers.
 
 ## 0.5.0
 

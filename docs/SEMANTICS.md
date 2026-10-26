@@ -1235,6 +1235,26 @@ parameter of either expression.
    deferred head), which a segment parameter and a `SubPath` cannot spell: that is
    `"unknown"`. Its YES is `"sometimes"` only once a binding of the whole expressions
    confirms it; its MAYBE is `"unknown"`.
+7. **With `thorough=True`, the languages decide** what (1) to (6) leave `"unknown"`
+   or only `"sometimes"` (`wend._languages`). Each expression's renderings are read
+   as a finite automaton over its anchor, characters and separators, built from how
+   the interpreter renders each piece and operation, and sharing nothing with (1) to
+   (6). Where a name is used twice its uses are read apart, so the language holds
+   every rendering and more, and `"never"` stays a proof: no rendering shows the
+   relation. A relation is then also ruled out where the characters, or segments, two
+   uses of one name must emit cannot be equal on any rendering that shows it. Where
+   it is possible, the automaton gives a binding, and the answer is `"sometimes"` only
+   once wend renders that binding and shows it; `"always"` needs that binding too, and
+   a language every rendering of which relates. The binding's values render each
+   piece's text: a `str` where one does, otherwise a value of a type of wend's making,
+   which formats as the binding needs (and compares equal to a choice, where `choices`
+   are declared). With `builtin_values=True` only a binding of builtin values counts.
+
+   The work is bounded by a count of steps (states made, edges built and followed),
+   not by time, so answers stay a function of the expressions and options. Past it,
+   or outside the fragment the languages read (a typed path parameter, a dynamic
+   spec, names declared differently on each side), the answer is left as (1) to (6)
+   gave it. MEASURED
 
 `builtin_values=True` assumes bound values are of builtin types, as the overlap
 analysis does, which proves more answers `"never"`. It also compares a plain field

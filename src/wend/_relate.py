@@ -37,6 +37,9 @@ The proofs, in order:
 5. *Overlap*. Otherwise each question is asked of `wend._overlap` about the
    remainders: its NO is "never", its YES a witness ("sometimes"), its MAYBE
    "unknown".
+6. *Languages*, with ``thorough=True``. What 1 to 5 leave "unknown" or
+   "sometimes" is asked of `wend._languages`, which decides on automata of
+   what each side renders, within a budget of steps.
 
 Every "always" and "sometimes" comes with an `Example` when one is found: the
 bindings, and the paths each side renders.
@@ -76,6 +79,10 @@ Certainty = Literal["always", "sometimes", "never", "unknown"]
 How = Literal["same", "inside", "contains"]
 Summary = Literal["same", "inside", "contains", "disjoint", "overlapping", "unknown"]
 _HOWS: tuple[How, ...] = ("same", "inside", "contains")
+# The work `thorough` gives the oracle for each pair (`wend._languages.budget`).
+_BUDGET = 5_000_000
+# The builtin types of the values an example may bind under builtin_values.
+_BUILTIN = (str, int, float, bool)
 
 
 @dataclass(frozen=True)
@@ -868,10 +875,12 @@ class Analysis:
         *,
         shared: bool = True,
         builtin_values: bool = False,
+        thorough: bool = False,
         memo: Memo | None = None,
     ) -> None:
         self.shared = shared
         self.builtin_values = builtin_values
+        self.thorough = thorough
         self.memo: Memo = Memo(builtin_values) if memo is None else memo
         self.pairs = [
             (x, y) for x in _overlap._alternatives(a) for y in _overlap._alternatives(b)
@@ -882,6 +891,9 @@ class Analysis:
         self.single = len(self.pairs) == 1
         self._answers: dict[How, Certainty] = {}
         self._examples: dict[How, Example | None] = {}
+        # the oracle's answer for each pair, and its examples (`_languages`)
+        self._oracle: dict[tuple[int, int], Any] = {}
+        self._witnesses: dict[tuple[int, int, How], Example] = {}
         self.assumptions: set[str] = set()
         # A name a plain field renders in both roles: its keys agree only
         # because of builtin_values, which an answer may then rely on.
@@ -927,13 +939,76 @@ class Analysis:
             return "never"
         for (a, b), c in zip(self.pairs, answers, strict=True):
             if c in ("always", "sometimes"):
-                ex = self._examples.get(how) or _search(a, b, how, self.shared)
+                ex = (
+                    self._examples.get(how)
+                    or self._witnesses.get((id(a), id(b), how))
+                    or _search(a, b, how, self.shared)
+                )
                 if ex is not None:
                     self._examples[how] = ex
                     return "sometimes"
         return "unknown"
 
     def _pair(self, a: PathExpr, b: PathExpr, how: How) -> Certainty:
+        answer = self._rules(a, b, how)
+        if self.thorough and answer in ("unknown", "sometimes"):
+            answer = self._languages(a, b, how, answer)
+        return answer
+
+    def _languages(
+        self, a: PathExpr, b: PathExpr, how: How, answer: Certainty
+    ) -> Certainty:
+        """``answer`` settled, where it can be, by the paths' languages
+        (`wend._languages`, §15.3, 7): ``"never"`` where no binding shows
+        ``how``, ``"always"`` where every one does, ``"sometimes"`` where a
+        binding wend renders shows it. With ``builtin_values``, a binding
+        counts only if its values are of builtin types."""
+        from . import _languages as L
+
+        key = (id(a), id(b))
+        if key not in self._oracle:
+            decide = L.relate_shared if self.shared else L.relate_independent
+            try:
+                with L.budget(_BUDGET):
+                    self._oracle[key] = decide(a, b)
+            except L.Unsupported:
+                self._oracle[key] = None
+        o = self._oracle[key]
+        if o is None:
+            return answer
+        if o[how] == "never":
+            return "never"
+        if o[how] not in L.POSSIBLE:
+            return answer
+        # The oracle's binding, of plain values where they render as its own
+        # do (which reads better, and counts under builtin_values).
+        env = o.examples[how]
+        ex = None
+        for ea, eb in (
+            (L.plainly(env["a"]), L.plainly(env["b"])),
+            (env["a"], env["b"]),
+        ):
+            if self.builtin_values and not all(
+                type(v) in _BUILTIN for v in (*ea.values(), *eb.values())
+            ):
+                continue
+            ex = _example(
+                a,
+                b,
+                {n: v for n, v in ea.items() if n in a.params},
+                {n: v for n, v in eb.items() if n in b.params},
+                how,
+            )
+            if ex is not None:
+                break
+        if ex is None:  # no binding of the oracle's shows it here: keep ours
+            return answer
+        self._witnesses[(id(a), id(b), how)] = ex
+        if self.single and self._examples.get(how) is None:
+            self._examples[how] = ex
+        return "always" if o[how] == "always" else "sometimes"
+
+    def _rules(self, a: PathExpr, b: PathExpr, how: How) -> Certainty:
         # Paths with different anchors are never one, nor nested.
         aa, ab = _anchors(a), _anchors(b)
         if aa is not None and ab is not None and not aa & ab:
@@ -1113,7 +1188,12 @@ def _structurally(
 
 
 def relate(
-    a: Any, b: Any, *, shared: bool = True, builtin_values: bool = False
+    a: Any,
+    b: Any,
+    *,
+    shared: bool = True,
+    builtin_values: bool = False,
+    thorough: bool = False,
 ) -> Relation:
     """How the paths ``a`` and ``b`` render relate, before any binding.
 
@@ -1126,7 +1206,9 @@ def relate(
     value, as the paths of one run of a pipeline do; ``shared=False`` relates
     every binding of ``a`` to every binding of ``b``. ``builtin_values=True``
     assumes bound values are of builtin types, which proves more paths apart
-    (docs/SEMANTICS.md §15).
+    (docs/SEMANTICS.md §15). ``thorough=True`` settles what the rules leave
+    ``"unknown"`` (or only ``"sometimes"``) on the languages of the two
+    expressions, at a cost of up to seconds a pair (§15.3, 7).
 
     >>> from wend import P, Param, T
     >>> root, day = Param("root"), Param("day")
@@ -1136,7 +1218,9 @@ def relate(
     >>> relate(raw, P(root) / "raw").inside
     'always'
     """
-    return Analysis(a, b, shared=shared, builtin_values=builtin_values).relation()
+    return Analysis(
+        a, b, shared=shared, builtin_values=builtin_values, thorough=thorough
+    ).relation()
 
 
 __all__ = ["Certainty", "Example", "Relation", "relate"]

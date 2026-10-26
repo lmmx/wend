@@ -9,7 +9,7 @@ from overlap_test import PARTS, POOL, ab, expressions, s, sc
 from relate_test import HEAD_OPS, pairs, renamed, rendered, under_one_head
 
 from wend import P, Param, SubPath, T, relate
-from wend._experimental.lang_oracle import (
+from wend._languages import (
     NFA,
     POSSIBLE,
     Side,

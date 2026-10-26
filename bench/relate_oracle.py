@@ -1,4 +1,4 @@
-"""relate against the language oracle (src/wend/_experimental/lang_oracle.py) on
+"""relate against the language oracle (src/wend/_languages.py) on
 #119's samples, under independent bindings or, with --shared, shared ones: how many pairs the oracle decides, where the two disagree, and
 how many "unknown" answers the oracle settles. Every possible relation the
 oracle reports comes with bindings, rendered here by wend itself.
@@ -19,7 +19,7 @@ from lang_oracle_test import renderings, shared_renderings  # noqa: E402
 from relate_test import pairs, renamed, under_one_head  # noqa: E402
 
 from wend import relate  # noqa: E402
-from wend._experimental.lang_oracle import (  # noqa: E402
+from wend._languages import (  # noqa: E402
     Side,
     Unsupported,
     _lang,

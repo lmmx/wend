@@ -929,9 +929,15 @@ def depth_cases(draw):
     e = draw(expressions())
     if draw(st.booleans()):
         e = e / draw(st.sampled_from([s, sc]))
+    ops = [
+        *HEAD_OPS,
+        # A deferred path joined on is deferred: relative, or absolute.
+        lambda e: e / (P("x") / s).parent,
+        lambda e: e / (P(ab) / sc).parent,
+    ]
     for _ in range(draw(st.integers(0, 2))):
         try:
-            e = HEAD_OPS[draw(st.integers(0, len(HEAD_OPS) - 1))](e)
+            e = ops[draw(st.integers(0, len(ops) - 1))](e)
         except WendError, ValueError, TypeError:
             pass
         if draw(st.booleans()):
@@ -950,7 +956,7 @@ def test_a_depth_counts_the_segments_rendered(e):
     # what each part of varying count renders alone.
     d = _depth(e)
     assume(d is not None)
-    n, atoms = d
+    n, signed = d
     names = sorted(e.param_names)
     for combo in itertools.islice(itertools.product(*(POOL[k] for k in names)), 400):
         env = dict(zip(names, combo, strict=True))
@@ -958,11 +964,17 @@ def test_a_depth_counts_the_segments_rendered(e):
         if path is None:
             continue
         alone = [
-            rendered(PathExpr(REL, (x,)) if isinstance(x, Splice) else PathExpr(x), env)
-            for x in atoms
+            (
+                c,
+                rendered(
+                    PathExpr(REL, (x,)) if isinstance(x, Splice) else PathExpr(x), env
+                ),
+            )
+            for c, x in signed
         ]
-        assert None not in alone, (e.pattern, env)
-        assert _count(path) == n + sum(_count(x) for x in alone), (e.pattern, env, path)
+        assert all(x is not None for _, x in alone), (e.pattern, env)
+        count = n + sum(c * _count(x) for c, x in alone)
+        assert _count(path) == count, (e.pattern, env, path)
 
 
 def test_depths_decide_with_shared_subpaths():

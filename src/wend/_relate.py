@@ -374,50 +374,82 @@ def _anchors(e: PathExpr) -> frozenset[str] | None:
     return None
 
 
-def _depth(e: PathExpr) -> tuple[int, list[Any]] | None:
+def _depth(e: PathExpr) -> tuple[int, list[tuple[int, Any]]] | None:
     """How many segments ``e`` renders, as a count of segments and the parts
-    whose own count varies (SubPaths, and heads other than a literal one);
-    None where that is not known. A name changed by ``with_name``,
-    ``with_suffix`` or ``with_stem`` keeps its base's count: pathlib replaces
-    the last segment, and refuses where there is none. A parent has one
-    fewer, where its base renders a segment of its own."""
+    whose own count varies (SubPaths, and heads other than a literal one),
+    each with a sign; None where that is not known.
+
+    - A name changed by ``with_name``, ``with_suffix`` or ``with_stem`` keeps
+      its base's count: pathlib replaces the last segment, and refuses where
+      there is none.
+    - A parent has one fewer, where its base renders a segment of its own.
+    - A path made relative to another has the difference of their counts:
+      pathlib refuses unless the other is a prefix, and drops it.
+    - A join onto a relative path has the sum of their counts."""
     h = e.head
-    n, atoms = 0, list[Any]()
+    n, atoms = 0, list[tuple[int, Any]]()
     if isinstance(h, Deferred) and h.op in (*_NAME_OPS, "parent"):
         base = _depth(h.base)
         if base is None or (h.op == "parent" and base[0] < 1):
             return None
         n = base[0] - (h.op == "parent")
         atoms.extend(base[1])
+    elif (
+        isinstance(h, Deferred)
+        and h.op in ("relative_to", "join")
+        and isinstance(h.arg, PathExpr)
+    ):
+        base, arg = _depth(h.base), _depth(h.arg)
+        if base is None or arg is None:
+            return None
+        if h.op == "join" and _anchors(h.arg) != frozenset({""}):
+            return None  # an absolute path joined on replaces the base
+        sign = -1 if h.op == "relative_to" else 1
+        n = base[0] + sign * arg[0]
+        atoms.extend(base[1])
+        atoms.extend((sign * c, x) for c, x in arg[1])
     elif not isinstance(h, (Root, _Rel)):
-        atoms.append(h)
+        atoms.append((1, h))
     for p in e.parts:
         if isinstance(p, Seg):
             n += 1
         elif isinstance(p, Splice):
-            atoms.append(p)
+            atoms.append((1, p))
         else:
             return None
     return n, atoms
 
 
 def _depths_never(a: PathExpr, b: PathExpr, how: How, shared: bool, memo: Memo) -> bool:
-    """Whether ``a`` and ``b`` never relate by ``how`` for their depths alone:
-    where each part of varying count on one side is alike one on the other
-    (§15.3, 1), they render one count on both, so the depths differ by the
-    counts of segments. Paths of different depths are never one, nor of
-    equal depths one inside the other."""
+    """Whether ``a`` and ``b`` never relate by ``how`` for their depths alone.
+
+    The depth of ``a`` less that of ``b`` is the difference of their counts
+    of segments, plus each part of varying count times its sign. A part
+    renders no segments or more. Under shared bindings a part alike on both
+    sides (§15.3, 1) renders one count on both, so its signs add; otherwise
+    each side's parts are counts of their own. Where every sign left is
+    positive the difference is at least that of the counts, and where every
+    one is negative at most that. Paths of different depths are never one,
+    nor is the shallower ever inside the deeper."""
     da, db = _depth(a), _depth(b)
     if da is None or db is None:
         return False
     (n, xs), (k, ys) = da, db
-    if xs or ys:
-        bad = _conflicting_defaults(a, b)
-        if not shared or any(_names(x) & bad for x in (*xs, *ys)):
-            return False
-        if Counter(_key(x, memo) for x in xs) != Counter(_key(y, memo) for y in ys):
-            return False
-    return not {"same": n == k, "inside": n > k, "contains": n < k}[how]
+    bad = _conflicting_defaults(a, b) if shared else frozenset()
+    signs: Counter[Any] = Counter()
+    for side, sign, parts in (("a", 1, xs), ("b", -1, ys)):
+        for c, x in parts:
+            key = _key(x, memo)
+            signs[key if shared and not _names(x) & bad else (side, key)] += sign * c
+    pos = any(c > 0 for c in signs.values())
+    neg = any(c < 0 for c in signs.values())
+    d = n - k
+    may = {
+        "same": d == 0 or (d < 0 and pos) or (d > 0 and neg),
+        "inside": d > 0 or pos,
+        "contains": d < 0 or neg,
+    }
+    return not may[how]
 
 
 def _view(e: PathExpr, memo: Memo) -> PathExpr:

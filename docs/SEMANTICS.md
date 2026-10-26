@@ -1202,6 +1202,20 @@ parameter of either expression.
      segment, never `""`, `.` or a separator (§3), so each remainder renders a fixed
      number of them. Paths of different depths are never the same, and paths of equal
      depths are never one inside the other.
+   - the whole expressions' depths are bounded apart. A path's depth is its count of
+     segments, plus what each *part of varying count* renders: a `SubPath`, a head
+     parameter, or a deferred head other than those below. A changed name keeps its
+     base's count, since pathlib replaces the last segment and refuses where there is
+     none; a parent has one fewer where its base has a segment of its own; a path made
+     relative to another has the difference of their counts, since pathlib refuses
+     unless the other is a prefix; a join onto a relative path has the sum. Under shared
+     bindings a part alike on both sides by (1) renders one count on both, so it
+     cancels; otherwise each side's parts count apart, and a name with a different
+     default on each side never cancels. Each part renders no segments or more, so
+     where the parts left on one side all count for it, its depth is at least the
+     difference of the counts. `({root}/{n:d}.{p}/{s...}).with_suffix("")` is never the
+     same as `{root}/{n:d}.{p}/{n:d}.{p}/{s...}`, nor inside it, and `d/{s...}/a/b` is
+     never `d/x`, under either binding.
 6. **Otherwise the overlap analysis decides** (`wend._overlap`, §15.5): `same` asks
    whether the remainders can render one path; `inside` whether `a`'s can render one
    strictly below `b`'s, built as `b`'s remainder, a segment parameter and a `SubPath`;

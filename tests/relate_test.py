@@ -17,8 +17,8 @@ from hypothesis import strategies as st
 from overlap_test import PARTS, POOL, ab, expressions, n, p, q, s, sc
 
 from wend import Absolute, P, Param, PathExpr, Relation, SubPath, T, relate
-from wend._expr import Deferred, Splice
-from wend._relate import Memo, _cases, lexically
+from wend._expr import REL, Deferred, Splice
+from wend._relate import Memo, _cases, _depth, _segments, lexically
 from wend.errors import WendError
 
 
@@ -920,6 +920,108 @@ def test_a_dot_stem_is_written_out():
     assert relate(a, P("d") / "b", shared=False).same == "never"
     r = relate((P("data") / rel).with_stem(".."), (P("data") / rel).with_suffix(".b"))
     assert (r.inside, r.contains) == ("never", "never")
+
+
+@st.composite
+def depth_cases(draw):
+    """Expressions under deferred operations, perhaps several, and joined
+    onto: those whose depth `_depth` may know."""
+    e = draw(expressions())
+    if draw(st.booleans()):
+        e = e / draw(st.sampled_from([s, sc]))
+    ops = [
+        *HEAD_OPS,
+        # A deferred path joined on is deferred: relative, or absolute.
+        lambda e: e / (P("x") / s).parent,
+        lambda e: e / (P(ab) / sc).parent,
+    ]
+    for _ in range(draw(st.integers(0, 2))):
+        try:
+            e = ops[draw(st.integers(0, len(ops) - 1))](e)
+        except WendError, ValueError, TypeError:
+            pass
+        if draw(st.booleans()):
+            e = e / PARTS[draw(st.integers(0, len(PARTS) - 1))]()
+    return e
+
+
+def _count(path):
+    return len(_segments(path)[1])
+
+
+@settings(max_examples=300, deadline=None, suppress_health_check=list(HealthCheck))
+@given(e=depth_cases())
+def test_a_depth_counts_the_segments_rendered(e):
+    # On every binding, an expression renders its count of segments, and
+    # what each part of varying count renders alone.
+    d = _depth(e)
+    assume(d is not None)
+    n, signed = d
+    names = sorted(e.param_names)
+    for combo in itertools.islice(itertools.product(*(POOL[k] for k in names)), 400):
+        env = dict(zip(names, combo, strict=True))
+        path = rendered(e, env)
+        if path is None:
+            continue
+        alone = [
+            (
+                c,
+                rendered(
+                    PathExpr(REL, (x,)) if isinstance(x, Splice) else PathExpr(x), env
+                ),
+            )
+            for c, x in signed
+        ]
+        assert all(x is not None for _, x in alone), (e.pattern, env)
+        count = n + sum(c * _count(x) for c, x in alone)
+        assert _count(path) == count, (e.pattern, env, path)
+
+
+def test_depths_decide_with_shared_subpaths():
+    # A changed name keeps its base's depth, and a SubPath shared by both
+    # sides renders one count of segments on both: here 2 + |s| against
+    # 3 + |s|, so never the same, nor the first inside the second.
+    a = (P(root) / T(t"{n:d}.{p}") / s).with_suffix("")
+    b = P(root) / T(t"{n:d}.{p}") / T(t"{n:d}.{p}") / s
+    r = relate(a, b)
+    assert (r.same, r.inside) == ("never", "never")
+    # Bound apart, each side's SubPath renders a count of its own.
+    assert relate(a, b, shared=False).same == "sometimes"
+    # A parent has one fewer segment, where its base renders one of its own.
+    raw = P(root) / "raw" / SubPath("rel")
+    r = relate(raw.parent / "x" / "y", raw.with_suffix(".csv"))
+    assert (r.same, r.contains) == ("never", "never")
+    # Counted with their multiplicity: {s}/{s} and {s}/a are one path where
+    # s is "a".
+    assert relate(P("d") / s / s, P("d") / s / "a").same == "sometimes"
+    # A SubPath defaulted differently on each side renders two counts when
+    # unbound: d/{rel} and d/{rel}/y are both d/x/y.
+    ra, rb = SubPath("rel", default="x/y"), SubPath("rel", default="x")
+    a, b = P("d") / ra, P("d") / rb / "y"
+    assert a.render({}) == b.render({}) == "d/x/y"
+    assert relate(a, b).same != "never"
+
+
+def test_depth_bounds_decide_through_signs():
+    # A part of varying count renders no segments or more, so where every
+    # sign left is one way the depths are bounded, under either binding.
+    sub = SubPath("sub")
+    for shared in (True, False):
+        r = relate(P("d") / sub / "a" / "b", P("d") / "x", shared=shared)
+        assert (r.same, r.contains) == ("never", "never")
+    # A path made relative to another drops the other's segments: d/x less
+    # {p} has two at most, and q/r/s has three.
+    a = (P("d") / "x").relative_to(P(p))
+    r = relate(a, P("q") / "r" / "s", shared=False)
+    assert (r.same, r.inside) == ("never", "never")
+    # A join onto a relative path adds its segments: never "." itself.
+    a = P("d") / (P("x") / sub).parent
+    assert relate(a, P("."), shared=False).same == "never"
+    # An absolute path joined on replaces the base, so its depth is not the
+    # sum: d joined with parent({ab}/k/{sc...}) is "/" where ab is "/".
+    a = P("d") / (P(ab) / "k" / sc).parent
+    assert a.render(ab="/", sc=".") == "/"
+    assert relate(a, P("/"), shared=False).same != "never"
 
 
 def _rest(case, e, env):

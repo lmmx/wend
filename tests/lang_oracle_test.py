@@ -16,6 +16,7 @@ from wend._experimental.lang_oracle import (
     encode,
     language,
     relate_independent,
+    relate_shared,
 )
 from wend._relate import lexically
 from wend.errors import WendError
@@ -194,3 +195,128 @@ def test_a_name_used_twice_is_decided_through_its_values():
     a = P("d") / rel / "k" / rel
     o = relate_independent(a, P("d") / "a" / "k" / "b")
     assert (o.same, o.inside) == ("never", "possible")
+
+
+def oracle_shared(a, b):
+    try:
+        return relate_shared(a, b)
+    except Unsupported:
+        assume(False)
+
+
+def own(e, env):
+    return {k: v for k, v in env.items() if k in e.param_names}
+
+
+def shared_renderings(a, b, limit=400):
+    """Pairs of paths a and b render under one pooled binding, with each name
+    both give a default also left unbound."""
+    names = sorted(a.param_names | b.param_names)
+    defaulted = [
+        n
+        for n in sorted(a.param_names & b.param_names)
+        if a.params[n].has_default and b.params[n].has_default
+    ]
+    envs = itertools.islice(itertools.product(*(POOL[k] for k in names)), limit)
+    for combo in envs:
+        env = dict(zip(names, combo, strict=True))
+        for k in range(len(defaulted) + 1):
+            for unbound in itertools.combinations(defaulted, k):
+                e = {n: v for n, v in env.items() if n not in unbound}
+                pa, pb = rendered(a, e), rendered(b, e)
+                if pa is not None and pb is not None:
+                    yield pa, pb
+
+
+@settings(max_examples=300, deadline=None, suppress_health_check=list(HealthCheck))
+@given(pair=ANY_PAIR)
+def test_every_possible_shared_relation_renders(pair):
+    # Under shared bindings a witness is one binding of both sides.
+    a, b = pair
+    o = oracle_shared(a, b)
+    for how in HOWS:
+        if o[how] in POSSIBLE:
+            env = o.examples[how]["a"]
+            assert env == o.examples[how]["b"]
+            pa, pb = a.render(own(a, env)), b.render(own(b, env))
+            assert lexically(pa, pb) == how, (a.pattern, b.pattern, how, pa, pb)
+
+
+@settings(max_examples=300, deadline=None, suppress_health_check=list(HealthCheck))
+@given(pair=ANY_PAIR)
+def test_shared_never_and_always_hold_for_pooled_bindings(pair):
+    a, b = pair
+    o = oracle_shared(a, b)
+    found = {how: set() for how in HOWS}
+    for pa, pb in shared_renderings(a, b):
+        for how in HOWS:
+            found[how].add(lexically(pa, pb) == how)
+    for how in HOWS:
+        if o[how] == "never":
+            assert True not in found[how], (a.pattern, b.pattern, how)
+        if o[how] == "always":
+            assert False not in found[how], (a.pattern, b.pattern, how)
+
+
+@settings(max_examples=300, deadline=None, suppress_health_check=list(HealthCheck))
+@given(pair=ANY_PAIR)
+def test_relate_agrees_with_the_shared_oracle(pair):
+    a, b = pair
+    o = oracle_shared(a, b)
+    r = relate(a, b)
+    for how in HOWS:
+        mine, exact = r[how], o[how]
+        allowed = {
+            "unknown": {"never", "sometimes", "always", "possible", "undecided"},
+            "never": {"never", "undecided"},
+            "always": {"always", "possible", "undecided"},
+            "sometimes": {"sometimes", "always", "possible", "undecided"},
+        }[mine]
+        assert exact in allowed, (a.pattern, b.pattern, how, mine, exact)
+
+
+def test_shared_bindings_tie_a_name_across_sides():
+    x, s_ = Param("x"), SubPath("s")
+    # One value on both sides: d/{x}/a is never d/{x}/b, though under
+    # independent bindings it is not d/{x}/b either; d/{x}/{x} is d/a/{x}
+    # only where x is "a".
+    assert relate_shared(P("d") / x / "a", P("d") / x / "b").same == "never"
+    a, b = P("d") / x / x, P("d") / "a" / x
+    o = relate_shared(a, b)
+    assert o.same == "possible"
+    env = o.examples["same"]["a"]
+    assert a.render(env) == b.render(env) == "d/a/a"
+    assert relate_shared(a, P("d") / "a" / "b").same == "never"
+    # A SubPath of both: d/{s...}/k is below d/{s...}, never it. No finite
+    # set of candidates settles that, but the shared prefix cancels: what
+    # follows is k against nothing (`_cancelled`).
+    o = relate_shared(P("d") / s_ / "k", P("d") / s_)
+    assert (o.same, o.inside, o.contains) == ("never", "always", "never")
+    root, p, sc = Param("root"), Param("p"), SubPath("sc")
+    a = P(root) / T(t"{p}.txt") / "b" / "x.txt"
+    b = P(root) / T(t"{p}.txt") / "b" / ".." / sc
+    o = relate_shared(a, b)
+    assert (o.same, o.inside, o.contains) == ("never", "never", "never")
+    assert relate_shared(P("d") / x, P("d") / x).same == "always"
+    # An expression against itself is the same wherever it renders, but this
+    # one renders nowhere: p would be a segment's text and a parent of
+    # //{p}/... at once. "always" is not shown by any binding, so not given.
+    q_ = Param("q")
+    e = (P("//") / x / q_ / "x.txt" / s_).relative_to(P(x)) / q_ / q_ / "x.txt"
+    o = relate_shared(e, e)
+    assert all(how in o.examples for how in HOWS if o[how] in POSSIBLE)
+    # Different heads cancel nothing: {x}/a is inside {y} where y is x.
+    y = Param("y")
+    o = relate_shared(P(T(t"{x}")) / "a", P(T(t"{y}")))
+    assert o.inside == "sometimes"
+    assert o.same not in ("never", "always")
+    # Tied, d/{x} is never {x}/q; but with x unbound each side renders its own
+    # default, and both render d/q (SEMANTICS §15.1).
+    xq, xd = Param("x", default="q"), Param("x", default="d")
+    a, b = P("d") / xq, P(T(t"{xd}")) / "q"
+    o = relate_shared(a, b)
+    assert o.same == "possible"
+    assert "x" not in o.examples["same"]["a"]
+    assert a.render() == b.render() == "d/q"
+    # Without the defaults, never.
+    assert relate_shared(P("d") / x, P(T(t"{x}")) / "q").same == "never"

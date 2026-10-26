@@ -46,6 +46,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from wend._expr import (
+    REL,
     Const,
     Deferred,
     Field,
@@ -54,6 +55,7 @@ from wend._expr import (
     Root,
     Seg,
     Text,
+    _new,
     _Rel,
     format_field,
 )
@@ -897,6 +899,9 @@ class _Reading:
     conflicts: dict[str, dict[tuple[str, Any], set[Any]]]
 
 
+TIED = "*"  # the group of a name tied across both sides
+
+
 def _path_text(t: str) -> str:
     """A path's text as its characters spell it: anchor, then segments each
     followed by "/"; as rendered."""
@@ -906,6 +911,7 @@ def _path_text(t: str) -> str:
 def _bindings(
     edges: list[tuple[Label | None, tuple[Effect, ...]]],
     sides: dict[str, tuple[PathExpr, Side]],
+    tied: frozenset[str] = frozenset(),
 ) -> _Reading:
     texts: dict[Any, list[str]] = {}
     chosen: dict[Any, Any] = {}
@@ -917,31 +923,36 @@ def _bindings(
             shown = lab if how is None else how
             assert isinstance(shown, Chars | Tok)  # an effect's edge reads one
             texts.setdefault(key, []).append(pick(shown))
+    # A name's uses are grouped by side, or across both sides where the
+    # name is tied (one value on both, under shared bindings): group "*".
+    seen: dict[str, dict[tuple[str, Any], set[Any]]] = {}
+    for side, (_, sd) in sides.items():
+        for (name, shape), count in sd.uses.items():
+            group = seen.setdefault(TIED if name in tied else side, {})
+            got = group.setdefault((name, shape), set())
+            for use in range(count):
+                key = (side, name, shape, use)
+                if shape == FINITE:
+                    got.add(chosen.get(key))
+                    continue
+                t = "".join(texts.get(key, []))
+                # A path's text ends in "/" (or is empty), a segment's
+                # never: both are its value's os.fspath.
+                got.add(_path_text(t) if shape == FSPATH else t)
+    conflicts = {
+        g: {k: v for k, v in groups.items() if len(v) > 1} for g, groups in seen.items()
+    }
+    conflicts = {g: c for g, c in conflicts.items() if c}
     envs: dict[str, dict[str, Any]] = {}
-    conflicts: dict[str, dict[tuple[str, Any], set[Any]]] = {}
-    for side, (e, sd) in sides.items():
+    for side, (e, _) in sides.items():
         env: dict[str, Any] = {}
         for name, p in _params(e).items():
-            per_shape: dict[Any, Any] = {}
-            for (n, shape), count in sd.uses.items():
-                if n != name:
-                    continue
-                seen = set()
-                for use in range(count):
-                    key = (side, name, shape, use)
-                    if shape == FINITE:
-                        seen.add(chosen.get(key))
-                        continue
-                    t = "".join(texts.get(key, []))
-                    # A path's text ends in "/" (or is empty), a segment's
-                    # never: both are its value's os.fspath.
-                    seen.add(_path_text(t) if shape == FSPATH else t)
-                if len(seen) == 1:
-                    per_shape[shape] = next(iter(seen))
-                else:
-                    conflicts.setdefault(side, {})[(name, shape)] = seen
-            if any(k[0] == name for k in conflicts.get(side, {})):
+            g = TIED if name in tied else side
+            if any(k[0] == name for k in conflicts.get(g, {})):
                 continue
+            per_shape = {
+                shape: next(iter(v)) for (n, shape), v in seen[g].items() if n == name
+            }
             env[name] = (
                 per_shape[FINITE] if FINITE in per_shape else _value(p, per_shape)
             )
@@ -1025,7 +1036,8 @@ def _shows(a: PathExpr, b: PathExpr, how: str, envs: dict[str, dict[str, Any]]) 
     from wend._relate import lexically  # how two rendered strings relate
 
     try:
-        pa, pb = a.render(envs["a"]), b.render(envs["b"])
+        pa = a.render({k: v for k, v in envs["a"].items() if k in a.param_names})
+        pb = b.render({k: v for k, v in envs["b"].items() if k in b.param_names})
     except Exception:  # noqa: BLE001 (a binding either side refuses)
         return False
     return lexically(pa, pb) == how
@@ -1037,6 +1049,13 @@ Fixed = dict[str, dict[tuple[str, Any], Any]]
 def relate_independent(
     a: PathExpr, b: PathExpr, *, depth: int = 2, fixed: Fixed | None = None
 ) -> Answer:
+    """The relation of ``a`` and ``b`` under independent bindings (`_relate`)."""
+    return _relate(a, b, depth, fixed or {}, frozenset())
+
+
+def _relate(
+    a: PathExpr, b: PathExpr, depth: int, fixed: Fixed, tied: frozenset[str]
+) -> Answer:
     """The relation of ``a`` and ``b`` under independent bindings.
 
     Each use of a name is read on its own, so where a name is used twice in
@@ -1046,11 +1065,11 @@ def relate_independent(
     (name, shape) can take are fixed one by one (``depth`` times over) and
     decided again; where those were all its texts and none shows the
     relation, it never holds. ``fixed`` holds a side's (name, shape) to a
-    text, or a value for a type of two values."""
-    fixed = fixed or {}
+    text, or a value for a type of two values. A ``tied`` name takes one
+    value on both sides: its uses on both are grouped as one name's."""
     sa, sb = Side("a", dict(fixed.get("a", {}))), Side("b", dict(fixed.get("b", {})))
     la, lb = _lang(a, sa), _lang(b, sb)
-    exact = not (sa.repeated or sb.repeated)
+    exact = not (sa.repeated or sb.repeated or tied)
     if not nonempty(la) or not nonempty(lb):
         # No binding renders both: every relation is vacuously never (§15.1).
         return Answer("never", "never", "never", {})
@@ -1067,7 +1086,7 @@ def relate_independent(
         if w is None:
             out[how] = "never"
             continue
-        reading = _bindings(w, sides)
+        reading = _bindings(w, sides, tied)
         if not reading.conflicts and _shows(a, b, how, reading.envs):
             out[how] = "sometimes"
             examples[how] = reading.envs
@@ -1075,7 +1094,7 @@ def relate_independent(
         verdict, envs = "undecided", None
         if reading.conflicts and depth > 0:
             verdict, envs = _substitute(
-                a, b, how, _candidates(both, reading, sides), fixed, depth
+                a, b, how, _candidates(both, reading, sides), fixed, depth, tied
             )
         out[how] = "sometimes" if verdict == "possible" else verdict
         if envs is not None:
@@ -1096,6 +1115,96 @@ def relate_independent(
                 out[how] = "always"
             elif not exact:
                 out[how] = "possible"
+    return Answer(out["same"], out["inside"], out["contains"], examples)
+
+
+def relate_shared(a: PathExpr, b: PathExpr, *, depth: int = 2) -> Answer:
+    """The relation of ``a`` and ``b`` under shared bindings (SEMANTICS
+    §15.1): a name of both takes one value on both sides, so its uses on both
+    are tied as one name's (`_relate`).
+
+    A name both sides give a default may also be left unbound, and each side
+    then renders its own default. Each such name is decided both ways: tied,
+    and with each side bound to its own default. The relation holds never
+    (or always) where it does in every case, and is possible where it is in
+    one."""
+    pa, pb = _params(a), _params(b)
+    common = sorted(pa.keys() & pb.keys())
+    for n in common:
+        x, y = pa[n], pb[n]
+        if x.type is not y.type or x.choices != y.choices or x.kind != y.kind:
+            raise Unsupported(f"{n!r} is declared differently on each side")
+    split = [n for n in common if pa[n].has_default and pb[n].has_default]
+    if len(split) > 3:
+        raise Unsupported("more than three names with defaults on both sides")
+    cases = []
+    for k in range(len(split) + 1):
+        for unbound in itertools.combinations(split, k):
+            a_ = a.bind({n: pa[n].default for n in unbound}) if unbound else a
+            b_ = b.bind({n: pb[n].default for n in unbound}) if unbound else b
+            tied = frozenset(common) - set(unbound)
+            r = _relate(a_, b_, depth, {}, tied)
+            rest = _cancelled(a_, b_)
+            if rest is not None:
+                r = _refined(r, _relate(*rest, depth, {}, tied))
+            cases.append(r)
+    out: dict[str, str] = {}
+    examples: dict[str, dict[str, dict[str, Any]]] = {}
+    for how in HOWS:
+        got = [r[how] for r in cases]
+        shown = next((r for r in cases if r[how] in POSSIBLE), None)
+        if all(g == "never" for g in got):
+            out[how] = "never"
+        elif all(g == "always" for g in got):
+            out[how] = "always"
+        elif "sometimes" in got:
+            out[how] = "sometimes"
+        elif shown is not None:
+            out[how] = "possible"
+        else:
+            out[how] = "undecided"
+        if shown is not None and how in shown.examples:
+            env = {**shown.examples[how]["a"], **shown.examples[how]["b"]}
+            examples[how] = {"a": env, "b": env}
+    return Answer(out["same"], out["inside"], out["contains"], examples)
+
+
+def _cancelled(a: PathExpr, b: PathExpr) -> tuple[PathExpr, PathExpr] | None:
+    """What follows a head and leading parts ``a`` and ``b`` share, as two
+    relative paths; None if their heads differ.
+
+    Under shared bindings a piece equal on both sides renders one text on
+    both (SEMANTICS §15.3, 1), and a path's characters are its head's then
+    its parts'. In a free monoid ``uv = uw`` exactly where ``v = w``, and
+    ``uv`` is ``uw`` followed by more exactly where ``v`` is ``w`` followed
+    by more. So on every binding that renders both, ``a`` and ``b`` relate
+    as what follows does. Every such binding renders what follows, since a
+    part renders by itself, so a relation never (or always) holding there
+    never (or always) holds of ``a`` and ``b``."""
+    if a.head != b.head:
+        return None
+    k = 0
+    while k < min(len(a.parts), len(b.parts)) and a.parts[k] == b.parts[k]:
+        k += 1
+    return _new(REL, a.parts[k:]), _new(REL, b.parts[k:])
+
+
+def _refined(whole: Answer, rest: Answer) -> Answer:
+    """``whole``, with what the parts after a shared prefix decide (`_cancelled`)."""
+    out: dict[str, str] = {}
+    for how in HOWS:
+        mine, theirs = whole[how], rest[how]
+        if theirs == "never" and mine in POSSIBLE:
+            raise AssertionError(
+                f"{how}: a rendered witness, though never after a prefix"
+            )
+        # "always" only where a binding was shown: one that renders both
+        # may not exist, and every possible answer comes with one.
+        if theirs == "never" or (theirs == "always" and mine in POSSIBLE):
+            out[how] = theirs
+        else:
+            out[how] = mine
+    examples = {how: env for how, env in whole.examples.items() if out[how] in POSSIBLE}
     return Answer(out["same"], out["inside"], out["contains"], examples)
 
 
@@ -1149,25 +1258,30 @@ def _candidates(
     use can emit only texts it emits on some word of ``both``; where one use
     can emit finitely many, the (name, shape)'s text is one of them."""
     out = []
-    for side, groups in reading.conflicts.items():
-        _, sd = sides[side]
+    for group, groups in reading.conflicts.items():
+        members = list(sides) if group == TIED else [group]
         for (name, shape), seen in groups.items():
             if shape == FINITE:
-                p = _params(sides[side][0])[name]
-                out.append((side, (name, shape), list(FINITE_TYPES[p.type]), True))
+                p = next(
+                    _params(e)[name]
+                    for e, _ in (sides[m] for m in members)
+                    if name in _params(e)
+                )
+                out.append((group, (name, shape), list(FINITE_TYPES[p.type]), True))
                 continue
             finite: set[str] | None = None
-            for use in range(sd.uses[(name, shape)]):
-                texts = _projection(both, (side, name, shape, use))
-                if texts is None:
-                    continue
-                if shape == FSPATH:
-                    texts = {_path_text(t) for t in texts}
-                finite = texts if finite is None else finite & texts
+            for m in members:
+                for use in range(sides[m][1].uses.get((name, shape), 0)):
+                    texts = _projection(both, (m, name, shape, use))
+                    if texts is None:
+                        continue
+                    if shape == FSPATH:
+                        texts = {_path_text(t) for t in texts}
+                    finite = texts if finite is None else finite & texts
             if finite is not None:
-                out.append((side, (name, shape), sorted(finite), True))
+                out.append((group, (name, shape), sorted(finite), True))
             else:
-                out.append((side, (name, shape), sorted(seen, key=repr), False))
+                out.append((group, (name, shape), sorted(seen, key=repr), False))
     return out
 
 
@@ -1178,6 +1292,7 @@ def _substitute(
     cands: list[tuple[str, tuple[str, Any], list[Any], bool]],
     fixed: Fixed,
     depth: int,
+    tied: frozenset[str] = frozenset(),
     limit: int = 64,
 ) -> tuple[str, dict[str, dict[str, Any]] | None]:
     """Hold each disagreeing (name, shape) to each of its candidates and
@@ -1191,8 +1306,9 @@ def _substitute(
     for combo in combos[:limit]:
         held = {s: dict(fixed.get(s, {})) for s in ("a", "b")}
         for (side, group, _, _), v in zip(cands, combo, strict=True):
-            held[side][group] = v
-        r = relate_independent(a, b, depth=depth - 1, fixed=held)
+            for s in ("a", "b") if side == TIED else (side,):
+                held[s][group] = v
+        r = _relate(a, b, depth - 1, held, tied)
         if r[how] in POSSIBLE:
             return "possible", r.examples[how]
         if r[how] != "never":
@@ -1208,4 +1324,5 @@ __all__ = [
     "encode",
     "language",
     "relate_independent",
+    "relate_shared",
 ]

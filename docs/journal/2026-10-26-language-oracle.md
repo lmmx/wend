@@ -73,6 +73,19 @@ fails the test.
   less. That is `"unknown"`, or `"sometimes"` where the relation holds always, which
   SEMANTICS allows (§15.2: at least one binding).
 
+**[Measured]** Mutants of the oracle, against `tests/lang_oracle_test.py` under seed 0;
+all are killed:
+
+| mutant | killed by |
+|---|---|
+| `with_suffix`'s no-suffix branch reachable mid-name (the bug above) | `test_every_possible_relation_renders` |
+| a checked segment may render `""`, `.` or `..` | `test_every_possible_relation_renders` |
+| a parent of `/` or `.` dropped | `test_a_language_holds_every_rendering` |
+| `with_stem` drops the suffix | the language test, the rendering test, `test_the_oracle_follows_pathlib_on_names` |
+| a spec's dot-free fact ignored | `test_a_spec_does_not_narrow_a_value_without_builtin_values` |
+| an absolute path joined on keeps the base | `test_a_language_holds_every_rendering` |
+| `relative_to` drops no prefix | all four property tests |
+
 ## 3. relate against the oracle
 
 **[Measured]** `bench/relate_oracle.py` on #119's three samples, 1,500 pairs each

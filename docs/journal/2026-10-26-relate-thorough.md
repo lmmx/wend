@@ -1,4 +1,4 @@
-# 2026-10-26: The oracle behind `relate(..., thorough=True)` (#THOROUGH)
+# 2026-10-26: The oracle behind `relate(..., thorough=True)` (#136)
 
 #129 to #135 built an oracle for `relate`, kept out of the wheel in
 `wend._experimental`, to check `relate` against. On #119's samples it decides most of

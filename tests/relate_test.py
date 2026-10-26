@@ -1107,3 +1107,15 @@ def test_thorough_refines_the_rules_and_holds_for_pooled_bindings(pair):
                 for v in (*ex.a_bindings.values(), *ex.b_bindings.values()):
                     assert type(v) in (str, int, float, bool), (ex, v)
     assert_sound(a, b, thorough=True)
+
+
+def test_many_equal_segments_relate_in_bounded_memory():
+    # Eleven segments the alignment holds equal, under independent builtin
+    # values: met at once, their languages' product ran out of memory (6 GB);
+    # met two at a time it is small.
+    nn = T(t"{n:02d}")
+    base = P(ab) / nn / nn / T(t"x{p}")
+    a = base.with_stem("a") / nn / nn / T(t"x{p}")
+    b = P(ab) / nn / nn / T(t"{q}.txt") / nn / nn / T(t"x{p}") / nn / nn / T(t"x{p}")
+    r = relate(a, b, shared=False, builtin_values=True)
+    assert r.same == "never"

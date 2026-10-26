@@ -16,6 +16,7 @@ from wend._languages import (
     Side,
     Unsupported,
     _count_dims,
+    _int_text,
     _lang,
     _least_walk,
     _relate,
@@ -432,3 +433,127 @@ def test_an_exhausted_budget_is_never_an_answer():
             continue
         assert got == whole, (k, got)
         break
+
+
+# -- builtin values: a segment's field and a plain field in text, one shape ----------
+
+
+def oracle_builtin(a, b, shared):
+    try:
+        if shared:
+            return relate_shared(a, b, builtin_values=True)
+        return relate_independent(a, b, builtin_values=True)
+    except Unsupported:
+        assume(False)
+
+
+def test_builtin_values_tie_a_field_alone_to_the_same_field_in_text():
+    # A shard directory and its manifest: `{split}` alone renders os.fspath,
+    # `{split}.json` format; for a str they are one text, so the directory
+    # is never the manifest, nor above it. A value of its own may render
+    # them apart (§15.3, 1).
+    root, split = Param("root"), Param("split")
+    shard = P(root) / T(t"{split}") / "x"
+    manifest = P(root) / T(t"{split}.json")
+    assert relate_shared(shard, manifest).inside == "possible"
+    assert relate_shared(shard, manifest, builtin_values=True).inside == "never"
+    # Its witness is of builtin values.
+    o = relate_shared(P(root) / T(t"{split}"), P(root) / "a.json", builtin_values=True)
+    assert o.same == "possible"
+    assert o.examples["same"]["a"] == {"root": ".", "split": "a.json"}
+    # An int named so is bound as an int.
+    n = Param("n", type=int)
+    o = relate_shared(P(root) / T(t"{n}"), P(root) / "7", builtin_values=True)
+    assert o.examples["same"]["a"]["n"] == 7
+
+
+def test_builtin_values_keep_a_head_apart_from_text():
+    # "." renders no character as a head and one in text, so a head and a
+    # field in text are not one shape: {x}/{x}.txt is ..txt where x is ".".
+    # Were they one, the counts would rule it out.
+    x = Param("x")
+    e = P(x) / T(t"{x}.txt")
+    o = relate_shared(e, P("..txt"), builtin_values=True)
+    assert o.same in POSSIBLE
+    assert e.render(o.examples["same"]["a"]) == "..txt"
+
+
+def test_builtin_values_keep_specs_and_repr_apart():
+    # Only a plain field renders str of the value: a spec or !r renders
+    # otherwise ("07" for 7, "'a'" for "a"), but sometimes alike ("10" for
+    # 10, "7" for 7), so neither relation holds always, nor never.
+    p, n = Param("p"), Param("n")
+    for a, b in [
+        (P("d") / T(t"{n}"), P("d") / T(t"{n:02d}")),
+        (P("d") / p, P("d") / T(t"{p!r}")),
+        (P("d") / T(t"{p}"), P("d") / T(t"{p!r}")),
+        # Read as one text, these could never meet: t is never "0" + t. They
+        # do, for 7 and for "a".
+        (P("d") / T(t"{n:02d}"), P("d") / T(t"0{n}")),
+        (P("d") / T(t"{p!r}"), P("d") / T(t"'{p}'")),
+    ]:
+        o = relate_shared(a, b, builtin_values=True)
+        found = {lexically(pa, pb) == "same" for pa, pb in shared_renderings(a, b)}
+        assert found == {True, False}, (a.pattern, b.pattern, found)
+        assert o.same not in ("always", "never"), (a.pattern, b.pattern, o.same)
+
+
+@settings(max_examples=150, deadline=None, suppress_health_check=list(HealthCheck))
+@given(pair=ANY_PAIR, shared=st.booleans())
+def test_builtin_answers_hold_for_pooled_bindings(pair, shared):
+    # The pool's values are of builtin types, so they are the bindings the
+    # builtin mode speaks of: every "never" and "always" holds for each, and
+    # every witness is of builtin values and renders.
+    a, b = pair
+    o = oracle_builtin(a, b, shared)
+    for how in HOWS:
+        if o[how] in POSSIBLE:
+            env = o.examples[how]
+            for v in (*env["a"].values(), *env["b"].values()):
+                assert type(v) in (str, int, float, bool), (a.pattern, b.pattern, v)
+            pa, pb = a.render(own(a, env["a"])), b.render(own(b, env["b"]))
+            assert lexically(pa, pb) == how, (a.pattern, b.pattern, how, pa, pb)
+    if shared:
+        seen = list(shared_renderings(a, b))
+    else:
+        ra, rb = set(renderings(a)), set(renderings(b))
+        seen = [(pa, pb) for pa in ra for pb in rb]
+    for how in HOWS:
+        found = {lexically(pa, pb) == how for pa, pb in seen}
+        if o[how] == "never":
+            assert True not in found, (a.pattern, b.pattern, how, shared)
+        if o[how] == "always":
+            assert False not in found, (a.pattern, b.pattern, how, shared)
+
+
+@settings(max_examples=150, deadline=None, suppress_health_check=list(HealthCheck))
+@given(pair=ANY_PAIR, shared=st.booleans())
+def test_relate_with_builtin_values_agrees_with_the_oracle(pair, shared):
+    # relate's builtin_values answers (#125), against the oracle's builtin
+    # mode, which shares nothing with relate's reasoning.
+    a, b = pair
+    o = oracle_builtin(a, b, shared)
+    r = relate(a, b, shared=shared, builtin_values=True)
+    for how in HOWS:
+        mine, exact = r[how], o[how]
+        allowed = {
+            "unknown": {"never", "sometimes", "always", "possible", "undecided"},
+            "never": {"never", "undecided"},
+            "always": {"always", "possible", "undecided"},
+            "sometimes": {"sometimes", "always", "possible", "undecided"},
+        }[mine]
+        assert exact in allowed, (a.pattern, b.pattern, how, shared, mine, exact)
+
+
+def test_a_builtin_int_formats_within_its_language():
+    # The texts a builtin int (and a bool, an int too) formats to under the
+    # plain widths: padding, a sign, digits; True and False with no spec.
+    for spec in ["", "d", "03d", "3d", "010d"]:
+        lang = _int_text(spec)
+        assert lang is not None
+        for v in [0, 7, -7, 12, -100, 2026, 10**20, True, False]:
+            t = format(v, spec)
+            assert accepts(lang, [chars(c) for c in t]), (spec, v, t)
+    assert not accepts(_int_text("d"), [chars(c) for c in "True"])
+    for spec in ["+d", "x", ",d", "_d", ".2f", "e"]:
+        assert _int_text(spec) is None

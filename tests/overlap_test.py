@@ -248,6 +248,58 @@ def test_intersect_finds_texts_longer_than_any_bound():
     assert texts and len(texts[0]) == 70 and texts[0].endswith("9")
 
 
+def _lang_of(e):
+    [shape], _ = shapes(P(e))
+    return shape.items[0].lang
+
+
+def test_many_languages_meet_two_at_a_time(monkeypatch):
+    # The segments one alignment holds equal are met as one language. Met
+    # two at a time, each product trimmed, they stay small; met all at once
+    # they were a product of every language's states.
+    import wend._overlap as O
+
+    x, y, z = Param("x"), Param("y"), Param("z")
+    xb, yab, zbb, zab = (
+        _lang_of(T(t"{x}.b")),
+        _lang_of(T(t"{y}a.b")),
+        _lang_of(T(t"{z}b.b")),
+        _lang_of(T(t"{z}a.b")),
+    )
+    assert O.intersect_all([xb, yab, zbb]) == []
+    assert O.intersect_all([xb, yab, zab]) == ["a.b"]
+
+    # What a language excludes stays excluded, whichever is met first.
+    def dots(exclude):
+        b = O._Builder()
+        b.repeat(O.Chars(frozenset(".")), 1, 2)
+        return O.Lang(nfa=b.nfa, start=b.start, end=b.end, exclude=exclude)
+
+    assert O.intersect_all([dots(()), dots(()), dots((".",))]) == [".."]
+    assert O.intersect_all([dots(()), dots(()), dots((".", ".."))]) == []
+    # A language met many times is met once.
+    nn = _lang_of(T(t"{n:02d}"))
+    assert O.intersect_all([nn] * 18) == O.intersect(nn, nn)
+    # Past MEET_STATES, decided neither way.
+    monkeypatch.setattr(O, "MEET_STATES", 1)
+    with pytest.raises(O.TooHard):
+        O.intersect_all([xb, yab, zab])
+
+
+def test_an_intersection_too_hard_rules_nothing_out(monkeypatch):
+    import wend._overlap as O
+
+    x = Param("x")
+    a, b = P("d") / x / x, P("d") / "a" / "b"
+    assert overlaps(a, b, shared=True).verdict == "no"
+
+    def hard(*args):
+        raise O.TooHard("past the bound")
+
+    monkeypatch.setattr(O, "_solve", hard)
+    assert overlaps(a, b, shared=True).verdict == "maybe"
+
+
 # -- falsifying NO on random expressions ------------------------------------------
 
 p, q = Param("p"), Param("q")

@@ -3,10 +3,14 @@
 how many "unknown" answers the oracle settles. Every possible relation the
 oracle reports comes with bindings, rendered here by wend itself.
 
-    PYTHONPATH=src:tests python bench/relate_oracle.py [--shared] [examples] [out.json]
+    PYTHONPATH=src:tests python bench/relate_oracle.py [--shared] [--builtin] [examples] [out.json]
+
+--builtin compares relate(builtin_values=True) with the oracle's builtin mode, on
+the same pairs.
 """
 
 import collections
+import functools
 import json
 import sys
 import time
@@ -18,7 +22,7 @@ sys.path.insert(0, "tests")
 from lang_oracle_test import renderings, shared_renderings  # noqa: E402
 from relate_test import pairs, renamed, under_one_head  # noqa: E402
 
-from wend import relate  # noqa: E402
+import wend  # noqa: E402
 from wend._languages import (  # noqa: E402
     Side,
     Unsupported,
@@ -31,6 +35,7 @@ from wend._relate import lexically  # noqa: E402
 
 
 HOWS = ("same", "inside", "contains")
+relate = wend.relate  # rebound by run() with builtin
 
 
 def confirmed(a, b, how, env):
@@ -76,8 +81,15 @@ def vacuity(a, b, how, shared):
     return "relate always, oracle never: unresolved, no pooled binding renders both"
 
 
-def run(n, shared=False):
-    decide = relate_shared if shared else relate_independent
+def run(n, shared=False, builtin=False):
+    # With builtin, relate and the oracle both take builtin values alone. They
+    # are rebound here, not in `one`, whose source sets the pairs Hypothesis
+    # draws: the pairs stay those of the other modes.
+    global relate
+    relate = functools.partial(wend.relate, builtin_values=builtin)
+    decide = functools.partial(
+        relate_shared if shared else relate_independent, builtin_values=builtin
+    )
     tally = collections.Counter()
     rows = []
     for strategy in (pairs, renamed, under_one_head):
@@ -160,9 +172,10 @@ def run(n, shared=False):
 
 if __name__ == "__main__":
     shared = "--shared" in sys.argv
-    args = [x for x in sys.argv[1:] if x != "--shared"]
+    builtin = "--builtin" in sys.argv
+    args = [x for x in sys.argv[1:] if x not in ("--shared", "--builtin")]
     n = int(args[0]) if args else 1500
-    tally, rows = run(n, shared)
+    tally, rows = run(n, shared, builtin)
     for k, v in sorted(tally.items(), key=lambda kv: str(kv[0])):
         print(k, round(v, 2) if isinstance(v, float) else v)
     if len(args) > 1:

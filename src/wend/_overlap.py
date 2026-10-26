@@ -343,9 +343,83 @@ def intersect(a: Lang, b: Lang, limit: int = 1) -> list[str]:
     return sorted(out, key=lambda s: (len(s), s))
 
 
+class TooHard(Exception):
+    """An intersection grew past `MEET_STATES`: decided neither way."""
+
+
+MEET_STATES = 100_000  # states of one product automaton (`_meet`)
+
+
+def _meet(x: Lang, y: Lang) -> Lang:
+    """The intersection of two languages as one automaton, over the pairs of
+    states reachable from both starts and able to reach both ends. Raises
+    `TooHard` past `MEET_STATES` states."""
+    na, sa, ea = _nfa_view(x)
+    nb, sb, eb = _nfa_view(y)
+    pairs: dict[tuple[int, int], int] = {(sa, sb): 0}
+    order = [(sa, sb)]
+    eps: list[list[int]] = [[]]
+    edges: list[list[tuple[Chars, int]]] = [[]]
+
+    def state(p: int, q: int) -> int:
+        if (p, q) not in pairs:
+            if len(pairs) >= MEET_STATES:
+                raise TooHard(f"more than {MEET_STATES} states")
+            pairs[(p, q)] = len(order)
+            order.append((p, q))
+            eps.append([])
+            edges.append([])
+        return pairs[(p, q)]
+
+    i = 0
+    while i < len(order):
+        p, q = order[i]
+        for t in na.eps[p]:
+            eps[i].append(state(t, q))
+        for t in nb.eps[q]:
+            eps[i].append(state(p, t))
+        for ca, ta in na.edges[p]:
+            for cb, tb in nb.edges[q]:
+                c = ca & cb
+                if c:
+                    edges[i].append((c, state(ta, tb)))
+        i += 1
+    end = pairs.get((ea, eb))
+    if end is None:
+        return Lang(strings=frozenset())
+    back: dict[int, list[int]] = {}
+    for u in range(len(order)):
+        for v in (*eps[u], *(t for _, t in edges[u])):
+            back.setdefault(v, []).append(u)
+    live, todo = {end}, [end]
+    while todo:
+        for u in back.get(todo.pop(), ()):
+            if u not in live:
+                live.add(u)
+                todo.append(u)
+    if 0 not in live:
+        return Lang(strings=frozenset())
+    keep = sorted(live)
+    index = {u: k for k, u in enumerate(keep)}
+    nfa = NFA()
+    for _ in keep:
+        nfa.state()
+    for u in keep:
+        nfa.eps[index[u]] = [index[v] for v in eps[u] if v in index]
+        nfa.edges[index[u]] = [(c, index[v]) for c, v in edges[u] if v in index]
+    exclude = tuple(sorted(set(x.exclude) | set(y.exclude)))
+    return Lang(nfa=nfa, start=index[0], end=index[end], exclude=exclude)
+
+
 def intersect_all(langs: list[Lang], limit: int = 1) -> list[str]:
     """Up to ``limit`` shortest texts in every language of ``langs`` (exact,
     as `intersect`)."""
+    # A language met twice is met once: equal segments of an alignment give
+    # one language many times, and each would multiply the search.
+    unique: dict[tuple[Any, ...], Lang] = {}
+    for x in langs:
+        unique.setdefault((x.strings, id(x.nfa), x.start, x.end, x.exclude), x)
+    langs = list(unique.values())
     if len(langs) == 1:
         langs = [langs[0], langs[0]]
     if len(langs) == 2:
@@ -355,8 +429,16 @@ def intersect_all(langs: list[Lang], limit: int = 1) -> list[str]:
         pool = set.intersection(*(set(x.strings or ()) for x in finite))
         hits = [t for t in pool if all(x.accepts(t) for x in langs)]
         return sorted(hits, key=lambda t: (len(t), t))[:limit]
-    excluded = set().union(*(x.exclude for x in langs))
-    views = [_nfa_view(x) for x in langs]
+    # Met two at a time, smallest first, each product trimmed: one search
+    # over every language at once is a product of all their states.
+    langs = sorted(langs, key=lambda x: len(_nfa_view(x)[0].edges))
+    met = langs[0]
+    for x in langs[1:]:
+        met = _meet(met, x)
+        if met.strings is not None and not met.strings:
+            return []
+    excluded = set(met.exclude)
+    views = [_nfa_view(met)]
     start = tuple(v[1] for v in views)
     visits: dict[tuple[tuple[int, ...], int | None], int] = {}
     queue: deque[tuple[tuple[int, ...], int | None, str]] = deque([(start, 0, "")])
@@ -1247,7 +1329,12 @@ def _overlap(
         all_complete &= complete
         any_structure |= bool(structures)
         for segs in structures:
-            choices = _solve(x, y, segs, common, 2)
+            try:
+                choices = _solve(x, y, segs, common, 2)
+            except TooHard:
+                # Neither shown nor ruled out: no NO from this alignment.
+                all_complete = False
+                continue
             if choices is None:
                 continue
             any_shapes_meet = True

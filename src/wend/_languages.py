@@ -41,6 +41,7 @@ The fragment, with ``builtin_values=False``:
 from __future__ import annotations
 
 import itertools
+import re
 from collections import deque
 from collections.abc import Generator, Iterable
 from contextlib import contextmanager
@@ -635,6 +636,12 @@ def _chosen(n: NFA, key: Any, v: Any) -> NFA:
 # a value of a type of its own may render different shapes apart.
 FSPATH = ("fspath",)
 FINITE = ("finite",)
+# With builtin values only (``builtin_values``): a field alone in a segment and
+# a plain field in text (no spec; no conversion, or ``!s``) render one text,
+# ``str`` of the value, so they are one shape. A head or a SubPath keeps
+# FSPATH: the value "." renders no character there, and one in text.
+PLAIN = ("plain",)
+_PLAIN_FORMATS = (("format", None, ""), ("format", "s", ""))
 
 
 @dataclass
@@ -645,6 +652,9 @@ class Side:
 
     name: str
     fixed: dict[tuple[str, Any], Any] = field(default_factory=dict)
+    # values of builtin types only: a segment's field and a plain field in
+    # text are one shape, PLAIN
+    builtin: bool = False
     uses: dict[tuple[str, Any], int] = field(default_factory=dict)
     # how each use renders: "field" (alone in a segment), "text", "finite",
     # "head" or "splice"
@@ -674,10 +684,13 @@ def _field(f: Field, side: Side) -> NFA:
             raise Unsupported("segment field of a non-parameter")
         if src.type in FINITE_TYPES:
             return _finite(src, side, lambda v: format(v, ""), NAME_OK)
+        shape = PLAIN if side.builtin else FSPATH
         lang = product(
-            _value_text(src, side.key(src.name, FSPATH, "field"), None), NAME_OK
+            _value_text(src, side.key(src.name, shape, "field"), None), NAME_OK
         )
-        return _held(lang, side, src.name, FSPATH, _fixed_text(side, src.name, FSPATH))
+        if side.builtin and src.type is int:
+            lang = product(lang, _int_text("") or _any_star())
+        return _held(lang, side, src.name, shape, _fixed_text(side, src.name, shape))
     if isinstance(src, Const):
         if f.static_spec is None:
             raise Unsupported("constant with a dynamic spec")
@@ -697,14 +710,39 @@ def _field(f: Field, side: Side) -> NFA:
     spec = f.static_spec
     if src.type in FINITE_TYPES:
         return _finite(src, side, lambda v: format_field(f, v, spec), None)
-    shape = ("format", f.conversion, spec)
+    shape: Any = ("format", f.conversion, spec)
+    if side.builtin and shape in _PLAIN_FORMATS:
+        shape = PLAIN
     base = _value_text(src, side.key(src.name, shape, "text"), None)
+    if side.builtin and src.type is int and f.conversion in (None, "s"):
+        within = _int_text(spec)
+        if within is not None:
+            base = product(base, within)
     dot_free, non_empty = f.facts
     if dot_free:
         base = product(base, star(word([NONDOT])))
     if non_empty:
         base = product(base, NONEMPTY)
     return _held(base, side, src.name, shape, _fixed_text(side, src.name, shape))
+
+
+_INT_SPEC = re.compile(r"0?[0-9]*d?")
+
+
+def _int_text(spec: str) -> NFA | None:
+    """Every text a builtin ``int`` (a ``bool`` among them) formats to under
+    ``spec``, or more; None where ``spec`` is not one of the plain widths
+    bounded here: spaces of padding, a sign, digits (zeros of padding among
+    them); ``True`` or ``False`` where ``spec`` is empty, since a ``bool`` is
+    an ``int``."""
+    if not _INT_SPEC.fullmatch(spec):
+        return None
+    digits = concat(
+        star(word([chars(" ")])),
+        union(text(""), text("-")),
+        plus(word([chars("0123456789")])),
+    )
+    return union(digits, text("True"), text("False")) if not spec else digits
 
 
 def _fixed_text(side: Side, param: str, shape: Any) -> NFA:
@@ -926,6 +964,8 @@ class _Shows:
         self.texts = texts
 
     def _for(self, shape: Any) -> str:
+        if shape not in self.texts and (shape == FSPATH or shape in _PLAIN_FORMATS):
+            return self.texts.get(PLAIN, "")
         return self.texts.get(shape, "")
 
     def __format__(self, spec: str) -> str:
@@ -945,8 +985,9 @@ def _value(p: Param, texts: dict[Any, str]) -> Any:
     """A value of ``p`` that renders ``texts[shape]`` in each shape it is
     used in. A plain str does where only its path text is used; otherwise an
     object of its own, of ``p``'s type and equal to a choice where declared."""
-    if p.type is None and p.choices is None and set(texts) <= {FSPATH}:
-        return texts.get(FSPATH, "")
+    if p.type is None and p.choices is None and set(texts) <= {FSPATH, PLAIN}:
+        if len(set(texts.values())) <= 1:
+            return next(iter(texts.values()), "")
     bases: tuple[type, ...] = (_Shows,) if p.type is None else (_Shows, p.type)
     cls = type("_Value", bases, {})
     if p.choices is not None:
@@ -956,7 +997,7 @@ def _value(p: Param, texts: dict[Any, str]) -> Any:
     if p.type is None:
         return cls(texts)
     try:  # a str subclass's own text is its path text
-        v = p.type.__new__(cls, texts.get(FSPATH, ""))
+        v = p.type.__new__(cls, texts.get(FSPATH, texts.get(PLAIN, "")))
     except Exception:  # noqa: BLE001 (a type that is not built from text)
         v = p.type.__new__(cls)
     _Shows.__init__(v, texts)
@@ -971,6 +1012,38 @@ def plainly(env: dict[str, Any]) -> dict[str, Any]:
     for k, v in env.items():
         texts = set(v.texts.values()) if isinstance(v, _Shows) else set()
         out[k] = texts.pop() if len(texts) == 1 else v
+    return out
+
+
+BUILTIN = (str, int, float, bool)
+
+
+def _builtin_envs(
+    sides: dict[str, tuple[PathExpr, Side]], envs: dict[str, dict[str, Any]]
+) -> dict[str, dict[str, Any]] | None:
+    """``envs`` in values of builtin types, or None where one has none: a
+    value of wend's making that renders one text becomes that text, as the
+    ``int`` or ``float`` it spells where its name declares one."""
+    out: dict[str, dict[str, Any]] = {}
+    for side, env in envs.items():
+        params = _params(sides[side][0])
+        got: dict[str, Any] = {}
+        for name, v in env.items():
+            if type(v) not in BUILTIN:
+                texts = set(v.texts.values()) if isinstance(v, _Shows) else set()
+                if len(texts) != 1:
+                    return None
+                v = texts.pop()
+                kind = params[name].type
+                if kind in (int, float):
+                    try:
+                        v = kind(v)
+                    except ValueError:
+                        return None
+                elif kind not in (None, str):
+                    return None
+            got[name] = v
+        out[side] = got
     return out
 
 
@@ -1135,14 +1208,25 @@ Fixed = dict[str, dict[tuple[str, Any], Any]]
 
 
 def relate_independent(
-    a: PathExpr, b: PathExpr, *, depth: int = 2, fixed: Fixed | None = None
+    a: PathExpr,
+    b: PathExpr,
+    *,
+    depth: int = 2,
+    fixed: Fixed | None = None,
+    builtin_values: bool = False,
 ) -> Answer:
-    """The relation of ``a`` and ``b`` under independent bindings (`_relate`)."""
-    return _relate(a, b, depth, fixed or {}, frozenset())
+    """The relation of ``a`` and ``b`` under independent bindings (`_relate`).
+    With ``builtin_values``, of bindings of values of builtin types alone."""
+    return _relate(a, b, depth, fixed or {}, frozenset(), builtin_values)
 
 
 def _relate(
-    a: PathExpr, b: PathExpr, depth: int, fixed: Fixed, tied: frozenset[str]
+    a: PathExpr,
+    b: PathExpr,
+    depth: int,
+    fixed: Fixed,
+    tied: frozenset[str],
+    builtin: bool = False,
 ) -> Answer:
     """The relation of ``a`` and ``b`` under independent bindings.
 
@@ -1155,7 +1239,8 @@ def _relate(
     relation, it never holds. ``fixed`` holds a side's (name, shape) to a
     text, or a value for a type of two values. A ``tied`` name takes one
     value on both sides: its uses on both are grouped as one name's."""
-    sa, sb = Side("a", dict(fixed.get("a", {}))), Side("b", dict(fixed.get("b", {})))
+    sa = Side("a", dict(fixed.get("a", {})), builtin=builtin)
+    sb = Side("b", dict(fixed.get("b", {})), builtin=builtin)
     la, lb = _lang(a, sa), _lang(b, sb)
     exact = not (sa.repeated or sb.repeated or tied)
     if not nonempty(la) or not nonempty(lb):
@@ -1175,16 +1260,25 @@ def _relate(
             out[how] = "never"
             continue
         reading = _bindings(w, sides, tied)
-        if not reading.conflicts and _shows(a, b, how, reading.envs):
+        # With builtin values alone, a witness counts only in them.
+        shown = reading.envs if not builtin else _builtin_envs(sides, reading.envs)
+        if not reading.conflicts and shown is not None and _shows(a, b, how, shown):
             out[how] = "sometimes"
-            examples[how] = reading.envs
+            examples[how] = shown
             continue
         verdict, envs = "undecided", None
         if _counted_never(both, sides, tied):
             verdict = "never"
         elif reading.conflicts and depth > 0:
             verdict, envs = _substitute(
-                a, b, how, _candidates(both, reading, sides), fixed, depth, tied
+                a,
+                b,
+                how,
+                _candidates(both, reading, sides),
+                fixed,
+                depth,
+                tied,
+                builtin,
             )
         out[how] = "sometimes" if verdict == "possible" else verdict
         if envs is not None:
@@ -1208,7 +1302,9 @@ def _relate(
     return Answer(out["same"], out["inside"], out["contains"], examples)
 
 
-def relate_shared(a: PathExpr, b: PathExpr, *, depth: int = 2) -> Answer:
+def relate_shared(
+    a: PathExpr, b: PathExpr, *, depth: int = 2, builtin_values: bool = False
+) -> Answer:
     """The relation of ``a`` and ``b`` under shared bindings (SEMANTICS
     §15.1): a name of both takes one value on both sides, so its uses on both
     are tied as one name's (`_relate`).
@@ -1217,7 +1313,7 @@ def relate_shared(a: PathExpr, b: PathExpr, *, depth: int = 2) -> Answer:
     then renders its own default. Each such name is decided both ways: tied,
     and with each side bound to its own default. The relation holds never
     (or always) where it does in every case, and is possible where it is in
-    one."""
+    one. With ``builtin_values``, of bindings of builtin values alone."""
     pa, pb = _params(a), _params(b)
     common = sorted(pa.keys() & pb.keys())
     for n in common:
@@ -1233,10 +1329,10 @@ def relate_shared(a: PathExpr, b: PathExpr, *, depth: int = 2) -> Answer:
             a_ = a.bind({n: pa[n].default for n in unbound}) if unbound else a
             b_ = b.bind({n: pb[n].default for n in unbound}) if unbound else b
             tied = frozenset(common) - set(unbound)
-            r = _relate(a_, b_, depth, {}, tied)
+            r = _relate(a_, b_, depth, {}, tied, builtin_values)
             rest = _cancelled(a_, b_)
             if rest is not None:
-                r = _refined(r, _relate(*rest, depth, {}, tied))
+                r = _refined(r, _relate(*rest, depth, {}, tied, builtin_values))
             cases.append(r)
     out: dict[str, str] = {}
     examples: dict[str, dict[str, dict[str, Any]]] = {}
@@ -1590,6 +1686,7 @@ def _substitute(
     fixed: Fixed,
     depth: int,
     tied: frozenset[str] = frozenset(),
+    builtin: bool = False,
     limit: int = 64,
 ) -> tuple[str, dict[str, dict[str, Any]] | None]:
     """Hold each disagreeing (name, shape) to each of its candidates and
@@ -1605,7 +1702,7 @@ def _substitute(
         for (side, group, _, _), v in zip(cands, combo, strict=True):
             for s in ("a", "b") if side == TIED else (side,):
                 held[s][group] = v
-        r = _relate(a, b, depth - 1, held, tied)
+        r = _relate(a, b, depth - 1, held, tied, builtin)
         if r[how] in POSSIBLE:
             return "possible", r.examples[how]
         if r[how] != "never":

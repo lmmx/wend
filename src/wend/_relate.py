@@ -970,7 +970,7 @@ class Analysis:
             decide = L.relate_shared if self.shared else L.relate_independent
             try:
                 with L.budget(_BUDGET):
-                    self._oracle[key] = decide(a, b)
+                    self._oracle[key] = decide(a, b, builtin_values=self.builtin_values)
             except L.Unsupported:
                 self._oracle[key] = None
         o = self._oracle[key]

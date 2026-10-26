@@ -84,7 +84,7 @@ its number, in the order #105, #107, #106, #108, #109, #110, #112, #113, #114, #
 | 23 | [Stems of `.` and `..`, written out](2026-10-25-dot-stems.md): the stem, a dot and the suffix's text, or the name `..` | #128 | bf5edfb | `tests/relate_test.py` (the cases render all it renders; pooled bindings) |
 | 24 | [An exact oracle for relate under independent bindings](2026-10-26-language-oracle.md): each expression's renderings as a regular language, with rendered witnesses; and where the work sits in the Future Paths essays | #129 | a5bc2a2 | `tests/lang_oracle_test.py`, `bench/relate_oracle.py` |
 | 25 | [The oracle for names used twice](2026-10-26-names-used-twice.md): uses tied by shape, read apart, then held to each text a use can take | #130 | 39cc467 | `tests/lang_oracle_test.py` (names used twice), `bench/relate_oracle.py` |
-| 26 | [Depths through SubPaths and deferred operations](2026-10-26-depths.md): a count of segments with signed parts, bounding `same`, `inside` and `contains` | #DEPTHS | on the PR's branch | `tests/relate_test.py` (`_depth` against every pooled rendering; the oracle) |
+| 26 | [Depths through SubPaths and deferred operations](2026-10-26-depths.md): a count of segments with signed parts, bounding `same`, `inside` and `contains` | #131 | on the PR's branch | `tests/relate_test.py` (`_depth` against every pooled rendering; the oracle) |
 
 ## How the discoveries build on one another
 

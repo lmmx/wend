@@ -81,3 +81,16 @@ Three answers `relate` decides the oracle leaves undecided: two `"never"` and on
 
 **[Measured]** Under one deferred head, a pair takes 0.31 s on average, against 6 ms
 for linear pairs: the candidates are decided again, up to twice over.
+
+**[Measured]** Mutants, against `tests/lang_oracle_test.py` under seed 0:
+
+| mutant | killed by |
+|---|---|
+| uses of every shape tied | `test_a_spec_does_not_narrow_a_value_without_builtin_values`, and the `{n:03d}`/`{n}` case |
+| the candidates taken as complete, though a use's texts are infinite | `test_a_name_used_twice_is_decided_through_its_values`, once it held `{p}.x/{p}.y` against `A{q}.x/{r}B.y`: the uses take `A` and `B`, neither of which holds, while `AB` does. Its first version survived |
+| a candidate not held to its text | `test_a_name_used_twice_is_decided_through_its_values` |
+| disagreeing uses read as agreeing | the same |
+| a witness not confirmed by rendering | survived: a safety net. Where every shape's uses agree, the value the oracle builds renders each shape's text, so the confirmation never fails on the generated pairs; `test_every_possible_relation_renders` renders every witness anyway |
+| path texts compared unnormalised | survived: equivalent in its answers. A head's text spells a trailing `/`, a segment's never does, so without normalising, the two uses of an AUTO name disagree. Substitution then tries both texts, and the one without the `/` holds, giving the same answer by the slower route |
+
+**[Measured]** The oracle's tests pass under seeds 0 to 4.

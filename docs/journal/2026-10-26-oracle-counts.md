@@ -65,7 +65,39 @@ on the right, so on every walk the two differences add up to one.
 
 ## 3. Results
 
-RESULTS
+**[Measured]** `bench/relate_oracle.py --shared 1500` on #119's three samples, against
+`relate(shared=True)` as on master. The oracle of #132 (master, e34d5be) was run with this
+same bench, so both columns are of the same pairs: Hypothesis derives a derandomized seed
+from the source of the function it runs, and this PR changed the bench's, so the pairs are
+not #132's, whose 1,016 unconfirmed answers are of other pairs.
+
+4,428 pairs supported (of 4,500), so 13,284 answers. Each of `relate`'s answers, by what
+the oracle showed of it:
+
+| `relate`'s answer | the oracle | #132 | now |
+|---|---|---|---|
+| `"never"`, 9,703 | confirmed: `"never"` | 8,670 | 9,565 |
+| | unconfirmed: `"undecided"` | 1,033 | 138 |
+| | contradicted: a binding shows it | 0 | 0 |
+| `"always"` | unconfirmed: `"undecided"` | 7 | 7 |
+| | contradicted, or vacuous, or unresolved (§1) | 0 | 0 |
+| `"unknown"`, 1,285 | settled `"never"` | 179 | 266 |
+| | shown (`"sometimes"`, `"possible"`, `"always"`) | 839 | 839 |
+| | `"undecided"` | 267 | 180 |
+
+`relate`'s `"sometimes"` answers carry its own rendered example; the oracle is undecided
+on 2 of them, in both columns. Every witness the oracle gave rendered and showed its
+relation, in both columns. The counts add proofs of `"never"` and nothing else: every
+shown answer is as before.
+
+So of `relate`'s 9,703 `"never"` answers, 98.6% are now confirmed by an argument that
+shares nothing with `relate`'s, and the rest are unconfirmed, not contradicted (§5).
+Under the oracle's other mode, `relate(shared=False)`, the counts apply only to a name
+used twice on one side, and were not measured again.
+
+**[Measured]** Time: 1,845 s for the three samples with #132's oracle, on an idle
+machine; 3,348 s with the counts, on one running about eight other jobs. The two are not
+comparable. #THOROUGH makes the oracle's slowest step linear.
 
 ## 4. Tests and mutants
 
@@ -82,7 +114,8 @@ RESULTS
 - The property tests, which check every `"never"` against pooled renderings, run the
   counts wherever a witness is not found at once.
 
-**[Measured]** Mutants, against `tests/lang_oracle_test.py` under seed 0:
+**[Measured]** Mutants, against `tests/lang_oracle_test.py` under seed 0; "now" is each
+mutant of the final version (b2e3295), run again:
 
 | mutant | first run | now |
 |---|---|---|
@@ -111,26 +144,32 @@ oracle right and the test wrong.
 **[Measured]** The 145 answers left unconfirmed on this sample (138 `"never"`, 7
 `"always"`; recorded by `record_bench.py`, which wraps the oracle without changing the
 bench, so the pairs are the same):
-- 138 relate a deferred operation (`with_stem`, `with_suffix`, `with_name`, `parent`,
-  `relative_to`) of a base that ends in a `SubPath`, to the same base or a second
-  operation of it. `relate` writes such a base out by how the `SubPath` splits, and
-  pairs only cases where it splits alike on both sides (#127). The oracle reads each use
-  of the `SubPath` apart, and ties the uses only by their counts, which do not say how
-  the text splits. Typical: `with_suffix({sc...}/{sc...}, '.b')` is never strictly
-  inside `{sc...}/{sc...}`.
-- 7 others. Four are word equations that tie lengths across positions the counts do
-  not align: `{root}/{q}/{c}/{q}` is never `/{c}/{p}-{q}/x.txt`, since `q` and `c`
-  would both be `x.txt` and `c` also `p-x.txt`. Three hold the same name in two shapes
-  (`{n}` and `{n:d}`), which the oracle keeps apart (#130).
+- 115 hold a deferred operation (`with_stem`, `with_suffix`, `with_name`, `parent`,
+  `relative_to`) of a base that ends in a `SubPath`, with that base on the other side
+  too. `relate` writes such a base out by how the `SubPath` splits, and pairs only cases
+  where it splits alike on both sides (#127). Typical: `with_suffix({sc...}/{sc...},
+  '.b')` is never strictly inside `{sc...}/{sc...}`.
+- 23 hold a `SubPath` elsewhere, mostly two operations of one base:
+  `with_stem(//{sc...}/{sc...}/{n}, a)/a` is never `with_stem(//{sc...}/{sc...}/{n}, {p})`.
+- 7 hold no `SubPath`. Five relate two operations of one base, or a path to an
+  operation of a base it begins with: `relative_to({ab}/{q}/chunk_{n:03d}, {root})`
+  against the same base made relative to `{p}`. One is a word equation across positions:
+  `{root}/{q}/{c}/{q}` is never `/{c}/{p}-{q}/x.txt`, since `q` and `c` would both be
+  `x.txt` and `c` also `p-x.txt`. One needs `{n}` and `{n:d}` to render apart, two
+  shapes the oracle keeps apart (#130).
+
+The common thread: one text, a base or a `SubPath`, read in two places. `relate`
+cancels or splits it alike on both sides. The oracle reads each use apart, and ties the
+uses only by their counts, which do not say what the text is.
 
 **[Fact]** None of the 145 is known to be wrong. They are unconfirmed, not refuted: no
 pooled binding contradicts them (the property tests and the bench check every answer
 against renderings), and no other argument confirms them.
 
 What would settle them:
-- **Both uses of one `SubPath` read at once.** A product of the two operations'
-  transducers over one copy of the base, rather than two copies tied by counts. This is
-  the oracle's next step.
+- **Both uses of one text read at once.** A product of the two operations' transducers
+  over one copy of the base, rather than two copies tied by counts. This is the
+  oracle's next step.
 - **Counts per position.** Lengths tied between aligned segments, not only per name.
 - **The oracle in `relate`.** #THOROUGH offers it as `relate(..., thorough=True)`,
   measured there. It needs the oracle kept a check: `relate`'s default never calls it.

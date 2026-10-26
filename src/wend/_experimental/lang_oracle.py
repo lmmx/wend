@@ -577,11 +577,16 @@ class Side:
     name: str
     fixed: dict[tuple[str, Any], Any] = field(default_factory=dict)
     uses: dict[tuple[str, Any], int] = field(default_factory=dict)
+    # how each use renders: "field" (alone in a segment), "text", "finite",
+    # "head" or "splice"
+    kinds: dict[Any, str] = field(default_factory=dict)
 
-    def key(self, param: str, shape: Any) -> tuple[str, str, Any, int]:
+    def key(self, param: str, shape: Any, kind: str) -> tuple[str, str, Any, int]:
         i = self.uses.get((param, shape), 0)
         self.uses[(param, shape)] = i + 1
-        return (self.name, param, shape, i)
+        k = (self.name, param, shape, i)
+        self.kinds[k] = kind
+        return k
 
     @property
     def repeated(self) -> bool:
@@ -600,7 +605,9 @@ def _field(f: Field, side: Side) -> NFA:
             raise Unsupported("segment field of a non-parameter")
         if src.type in FINITE_TYPES:
             return _finite(src, side, lambda v: format(v, ""), NAME_OK)
-        lang = product(_value_text(src, side.key(src.name, FSPATH), None), NAME_OK)
+        lang = product(
+            _value_text(src, side.key(src.name, FSPATH, "field"), None), NAME_OK
+        )
         return _held(lang, side, src.name, FSPATH, _fixed_text(side, src.name, FSPATH))
     if isinstance(src, Const):
         if f.static_spec is None:
@@ -621,7 +628,7 @@ def _field(f: Field, side: Side) -> NFA:
     if src.type in FINITE_TYPES:
         return _finite(src, side, lambda v: format_field(f, v, spec), None)
     shape = ("format", f.conversion, spec)
-    base = _value_text(src, side.key(src.name, shape), None)
+    base = _value_text(src, side.key(src.name, shape, "text"), None)
     dot_free, non_empty = f.facts
     if dot_free:
         base = product(base, star(word([NONDOT])))
@@ -637,7 +644,7 @@ def _fixed_text(side: Side, param: str, shape: Any) -> NFA:
 
 def _finite(p: Param, side: Side, render: Any, within: NFA | None) -> NFA:
     """A field of a type of two values: each value's text, chosen outright."""
-    key = side.key(p.name, FINITE)
+    key = side.key(p.name, FINITE, "finite")
     branches = []
     for v in FINITE_TYPES[p.type]:
         if (p.name, FINITE) in side.fixed and side.fixed[(p.name, FINITE)] is not v:
@@ -674,7 +681,7 @@ def _head_param(p: Param, side: Side) -> NFA:
     anchors = ["/", "//"] if p.kind is Kind.ABSOLUTE else ["", "/", "//"]
     lang = tag(
         concat(union(*(word([ANCHORS[a]]) for a in anchors)), star(CANON_SEG)),
-        side.key(p.name, FSPATH),
+        side.key(p.name, FSPATH, "head"),
     )
     t = side.fixed.get((p.name, FSPATH))
     return _held(
@@ -685,7 +692,7 @@ def _head_param(p: Param, side: Side) -> NFA:
 def _splice(p: Param, side: Side) -> NFA:
     if p.type is not None:
         raise Unsupported("typed SubPath")
-    lang = tag(star(SPLICE_SEG), side.key(p.name, FSPATH))
+    lang = tag(star(SPLICE_SEG), side.key(p.name, FSPATH, "splice"))
     t = side.fixed.get((p.name, FSPATH))
     held = empty()
     if isinstance(t, str):
@@ -1092,7 +1099,9 @@ def _relate(
             examples[how] = reading.envs
             continue
         verdict, envs = "undecided", None
-        if reading.conflicts and depth > 0:
+        if _counted_never(both, sides, tied):
+            verdict = "never"
+        elif reading.conflicts and depth > 0:
             verdict, envs = _substitute(
                 a, b, how, _candidates(both, reading, sides), fixed, depth, tied
             )
@@ -1206,6 +1215,129 @@ def _refined(whole: Answer, rest: Answer) -> Answer:
             out[how] = mine
     examples = {how: env for how, env in whole.examples.items() if out[how] in POSSIBLE}
     return Answer(out["same"], out["inside"], out["contains"], examples)
+
+
+# -- counts --------------------------------------------------------------------
+#
+# Uses of a name in one shape render one text, so they emit as many
+# characters, and uses that each render a path's segments emit as many
+# separators. A word of the intersection shows a binding only where those
+# counts agree. Each disagreement is a weight on the automaton's edges, and
+# where some sum of them is positive (or negative) on every accepting walk,
+# no word has them all zero: the relation never holds. The walks' least
+# weight is a shortest path, with -infinity where a negative cycle lies on
+# one (Bellman-Ford): a Farkas certificate for the counts' integer program.
+
+
+def _emitted(lab: Label | None, fx: tuple[Effect, ...]) -> list[tuple[Any, str]]:
+    """(key, "chars" or "seps") for each character an edge's effects emit."""
+    out = []
+    for k, how in fx:
+        if isinstance(how, tuple) and how and how[0] == "value":
+            continue
+        shown = lab if how is None else how
+        if isinstance(shown, Chars):
+            out.append((k, "seps" if shown == SEP else "chars"))
+    return out
+
+
+def _count_dims(
+    sides: dict[str, tuple[PathExpr, Side]], tied: frozenset[str]
+) -> list[tuple[str, Any, Any]]:
+    """Each count two uses of one (name, shape) must agree on: (measure,
+    first use, other use). A type of two values renders each spec its own
+    way, so its uses are not compared; separators are compared where every
+    use renders a path's segments the same way (all heads, or all
+    SubPaths)."""
+    groups: dict[tuple[str, str, Any], list[Any]] = {}
+    kinds: dict[Any, str] = {}
+    for side, (_, sd) in sides.items():
+        kinds.update(sd.kinds)
+        for (name, shape), n in sd.uses.items():
+            if shape == FINITE:
+                continue
+            g = (TIED if name in tied else side, name, shape)
+            groups.setdefault(g, []).extend((side, name, shape, i) for i in range(n))
+    dims = []
+    for uses in groups.values():
+        same_kind = len({kinds.get(u) for u in uses}) == 1
+        paths = same_kind and kinds.get(uses[0]) in ("head", "splice")
+        for u in uses[1:]:
+            dims.append(("chars", uses[0], u))
+            if paths:
+                dims.append(("seps", uses[0], u))
+    return dims
+
+
+def _least_walk(n: NFA, w: dict[tuple[int, int], int]) -> float:
+    """The least total weight of a walk from ``n``'s start to a final state,
+    over ``n`` trimmed; -inf where a negative cycle lies on one."""
+    dist: dict[int, float] = {n.start: 0}
+    for _ in range(len(n.edges)):
+        changed = False
+        for s, d in list(dist.items()):
+            for i, (_, t, _) in enumerate(n.edges[s]):
+                nd = d + w.get((s, i), 0)
+                if nd < dist.get(t, float("inf")):
+                    dist[t] = nd
+                    changed = True
+        if not changed:
+            break
+    else:
+        return float("-inf")
+    return min((dist[f] for f in n.finals if f in dist), default=float("inf"))
+
+
+def _counted_never(
+    both: NFA,
+    sides: dict[str, tuple[PathExpr, Side]],
+    tied: frozenset[str],
+    limit: int = 2_000_000,
+) -> bool:
+    """Whether the counts of `_count_dims` rule out every word of ``both``."""
+    dims = _count_dims(sides, tied)
+    if not dims:
+        return False
+    n = compact(both)
+    if not n.finals:
+        return True
+    size = len(n.edges) * max(1, sum(len(es) for es in n.edges))
+    if size > limit:
+        return False
+    index = {d: i for i, d in enumerate(dims)}
+    by_use: dict[tuple[str, Any], list[tuple[int, int]]] = {}
+    for i, (measure, u0, u) in enumerate(dims):
+        by_use.setdefault((measure, u0), []).append((i, 1))
+        by_use.setdefault((measure, u), []).append((i, -1))
+    vec: dict[tuple[int, int], list[int]] = {}
+    for s, es in enumerate(n.edges):
+        for j, (lab, _, fx) in enumerate(es):
+            v = [0] * len(dims)
+            for k, measure in _emitted(lab, fx):
+                for i, sign in by_use.get((measure, k), ()):
+                    v[i] += sign
+            if any(v):
+                vec[(s, j)] = v
+    if not vec:
+        return False
+    m = len(index)
+    if m <= 4:
+        ys = [
+            y
+            for y in itertools.product((-1, 0, 1), repeat=m)
+            if any(y) and next(c for c in y if c) > 0
+        ]
+    else:
+        ys = [tuple(int(i == j) for j in range(m)) for i in range(m)]
+        for measure in ("chars", "seps"):
+            ys.append(tuple(int(d[0] == measure) for d in dims))
+    for y in ys:
+        w = {e: sum(a * b for a, b in zip(y, v, strict=True)) for e, v in vec.items()}
+        if not any(w.values()):
+            continue
+        if _least_walk(n, w) > 0 or _least_walk(n, {e: -x for e, x in w.items()}) > 0:
+            return True
+    return False
 
 
 def _projection(n: NFA, key: Any, limit: int = 64) -> set[str] | None:

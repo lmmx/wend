@@ -10,9 +10,15 @@ from relate_test import HEAD_OPS, pairs, renamed, rendered, under_one_head
 
 from wend import P, Param, SubPath, T, relate
 from wend._experimental.lang_oracle import (
+    NFA,
     POSSIBLE,
+    Side,
     Unsupported,
+    _count_dims,
+    _lang,
+    _least_walk,
     accepts,
+    chars,
     encode,
     language,
     relate_independent,
@@ -320,3 +326,53 @@ def test_shared_bindings_tie_a_name_across_sides():
     assert a.render() == b.render() == "d/q"
     # Without the defaults, never.
     assert relate_shared(P("d") / x, P(T(t"{x}")) / "q").same == "never"
+
+
+def test_counts_rule_out_what_no_candidate_settles():
+    p, q, x, y = Param("p"), Param("q"), Param("x"), Param("y")
+    # Read apart, //{p}{q} and //{p}-{q} meet; under one binding the two
+    # segments differ in length by one, on every word (`_counted_never`).
+    a, b = P("//") / T(t"{p}{q}"), P("//") / T(t"{p}-{q}")
+    assert relate_shared(a, b).same == "never"
+    assert relate_independent(a, b).same == "sometimes"
+    # Either way round: the difference is then -1 on every walk, bounded above.
+    assert relate_shared(b, a).same == "never"
+    # {x}/a below a/{x} would need x's text one character longer on the left.
+    o = relate_shared(P(T(t"{x}")) / "a", P("a") / T(t"{x}"))
+    assert (o.inside, o.contains) == ("never", "never")
+    o = relate_shared(P("a") / T(t"{x}"), P(T(t"{x}")) / "a")
+    assert (o.inside, o.contains) == ("never", "never")
+    assert o.same in POSSIBLE  # x = "a"
+    # Counts compare uses of one shape only: {x}{x} as text and {x} alone in
+    # a segment are two shapes, and a value may render them apart.
+    o = relate_shared(P("d") / T(t"{x}{x}"), P("d") / x)
+    assert o.same in POSSIBLE
+    # Different names are not tied: {x}{y} is {y}, with x empty.
+    o = relate_shared(P("d") / T(t"{x}{y}"), P("d") / y)
+    assert o.same in POSSIBLE
+
+
+def test_the_least_walk_has_no_bound_below_a_negative_cycle():
+    # A walk weighs +100, then may go round a cycle of -1 as often as it
+    # likes: its least weight is unbounded, not what the passes reached.
+    n = NFA()
+    n.start, end = n.new(), n.new()
+    n.add(n.start, chars("a"), end)
+    n.add(end, chars("b"), end)
+    n.finals = {end}
+    assert _least_walk(n, {(0, 0): 100, (1, 0): -1}) == float("-inf")
+    assert _least_walk(n, {(0, 0): 100, (1, 0): 1}) == 100
+
+
+def test_a_bool_used_twice_is_not_counted():
+    # A bool renders each spec its own way: {f:>5} formats it as an int,
+    # "    1", where {f} is "True", so the uses' lengths differ and comparing
+    # them would be wrong. Its two values are decided outright instead.
+    f, x = Param("f", type=bool), Param("x")
+    e = P("d") / T(t"{f:>5}") / T(t"{f}") / T(t"{x}") / T(t"{x}")
+    sd = Side("a")
+    _lang(e, sd)
+    dims = _count_dims({"a": (e, sd)}, frozenset())
+    assert {d[1][1] for d in dims} == {"x"}
+    o = relate_shared(e, P("d") / "    1" / "True" / "k" / "k")
+    assert o.same in POSSIBLE

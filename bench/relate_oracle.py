@@ -15,6 +15,7 @@ from hypothesis import HealthCheck, Phase, given, settings
 
 
 sys.path.insert(0, "tests")
+from lang_oracle_test import renderings, shared_renderings  # noqa: E402
 from relate_test import pairs, renamed, under_one_head  # noqa: E402
 
 from wend import relate  # noqa: E402
@@ -49,6 +50,30 @@ def renders_nothing(e):
         return not nonempty(_lang(e, Side("a")))
     except Unsupported:
         return False
+
+
+def rendered_pair(a, b, shared, limit=400):
+    """A pair of paths ``a`` and ``b`` render on one pooled binding (shared),
+    or on a pooled binding each (independent); None if the pool has none."""
+    if shared:
+        return next(iter(shared_renderings(a, b, limit)), None)
+    pa = next(iter(renderings(a, limit)), None)
+    pb = next(iter(renderings(b, limit)), None)
+    return None if pa is None or pb is None else (pa, pb)
+
+
+def vacuity(a, b, how, shared):
+    """Where relate answers "always" and the oracle "never", at most one is
+    right unless no binding renders both, when both are (SEMANTICS §15.2).
+    A pooled binding that renders both shows which is wrong; an empty
+    language proves that none renders; otherwise it is unresolved."""
+    pair = rendered_pair(a, b, shared)
+    if pair is not None:
+        wrong = "oracle" if lexically(*pair) == how else "relate"
+        return f"CONTRADICTION ({wrong} wrong): renders {pair[0]!r}, {pair[1]!r}"
+    if renders_nothing(a) or renders_nothing(b):
+        return "relate always, oracle never: vacuous, a side renders nothing"
+    return "relate always, oracle never: unresolved, no pooled binding renders both"
 
 
 def run(n, shared=False):
@@ -102,11 +127,11 @@ def run(n, shared=False):
                     or (mine == "sometimes" and exact == "never")
                 )
                 if wrong and mine == "always" and exact == "never":
-                    if renders_nothing(a) or renders_nothing(b):
-                        tally[
-                            (name, "relate always, oracle never: renders nothing")
-                        ] += 1
-                        continue
+                    kind = vacuity(a, b, how, shared)
+                    tally[(name, kind.split(":")[0] if kind[0] == "C" else kind)] += 1
+                    if not kind.endswith("renders nothing"):
+                        rows.append(dict(kind=kind, a=a.pattern, b=b.pattern, how=how))
+                    continue
                 if wrong:
                     kind = f"CONTRADICTION relate {mine}, oracle {exact}"
                     detail = (

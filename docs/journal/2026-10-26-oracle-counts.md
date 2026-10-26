@@ -97,7 +97,7 @@ used twice on one side, and were not measured again.
 
 **[Measured]** Time: 1,845 s for the three samples with #132's oracle, on an idle
 machine; 3,348 s with the counts, on one running about eight other jobs. The two are not
-comparable. #THOROUGH makes the oracle's slowest step linear.
+comparable.
 
 ## 4. Tests and mutants
 
@@ -171,7 +171,7 @@ What would settle them:
   over one copy of the base, rather than two copies tied by counts. This is the
   oracle's next step.
 - **Counts per position.** Lengths tied between aligned segments, not only per name.
-- **The oracle in `relate`.** #THOROUGH offers it as `relate(..., thorough=True)`,
+- **The oracle in `relate`.** The next PR offers it as `relate(..., thorough=True)`,
   measured there. It needs the oracle kept a check: `relate`'s default never calls it.
 
 **[Measured]** The out-of-memory bench. With the counts' first version (753a7a1), the
@@ -186,5 +186,6 @@ seed from the source of the function it runs.
 changed: a queue (SPFA) for rounds over every state, and a test of each component's
 cycles, which skips a walk where a cycle surely weighs less than zero. Both keep one
 distance per state, so neither obviously bounds memory. Either a skipped walk was the
-one that grew, or the killed run was not of exactly 753a7a1. The first version is being
-rerun on the bench's own pairs, under a limit, logging each pair.
+one that grew, or the killed run was not of exactly 753a7a1. A rerun of the first
+version on the bench's own pairs, under a limit and logging each pair, is reported in
+the next entry, `relate(..., thorough=True)`.

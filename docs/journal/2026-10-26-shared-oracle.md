@@ -1,4 +1,4 @@
-# 2026-10-26: The oracle under shared bindings (#SHARED)
+# 2026-10-26: The oracle under shared bindings (#132)
 
 #129 and #130 decide `relate(..., shared=False)`. `relate`'s default is
 `shared=True`, where a name takes one value on both sides (SEMANTICS §15.1), and its

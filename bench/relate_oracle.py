@@ -63,7 +63,8 @@ def run(n):
             tally[(name, "supported")] += 1
             for how in HOWS:
                 mine, exact = r[how], o[how]
-                if exact in ("sometimes", "always"):
+                tally[(name, f"oracle {exact}")] += 1
+                if exact in ("sometimes", "always", "possible"):
                     ok = confirmed(a, b, how, o.examples[how])
                     if ok is not True:
                         tally[(name, "oracle witness fails")] += 1
@@ -76,16 +77,18 @@ def run(n):
                                 detail=ok,
                             )
                         )
-                if mine == "unknown":
-                    tally[(name, f"unknown -> {exact}")] += 1
-                elif mine == exact:
-                    tally[(name, "agree")] += 1
-                else:
-                    kind = f"relate {mine}, oracle {exact}"
-                    tally[(name, kind)] += 1
-                    detail = None
-                    if exact in ("sometimes", "always") and mine == "never":
-                        detail = confirmed(a, b, how, o.examples[how])
+                wrong = (
+                    (mine == "never" and exact in ("sometimes", "always", "possible"))
+                    or (mine == "always" and exact in ("never", "sometimes"))
+                    or (mine == "sometimes" and exact == "never")
+                )
+                if wrong:
+                    kind = f"CONTRADICTION relate {mine}, oracle {exact}"
+                    detail = (
+                        confirmed(a, b, how, o.examples[how])
+                        if exact != "never"
+                        else None
+                    )
                     rows.append(
                         dict(
                             kind=kind,
@@ -95,6 +98,11 @@ def run(n):
                             detail=str(detail),
                         )
                     )
+                    tally[(name, kind)] += 1
+                elif mine == exact:
+                    tally[(name, "agree")] += 1
+                else:
+                    tally[(name, f"relate {mine}, oracle {exact}")] += 1
 
         one()
     return tally, rows

@@ -10,6 +10,7 @@ from relate_test import HEAD_OPS, pairs, renamed, rendered, under_one_head
 
 from wend import P, Param, SubPath, T, relate
 from wend._experimental.lang_oracle import (
+    POSSIBLE,
     Unsupported,
     accepts,
     encode,
@@ -82,7 +83,7 @@ def test_every_possible_relation_renders(pair):
     a, b = pair
     o = oracle(a, b)
     for how in HOWS:
-        if o[how] != "never":
+        if o[how] in POSSIBLE:
             env = o.examples[how]
             pa, pb = a.render(env["a"]), b.render(env["b"])
             assert lexically(pa, pb) == how, (a.pattern, b.pattern, how, pa, pb)
@@ -112,11 +113,12 @@ def test_relate_agrees_with_the_oracle(pair):
     r = relate(a, b, shared=False)
     for how in HOWS:
         mine, exact = r[how], o[how]
+        # "possible" holds at least once, "undecided" says nothing.
         allowed = {
-            "unknown": {"never", "sometimes", "always"},
-            "never": {"never"},
-            "always": {"always"},
-            "sometimes": {"sometimes", "always"},
+            "unknown": {"never", "sometimes", "always", "possible", "undecided"},
+            "never": {"never", "undecided"},
+            "always": {"always", "possible", "undecided"},
+            "sometimes": {"sometimes", "always", "possible", "undecided"},
         }[mine]
         assert exact in allowed, (a.pattern, b.pattern, how, mine, exact)
 
@@ -153,12 +155,42 @@ def test_a_spec_does_not_narrow_a_value_without_builtin_values():
     assert a.render(o.examples["same"]["a"]) == "d/zz"
 
 
-def test_a_name_used_twice_is_outside_the_fragment():
-    p = Param("p")
+def test_a_name_used_twice_is_decided_through_its_values():
+    p, q, n, rel = Param("p"), Param("q"), Param("n"), SubPath("rel")
+    # Not regular, so not a language of its own:
     try:
-        language(P(T(t"{p}")) / T(t"{p}"))
+        language(P(T(t"{p}.a")) / T(t"{p}.b"))
     except Unsupported:
         pass
     else:
-        raise AssertionError("a name used twice is not a regular language")
-    assert language(P("d") / SubPath("s")) is not None
+        raise AssertionError("a name used twice in one shape is not regular")
+    # Uses of one shape render one text: here every text either use can take
+    # is tried, so "never" is exact.
+    a = P("d") / T(t"{p}-{q}") / T(t"{p}-{q}")
+    assert relate_independent(a, P("d") / "a-b" / "a-c").same == "never"
+    o = relate_independent(a, P("d") / "a-b" / "a-b")
+    assert o.same == "possible"
+    assert a.render(o.examples["same"]["a"]) == "d/a-b/a-b"
+    a = P("d") / T(t"{n:03d}") / T(t"{n:03d}.b")
+    assert relate_independent(a, P("d") / "007" / "7.b").same == "never"
+    # Uses of different shapes need not: a value may format "007" with the
+    # spec 03d and "7" without (rendering is a function of structure,
+    # SEMANTICS §15.3, 1), so these meet.
+    a = P("d") / T(t"{n:03d}") / T(t"{n}")
+    o = relate_independent(a, P("d") / "007" / "7")
+    assert o.same == "sometimes"
+    assert a.render(o.examples["same"]["a"]) == "d/007/7"
+    # Where a use can take infinitely many texts, the candidates are not all
+    # of them, and none showing the relation proves nothing: here p is "A"
+    # in one use and "B" in the other, neither of which holds, while "AB"
+    # (with q "B" and r "A") does.
+    p_, q_, r_ = Param("p"), Param("q"), Param("r")
+    a = P("d") / T(t"{p_}.x") / T(t"{p_}.y")
+    b = P("d") / T(t"A{q_}.x") / T(t"{r_}B.y")
+    assert a.render(p="AB") == b.render(q="B", r="A")
+    assert relate_independent(a, b).same != "never"
+    # A SubPath used twice: d/{rel}/k/{rel} is below d/a/k/b where rel is
+    # a/k/b/..., and never is it.
+    a = P("d") / rel / "k" / rel
+    o = relate_independent(a, P("d") / "a" / "k" / "b")
+    assert (o.same, o.inside) == ("never", "possible")

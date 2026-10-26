@@ -56,7 +56,7 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
   compares them on #119's samples. Over 8,688 answers, `relate`
   contradicts the oracle nowhere, and leaves 1,575 to settle, 1,402 of them `"sometimes"`
   answers its search misses.
-- **The oracle decides names used twice** (#NAMES). Two uses of a name render one text
+- **The oracle decides names used twice** (#130). Two uses of a name render one text
   where they render it the same way: as a path or a segment, or formatted with one
   conversion and spec. Read apart, then held to each text a use can take, such pairs are
   decided as well, and `"never"` stays exact. On #119's samples the oracle now decides

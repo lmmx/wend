@@ -124,7 +124,7 @@ the 171:
 ## 4. What the fragment leaves out
 
 **[Measured]** 1,604 of the 4,500 pairs are outside it: 1,563 because a name is used
-twice in one expression, and 41 for a typed path parameter. *Since #NAMES:* names used
+twice in one expression, and 41 for a typed path parameter. *Since #130:* names used
 twice are decided too, and 4,427 pairs are
 ([2026-10-26-names-used-twice.md](2026-10-26-names-used-twice.md)). Names used twice are
 common in the samples (`{p}-{q}/{p}-{q}`), and in real layouts (a run's id in a

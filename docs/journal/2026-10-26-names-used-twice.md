@@ -1,4 +1,4 @@
-# 2026-10-26: The oracle for names used twice (#NAMES)
+# 2026-10-26: The oracle for names used twice (#130)
 
 #129's oracle decides `relate(..., shared=False)` exactly on expressions that use no
 name twice, and that left out a third of #119's samples (`{p}-{q}/{p}-{q}`). This entry

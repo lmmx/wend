@@ -95,7 +95,25 @@ against 622 s, peaking at 156 MB against 711 MB.
 
 ## 4. `thorough` with builtin values
 
-THOROUGH
+**[Measured]** `bench/relate_thorough.py 1500`, master (87b69ec) against this branch, on
+the same pairs (the bench file is master's): what `thorough` makes of the relations the
+rules leave `"unknown"`, summed over the three samples.
+
+| mode | `"unknown"` | → never | → sometimes | → always | left |
+|---|---|---|---|---|---|
+| shared, builtin, master | 900 | 180 | 155 | 2 | 563 |
+| shared, builtin, now | 900 | 216 | 261 | 2 | 421 |
+| independent, builtin, master | 2,941 | 263 | 838 | 2 | 1,838 |
+| independent, builtin, now | 2,941 | 299 | 1,392 | 2 | 1,248 |
+
+Without builtin values every count is as on master. In every mode no answer fails to
+refine the rules', and every example renders. Independent with builtin values, the cost
+rose with what is settled: 587 s against 458 s for the 4,500 pairs, 48 pairs over 2 s
+against 26.
+
+(A first `thorough` run of this branch drew other pairs: `ruff format` had changed the
+bench function's source since #136's run, and Hypothesis seeds its draws from that
+source. Its counts are not comparable with #136's, and are not used.)
 
 ## 5. Tests and mutants
 
@@ -129,4 +147,16 @@ it:
 
 ## 6. What is left
 
-LEFT
+- **Unconfirmed builtin answers.** 335 `"never"`s and 123 `"always"`s under shared
+  bindings, 296 and 18 independent. Not examined one by one. Fields of a name typed
+  `float`, and `int` fields under other specs, are still read as any text, so their
+  witnesses fail where a plain value is needed.
+- **The bound on a product.** On #119's samples, in all four modes, `_meet` built 103,523
+  products, the largest 27,663 states, and 25 passed 100,000: three pairs, independent
+  with builtin values, such as `with_suffix(//{n:02d}/{n:02d}/{s...}, '.b')/{f}/{n:02d}`
+  against the same head followed by `{f}/{n:02d}/{n:02d}/{n:02d}`. On each, the answer is
+  master's (`same` never, `inside` unknown, `contains` sometimes), in 2 to 3 s and 71 MB,
+  where master took 12 to 507 s and up to 3.1 GB. A first draft of this entry said the
+  bound was never reached; measuring showed otherwise.
+- **The rest of the overlap analysis.** `intersect`, for two languages, still queues
+  every pair of edges before checking a state; it was not the cause here, and was left.

@@ -71,7 +71,9 @@ commit. Changes in behaviour also go in [MIGRATING.md](MIGRATING.md).
 - **`thorough=True` with `builtin_values=True` reads values as builtin** (#BUILTIN). A
   field alone in a segment and the same field plainly in text are one text for a builtin
   value, and a field of a name typed `int` renders digits: the oracle behind `thorough`
-  now knows both. THOROUGHRESULT
+  now knows both. On #119's samples, of the relations the
+  rules leave `"unknown"` under shared bindings with builtin values, it settles 479 of
+  900, where it settled 337.
 
 ### Research, in the repository but not the wheel
 
